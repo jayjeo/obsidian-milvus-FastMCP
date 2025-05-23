@@ -151,11 +151,12 @@ class MilvusPodmanController:
             # 폴백: 기본값 사용
             self.data_base_path = self.project_dir / "MilvusData"
         
-        # 각 서비스별 데이터 경로 (절대 경로 사용)
+        # 각 서비스별 데이터 경로 (현재 compose 파일과 일치하도록 수정)
+        self.volumes_base_path = self.project_dir / "volumes"  # 컨테이너 데이터
         self.data_paths = {
-            "etcd": self.data_base_path / "etcd_data",
-            "minio": self.data_base_path / "minio_data",
-            "milvus": self.data_base_path / "milvus_data"
+            "etcd": self.volumes_base_path / "etcd",           # volumes/etcd (컨테이너 데이터)
+            "minio": self.data_base_path / "minio",            # MilvusData/minio (영구 데이터)
+            "milvus": self.data_base_path / "milvus"           # MilvusData/milvus (영구 데이터)
         }
         
         # 기존 데이터 위치도 확인 (현재는 없음)
@@ -340,14 +341,21 @@ class MilvusPodmanController:
         """데이터 디렉토리 생성"""
         print_colored("📁 데이터 디렉토리 준비 중...", Colors.OKBLUE)
         
-        # 베이스 디렉토리 생성
+        # 베이스 디렉토리 생성 (MilvusData - 영구 데이터)
         self.data_base_path.mkdir(parents=True, exist_ok=True)
-        print_colored(f"  ✅ 베이스 디렉토리: {self.data_base_path}", Colors.OKGREEN)
+        print_colored(f"  ✅ MilvusData 디렉토리: {self.data_base_path}", Colors.OKGREEN)
+        
+        # volumes 디렉토리 생성 (컨테이너 데이터)
+        self.volumes_base_path.mkdir(parents=True, exist_ok=True)
+        print_colored(f"  ✅ volumes 디렉토리: {self.volumes_base_path}", Colors.OKGREEN)
         
         # 각 서비스별 디렉토리 생성
         for service, path in self.data_paths.items():
             path.mkdir(parents=True, exist_ok=True)
-            print_colored(f"  ✅ {service} 디렉토리: {path}", Colors.OKGREEN)
+            if service == "etcd":
+                print_colored(f"  ✅ {service} 디렉토리: {path} (컨테이너 데이터)", Colors.OKGREEN)
+            else:
+                print_colored(f"  ✅ {service} 디렉토리: {path} (영구 데이터)", Colors.OKGREEN)
         
         return True
     

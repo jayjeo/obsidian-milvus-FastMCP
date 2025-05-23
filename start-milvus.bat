@@ -171,7 +171,7 @@ echo [OK] Milvus started
 
 echo.
 echo Waiting for all services to be ready...
-timeout /t 20 /nobreak >nul
+timeout /t 60 /nobreak >nul
 
 echo.
 echo ================================================================

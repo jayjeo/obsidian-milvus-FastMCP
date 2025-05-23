@@ -32,16 +32,96 @@ class MilvusManager:
         self.monitoring_thread = None  # 모니터링 스레드
         self.connection_lock = threading.Lock()  # 스레드 안전한 연결 관리를 위한 락
         
-        # 초기 설정
-        self.ensure_milvus_running()
-        self.connect()
-        self.ensure_collection()
         # 삭제 작업 배치 처리를 위한 추가 필드
         self.pending_deletions = set()
+        
+        # 초기 설정 - 서비스가 이미 실행 중인 경우 스킵
+        try:
+            if not self.is_port_in_use(self.port):
+                logger.info("Milvus is not running, starting services...")
+                self.ensure_milvus_running()
+            else:
+                logger.info(f"Milvus is already running on port {self.port}")
+                
+            # Milvus 서비스가 완전히 준비될 때까지 대기
+            self.wait_for_milvus_ready()
+            
+            self.connect()
+            self.ensure_collection()
+            
+        except Exception as e:
+            logger.error(f"Error during MilvusManager initialization: {e}")
+            # 초기화 실패 시 사용자에게 더 명확한 안내 제공
+            if "nodes not enough" in str(e):
+                logger.error("Milvus services are still initializing. Please wait 1-2 minutes and try again.")
+                logger.error("If the problem persists, try restarting Milvus with: start-milvus.bat")
+            raise
         
         # 모니터링 스레드 시작
         self.start_monitoring()
     
+    def wait_for_milvus_ready(self, max_wait_time=120):
+        """
+        Milvus 서비스가 완전히 준비될 때까지 대기
+        'nodes not enough' 오류를 방지하기 위해 사용
+        """
+        logger.info("Waiting for Milvus services to be fully ready...")
+        start_time = time.time()
+        
+        while (time.time() - start_time) < max_wait_time:
+            try:
+                # 포트가 열려있는지 확인
+                if not self.is_port_in_use(self.port):
+                    logger.debug("Port not ready yet, waiting...")
+                    time.sleep(5)
+                    continue
+                
+                # 간단한 연결 테스트
+                temp_connection = None
+                try:
+                    from pymilvus import connections
+                    temp_connection = connections.connect(
+                        alias="temp_check",
+                        host=self.host, 
+                        port=self.port
+                    )
+                    
+                    # 간단한 작업 수행으로 준비 상태 확인
+                    from pymilvus import utility
+                    # 컴렉션 목록 가져오기 시도 (Milvus가 준비되었는지 확인)
+                    collections = utility.list_collections(using="temp_check")
+                    
+                    logger.info("Milvus services are ready!")
+                    return True
+                    
+                except Exception as e:
+                    if "nodes not enough" in str(e):
+                        elapsed = int(time.time() - start_time)
+                        logger.info(f"Milvus still initializing... ({elapsed}s/{max_wait_time}s)")
+                        time.sleep(10)
+                        continue
+                    else:
+                        # 다른 종류의 오류는 바로 다시 시도
+                        time.sleep(5)
+                        continue
+                finally:
+                    # 임시 연결 정리
+                    try:
+                        if temp_connection:
+                            connections.disconnect("temp_check")
+                    except:
+                        pass
+                        
+            except Exception as e:
+                logger.debug(f"Wait check failed: {e}")
+                time.sleep(5)
+                continue
+        
+        # 타임아웃
+        logger.warning(f"Milvus readiness check timed out after {max_wait_time} seconds")
+        logger.warning("Proceeding anyway - you may encounter 'nodes not enough' errors")
+        return False
+
     def is_port_in_use(self, port):
         """포트가 사용 중인지 확인"""
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -86,8 +166,10 @@ class MilvusManager:
                     name, status = parts
                     # 우리가 관심있는 컨테이너만 필터링
                     if name in self.milvus_containers.values():
-                        # Podman의 상태 문자열 확인 ('up' 또는 'running')
-                        container_status[name] = status.lower().startswith('up') or 'running' in status.lower()
+                        # Podman의 상태 문자열 확인 - "Up" 으로 시작하는 경우 실행 중
+                        is_running = status.strip().lower().startswith('up')
+                        container_status[name] = is_running
+                        logger.debug(f"Container {name}: status='{status}' -> running={is_running}")
             
             return container_status
         except subprocess.CalledProcessError as e:
@@ -148,6 +230,7 @@ class MilvusManager:
         # 먼저 포트 확인으로 빠른 체크
         if self.is_port_in_use(self.port):
             logger.info(f"Milvus server is already running on port {self.port}")
+            # 포트가 열려있으면 이미 실행 중이므로 추가 작업 없이 반환
             return True
             
         logger.info(f"Milvus server is not running on port {self.port}. Checking containers...")
@@ -164,12 +247,19 @@ class MilvusManager:
                 
                 # 개별 컨테이너 시작 시도
                 if container_name in container_status:  # 컨테이너가 존재하지만 실행 중이 아님
-                    if not self.start_container(container_name):
-                        # 개별 시작에 실패하면 podman-compose로 전체 시작
+                    logger.info(f"Attempting to start existing container: {container_name}")
+                    if self.start_container(container_name):
+                        logger.info(f"Successfully started container: {container_name}")
+                    else:
+                        logger.warning(f"Failed to start container individually: {container_name}")
                         all_running = False
                         break
+                else:
+                    logger.info(f"Container {container_name} does not exist, need to create it")
+                    all_running = False
+                    break
         
-        # 개별 시작이 실패했거나 일부 컨테이너가 없는 경우 podman-compose로 전체 시작
+        # 개별 시작이 실패했거나 일부 컨테이너가 없는 경우에만 podman-compose로 전체 시작
         if not all_running:
             logger.info("Some containers are missing or failed to start individually. Starting all with podman-compose...")
             
@@ -225,9 +315,21 @@ class MilvusManager:
                         capture_output=True
                     )
             except subprocess.CalledProcessError as e:
-                logger.error(f"Error starting Milvus containers with Podman: {e}")
-                logger.error(f"Command output: {e.stdout if hasattr(e, 'stdout') else ''}")
-                logger.error(f"Command error: {e.stderr if hasattr(e, 'stderr') else ''}")
+                error_msg = f"Error starting Milvus containers with Podman: {e}"
+                if hasattr(e, 'stdout') and e.stdout:
+                    error_msg += f"\nCommand output: {e.stdout}"
+                if hasattr(e, 'stderr') and e.stderr:
+                    error_msg += f"\nCommand error: {e.stderr}"
+                
+                logger.error(error_msg)
+                
+                # 만약 컨테이너 이름 충돌 오류라면 더 구체적인 메시지 제공
+                if "already in use" in str(e):
+                    logger.error("Container name conflict detected. This usually means:")
+                    logger.error("1. Containers are already running but not managed by compose")
+                    logger.error("2. Previous cleanup was incomplete")
+                    logger.error("Try running 'emergency-reset.bat' to clean up all containers")
+                
                 raise RuntimeError(f"Failed to start Milvus containers. Please check Podman installation.")
         else:
             logger.info("All required containers are now running")
@@ -436,25 +538,35 @@ class MilvusManager:
                 if not self.is_port_in_use(self.port):
                     logger.warning(f"Milvus service on port {self.port} is not responding. Attempting to recover...")
                     
-                    # 컨테이너 상태 확인 및 복구 시도
-                    if self.ensure_milvus_running():
-                        # 서비스가 복구되면 재연결 시도
+                    # 컨테이너 상태 확인
+                    container_status = self.get_container_status()
+                    
+                    # 개별 컨테이너 시작 시도 (compose 대신)
+                    for container_type, container_name in self.milvus_containers.items():
+                        if container_name not in container_status or not container_status[container_name]:
+                            logger.info(f"Attempting to start {container_type} container: {container_name}")
+                            if self.start_container(container_name):
+                                logger.info(f"Successfully started {container_type} container")
+                            else:
+                                logger.warning(f"Failed to start {container_type} container individually")
+                    
+                    # 재연결 시도
+                    time.sleep(5)  # 컨테이너가 시작될 시간을 줌
+                    if self.is_port_in_use(self.port):
                         try:
                             self.connect()
                             logger.info("Successfully reconnected to Milvus after recovery")
                         except Exception as e:
                             logger.error(f"Failed to reconnect to Milvus after recovery: {e}")
                 else:
-                    # 서비스는 실행 중이지만 컨테이너 상태 확인
+                    # 서비스는 실행 중이지만 컨테이너 상태 확인 (로깅만)
                     container_status = self.get_container_status()
-                    all_running = all(container_status.get(container, False) for container in self.milvus_containers.values())
-                    
-                    if not all_running:
-                        missing_containers = [name for name, running in container_status.items() if not running]
-                        logger.warning(f"Some Milvus containers are not running: {missing_containers}")
+                    running_containers = [name for name, running in container_status.items() if running and name in self.milvus_containers.values()]
+                    if len(running_containers) < len(self.milvus_containers):
+                        missing_containers = [name for name in self.milvus_containers.values() if name not in running_containers]
+                        logger.debug(f"Some Milvus containers are not detected as running: {missing_containers}")
+                        # 포트가 열려있으면 실제로는 정상 작동 중일 가능성이 높으므로 자동 복구하지 않음
                         
-                        # 포트는 열려있지만 일부 컨테이너가 실행되지 않는 경우 - 모니터링만 하고 자동 복구는 하지 않음
-                        # 이 부분은 필요에 따라 자동 복구 로직을 추가할 수 있음
             except Exception as e:
                 logger.error(f"Error in Milvus container monitoring: {e}")
             

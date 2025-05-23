@@ -8,7 +8,7 @@ services:
       - ETCD_AUTO_COMPACTION_RETENTION=1000
       - ETCD_QUOTA_BACKEND_BYTES=4294967296
     volumes:
-      - G:/JJ Dropbox/J J/PythonWorks/milvus/obsidian-milvus-openwebui/EmbeddingResult/etcd:/etcd
+      - ./volumes/etcd:/etcd
     command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
 
   minio:
@@ -18,7 +18,7 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
     volumes:
-      - G:/JJ Dropbox/J J/PythonWorks/milvus/obsidian-milvus-openwebui/EmbeddingResult/minio:/minio_data
+      - ./MilvusData/minio:/minio_data
     command: minio server /minio_data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -34,7 +34,7 @@ services:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
     volumes:
-      - G:/JJ Dropbox/J J/PythonWorks/milvus/obsidian-milvus-openwebui/EmbeddingResult/milvus:/var/lib/milvus
+      - ./MilvusData/milvus:/var/lib/milvus
     ports:
       - "19530:19530"
       - "9091:9091"

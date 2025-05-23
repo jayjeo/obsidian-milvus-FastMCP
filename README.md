@@ -112,6 +112,31 @@ From the menu, select `1. Start MCP Server`
 
 Based on the default settings in config.py, the path for Milvus's container (installation files) is the _volumes_ folder, and the vector embedding data files are stored in _MilvusData_. Therefore, the two are completely separated, so even if Milvus's container is reinstalled, the data files remain safely preserved.
 
+### ⚠️ **EMERGENCY RESET WARNING**
+
+**If you encounter container conflicts or system issues**, you can use the emergency reset script:
+
+```bash
+complete-reset.bat  # Windows
+```
+
+**⚠️ CRITICAL WARNING**: This script will:
+- **Kill ALL Podman containers** (not just Milvus)
+- **Remove ALL Podman containers, pods, volumes, and networks**
+- **Delete local MilvusData and volumes directories**
+- **Permanently destroy all container data system-wide**
+
+**Use ONLY if:**
+- You have container name conflicts
+- Milvus services fail to start properly
+- You need a complete clean state
+- **You don't have other important Podman containers running**
+
+**Before running**: Make sure you don't have other Docker/Podman projects running that you want to preserve. This reset affects the **entire Podman system**, not just this project.
+
+**Alternative**: Use `emergency-reset.bat` for a more targeted cleanup that focuses primarily on Milvus containers while being safer for other containers.
+
+
 ## 🎯 Advanced Search Capabilities
 
 ### **Available Search Modes**

@@ -31,34 +31,64 @@ def initialize():
     return processor
 
 def perform_complete_physical_reset():
-    """Complete physical reset of Milvus data"""
+    """Complete physical reset of Milvus data - FIXED VERSION"""
     from colorama import Fore, Style
     import subprocess
     import shutil
     
     try:
-        # 1단계: Milvus 서비스 중지
-        print(f"{Fore.BLUE}[1/4] Stopping Milvus containers...{Style.RESET_ALL}")
+        # 1단계: Milvus 서비스 중지 (더 강력한 정리)
+        print(f"{Fore.BLUE}[1/6] Stopping all Milvus containers forcefully...{Style.RESET_ALL}")
         
-        # Podman 컨테이너 중지
-        stop_commands = [
-            "podman stop milvus-standalone milvus-minio milvus-etcd",
-            "podman rm milvus-standalone milvus-minio milvus-etcd"
+        # 강제 중지 및 삭제 명령들 (더 포괄적)
+        cleanup_commands = [
+            "podman stop --all --timeout 5",  # 모든 컨테이너 중지
+            "podman stop milvus-standalone milvus-minio milvus-etcd --timeout 5",  # 개별 중지
+            "podman rm --force milvus-standalone milvus-minio milvus-etcd",  # 강제 삭제
+            "podman container prune --force",  # 중지된 컨테이너 모두 삭제
+            "podman pod stop --all",  # 모든 pod 중지
+            "podman pod rm --all --force",  # 모든 pod 강제 삭제
         ]
         
-        for cmd in stop_commands:
+        for cmd in cleanup_commands:
             try:
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
                 print(f"{Fore.CYAN}Executed: {cmd}{Style.RESET_ALL}")
                 if result.returncode == 0:
                     print(f"{Fore.GREEN}✅ Success{Style.RESET_ALL}")
                 else:
                     print(f"{Fore.YELLOW}⚠️ Command completed with warnings (this is normal){Style.RESET_ALL}")
+                    if result.stderr:
+                        print(f"{Fore.YELLOW}Warning: {result.stderr.strip()}{Style.RESET_ALL}")
+            except subprocess.TimeoutExpired:
+                print(f"{Fore.YELLOW}⚠️ {cmd} - Timeout (this is normal){Style.RESET_ALL}")
             except Exception as e:
                 print(f"{Fore.YELLOW}⚠️ {cmd} - {e} (this is normal if containers weren't running){Style.RESET_ALL}")
         
-        # 2단계: MilvusData 폴더 완전 삭제
-        print(f"\n{Fore.BLUE}[2/4] Deleting physical data files...{Style.RESET_ALL}")
+        # 2단계: Podman 시스템 정리
+        print(f"\n{Fore.BLUE}[2/6] Cleaning up Podman system...{Style.RESET_ALL}")
+        
+        system_cleanup_commands = [
+            "podman system prune --all --force --volumes",  # 시스템 전체 정리
+            "podman volume rm milvus-etcd-data milvus-minio-data milvus-db-data --force",  # 볼륨 삭제
+            "podman network rm milvus milvus-network --force",  # 네트워크 삭제
+        ]
+        
+        for cmd in system_cleanup_commands:
+            try:
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+                print(f"{Fore.CYAN}Executed: {cmd}{Style.RESET_ALL}")
+                if result.returncode == 0:
+                    print(f"{Fore.GREEN}✅ Success{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}⚠️ Command completed with warnings (volumes/networks may not exist){Style.RESET_ALL}")
+            except subprocess.TimeoutExpired:
+                print(f"{Fore.YELLOW}⚠️ {cmd} - Timeout (this is normal){Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.YELLOW}⚠️ {cmd} - {e} (this is normal if volumes/networks don't exist){Style.RESET_ALL}")
+        
+        # 3단계: MilvusData 폴더 완전 삭제 (영구 보존 데이터)
+        print(f"\n{Fore.BLUE}[3/6] Deleting permanent embedding data (MilvusData)...{Style.RESET_ALL}")
         
         milvus_data_path = os.path.join(os.path.dirname(__file__), "MilvusData")
         
@@ -80,40 +110,55 @@ def perform_complete_physical_reset():
         else:
             print(f"{Fore.YELLOW}⚠️ MilvusData folder not found (already clean){Style.RESET_ALL}")
         
-        # 3단계: Podman 볼륨 삭제 (추가 보장)
-        print(f"\n{Fore.BLUE}[3/4] Removing Podman volumes...{Style.RESET_ALL}")
+        # 4단계: volumes 폴더 완전 삭제 (컨테이너 데이터)
+        print(f"\n{Fore.BLUE}[4/6] Deleting container data (volumes)...{Style.RESET_ALL}")
         
-        volume_commands = [
-            "podman volume rm milvus-etcd-data milvus-minio-data milvus-db-data",
-            "podman network rm milvus"
-        ]
+        volumes_path = os.path.join(os.path.dirname(__file__), "volumes")
         
-        for cmd in volume_commands:
+        if os.path.exists(volumes_path):
+            print(f"{Fore.CYAN}Deleting: {volumes_path}{Style.RESET_ALL}")
             try:
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-                print(f"{Fore.CYAN}Executed: {cmd}{Style.RESET_ALL}")
-                if result.returncode == 0:
-                    print(f"{Fore.GREEN}✅ Success{Style.RESET_ALL}")
-                else:
-                    print(f"{Fore.YELLOW}⚠️ Command completed with warnings (volumes may not exist){Style.RESET_ALL}")
+                def handle_remove_readonly(func, path, exc):
+                    import stat
+                    if os.path.exists(path):
+                        os.chmod(path, stat.S_IWRITE)
+                        func(path)
+                
+                shutil.rmtree(volumes_path, onerror=handle_remove_readonly)
+                print(f"{Fore.GREEN}✅ volumes folder deleted successfully{Style.RESET_ALL}")
             except Exception as e:
-                print(f"{Fore.YELLOW}⚠️ {cmd} - {e} (this is normal if volumes don't exist){Style.RESET_ALL}")
+                print(f"{Fore.RED}❌ Error deleting volumes folder: {e}{Style.RESET_ALL}")
+                return False
+        else:
+            print(f"{Fore.YELLOW}⚠️ volumes folder not found (already clean){Style.RESET_ALL}")
         
-        # 4단계: Milvus 재시작
-        print(f"\n{Fore.BLUE}[4/4] Restarting Milvus...{Style.RESET_ALL}")
+        # 5단계: 완전한 대기 시간
+        print(f"\n{Fore.BLUE}[5/6] Waiting for system cleanup to complete...{Style.RESET_ALL}")
+        time.sleep(10)  # 시스템이 완전히 정리될 때까지 대기
+        
+        # 6단계: Milvus 재시작 (수정된 방법)
+        print(f"\n{Fore.BLUE}[6/6] Restarting Milvus...{Style.RESET_ALL}")
         
         start_script = os.path.join(os.path.dirname(__file__), "start-milvus.bat")
         if os.path.exists(start_script):
             print(f"{Fore.CYAN}Executing: {start_script}{Style.RESET_ALL}")
             try:
-                # 백그라운드에서 시작 스크립트 실행
-                subprocess.Popen([start_script], shell=True, cwd=os.path.dirname(__file__))
+                # 백그라운드에서 시작 스크립트 실행 (더 긴 대기 시간)
+                process = subprocess.Popen([start_script], shell=True, cwd=os.path.dirname(__file__))
                 
-                # Milvus 시작 대기 (간단한 대기 시간)
-                print(f"{Fore.CYAN}Waiting for Milvus to start...{Style.RESET_ALL}")
-                time.sleep(10)
+                # 프로세스가 시작될 때까지 잠시 대기
+                time.sleep(5)
                 
-                print(f"{Fore.GREEN}✅ Milvus restart initiated{Style.RESET_ALL}")
+                # 프로세스가 실행 중인지 확인
+                if process.poll() is None:
+                    print(f"{Fore.GREEN}✅ Milvus restart initiated{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}⚠️ Start script completed quickly (this may be normal){Style.RESET_ALL}")
+                
+                # Milvus 서비스가 실제로 시작될 때까지 대기
+                print(f"{Fore.CYAN}Waiting for Milvus services to fully initialize...{Style.RESET_ALL}")
+                time.sleep(30)  # 더 긴 대기 시간
+                
             except Exception as e:
                 print(f"{Fore.RED}❌ Error starting Milvus: {e}{Style.RESET_ALL}")
                 print(f"{Fore.YELLOW}Please manually run: start-milvus.bat{Style.RESET_ALL}")
@@ -123,6 +168,7 @@ def perform_complete_physical_reset():
         
         print(f"\n{Fore.GREEN}🎉 Complete physical reset finished successfully!{Style.RESET_ALL}")
         print(f"{Fore.CYAN}💾 All old data has been permanently deleted{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🔥 Both MilvusData (embedding data) AND volumes (container data) deleted{Style.RESET_ALL}")
         print(f"{Fore.CYAN}🚀 Milvus is starting with a clean state{Style.RESET_ALL}")
         
         return True
@@ -168,13 +214,32 @@ def perform_full_embedding(processor):
             # 물리적 리셋 후 새로운 MilvusManager 인스턴스 생성
             print(f"{Fore.CYAN}Reconnecting to fresh Milvus instance...{Style.RESET_ALL}")
             try:
-                # 잠시 대기 후 재연결
-                time.sleep(5)
+                # 잠시 대기 후 재연결 - 더 긴 대기 시간
+                print(f"{Fore.CYAN}Waiting for Milvus services to fully initialize...{Style.RESET_ALL}")
+                time.sleep(45)  # 45초 대기
+                
+                # 기존 MilvusManager의 모니터링 중지
+                if hasattr(processor, 'milvus_manager') and hasattr(processor.milvus_manager, 'stop_monitoring'):
+                    processor.milvus_manager.stop_monitoring()
+                
+                # 새로운 MilvusManager 인스턴스 생성
                 processor.milvus_manager = MilvusManager()
                 print(f"{Fore.GREEN}✅ Successfully connected to fresh Milvus instance{Style.RESET_ALL}")
             except Exception as e:
                 print(f"{Fore.RED}❌ Error reconnecting to Milvus: {e}{Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}Please wait a moment and try again{Style.RESET_ALL}")
+                
+                # 오류 유형에 따른 구체적인 안내
+                if "nodes not enough" in str(e):
+                    print(f"{Fore.YELLOW}🕰️ This error means Milvus services are still starting up.{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}Solutions:{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}  1. Wait 2-3 minutes and try again{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}  2. Run 'start-milvus.bat' and wait for completion{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}  3. Check if all containers are running: podman ps{Style.RESET_ALL}")
+                elif "already in use" in str(e) or "container name" in str(e).lower():
+                    print(f"{Fore.YELLOW}🔄 This appears to be a container name conflict.{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}Please run 'complete-reset.bat' to clean up all containers, then try again.{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}Please wait a moment and try again{Style.RESET_ALL}")
                 return
         else:
             # 사용자가 컬렉션을 재생성하지 않더라도 전체 재처리임을 표시
