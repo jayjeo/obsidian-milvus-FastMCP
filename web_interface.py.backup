@@ -1,8 +1,0 @@
-from flask import Flask
-
-# Create a simple Flask app (legacy component, no longer used)
-app = Flask(__name__)
-
-@app.route('/')
-def index():
-    return "Obsidian-Milvus-FastMCP Legacy Web Interface"

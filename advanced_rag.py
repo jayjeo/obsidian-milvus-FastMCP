@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+고급 RAG 엔진 - 기존 milvus_manager.py의 지식 그래프 기능과 통합
 Milvus의 강력한 기능을 활용한 고급 RAG 패턴
 """
 
@@ -31,7 +32,7 @@ class AdvancedRAGEngine:
                 sections = self._search_by_level(
                     query, 
                     level="section", 
-                    filter_expr=f"document_id == '{doc['id']}'",
+                    filter_expr=f"path like '{doc['path']}%'",
                     limit=5
                 )
                 section_results.extend(sections)
@@ -46,7 +47,7 @@ class AdvancedRAGEngine:
                 chunks = self._search_by_level(
                     query,
                     level="chunk", 
-                    filter_expr=f"section_id == '{section['id']}'",
+                    filter_expr=f"path == '{section['path']}'",
                     limit=3
                 )
                 chunk_results.extend(chunks)
@@ -146,29 +147,24 @@ class AdvancedRAGEngine:
             limit = 10
         
         try:
-            # 청크 크기별 필터링 및 검색 (필터 없이 기본 검색)
-            query_vector = self.search_engine.embedding_model.get_embedding(query)
-            results = self.milvus_manager.search(
-                vector=query_vector,
-                limit=limit,
-                search_params={"metric_type": "COSINE", "params": {"ef": 256}}
-            )
+            # 기본 하이브리드 검색 사용
+            results, search_info = self.search_engine.hybrid_search(query, limit=limit)
             
             # 결과 포맷팅
             formatted_results = []
-            for hit in results:
+            for result in results:
                 formatted_result = {
-                    "id": hit.id,
-                    "path": hit.entity.get('path', ''),
-                    "title": hit.entity.get('title', '제목 없음'),
-                    "chunk_text": hit.entity.get('chunk_text', ''),
-                    "score": hit.score,
+                    "id": result['id'],
+                    "path": result['path'],
+                    "title": result['title'],
+                    "chunk_text": result['chunk_text'],
+                    "score": result['score'],
                     "source": "adaptive",
-                    "file_type": hit.entity.get('file_type', ''),
-                    "tags": hit.entity.get('tags', []),
-                    "created_at": hit.entity.get('created_at', ''),
-                    "updated_at": hit.entity.get('updated_at', ''),
-                    "chunk_index": hit.entity.get('chunk_index', 0)
+                    "file_type": result['file_type'],
+                    "tags": result['tags'],
+                    "created_at": result['created_at'],
+                    "updated_at": result['updated_at'],
+                    "chunk_index": result.get('chunk_index', 0)
                 }
                 formatted_results.append(formatted_result)
             
@@ -192,43 +188,70 @@ class AdvancedRAGEngine:
             }
     
     def semantic_graph_retrieval(self, query, max_hops=2):
-        """의미적 그래프 기반 검색"""
+        """의미적 그래프 기반 검색 - milvus_manager의 지식 그래프 기능 활용"""
         
         try:
             # 1단계: 초기 관련 문서 검색
             initial_results, _ = self.search_engine.hybrid_search(query, limit=10)
             
-            # 2단계: 의미적 연결 탐색
-            connected_docs = set()
-            current_docs = [r['id'] for r in initial_results]
+            if not initial_results:
+                return {
+                    "direct_matches": [],
+                    "connected_documents": [],
+                    "graph_ranked_results": [],
+                    "connection_depth": max_hops
+                }
             
-            for hop in range(max_hops):
-                next_level_docs = set()
+            # 2단계: milvus_manager의 지식 그래프 구축 기능 사용
+            if hasattr(self.milvus_manager, 'build_knowledge_graph'):
+                # 첫 번째 결과를 시작점으로 지식 그래프 구축
+                start_doc_id = initial_results[0]['id']
+                knowledge_graph = self.milvus_manager.build_knowledge_graph(
+                    start_doc_id=start_doc_id,
+                    max_depth=max_hops,
+                    similarity_threshold=0.7
+                )
                 
-                for doc_id in current_docs:
-                    # 현재 문서와 의미적으로 유사한 문서들 찾기
-                    doc_vector = self._get_document_vector(doc_id)
-                    if doc_vector:
-                        try:
-                            similar_docs = self.milvus_manager.search(
-                                vector=doc_vector,
-                                limit=5,
-                                search_params={"metric_type": "COSINE", "params": {"ef": 128}}
-                            )
-                            
-                            for hit in similar_docs:
-                                if hit.score > 0.7:  # 높은 유사도만
-                                    next_level_docs.add(hit.id)
-                                    
-                        except Exception as e:
-                            logger.error(f"유사 문서 검색 오류: {e}")
-                            continue
+                # 연결된 문서 ID 추출
+                connected_docs = [node["id"] for node in knowledge_graph.get("nodes", [])]
                 
-                connected_docs.update(next_level_docs)
-                current_docs = list(next_level_docs - connected_docs)
+            else:
+                # 폴백: 수동으로 의미적 연결 탐색
+                connected_docs = set()
+                current_docs = [r['id'] for r in initial_results]
                 
-                if not current_docs:  # 더 이상 연결된 문서가 없으면 중단
-                    break
+                for hop in range(max_hops):
+                    next_level_docs = set()
+                    
+                    for doc_id in current_docs:
+                        # 현재 문서와 의미적으로 유사한 문서들 찾기
+                        doc_vector = self._get_document_vector(doc_id)
+                        if doc_vector:
+                            try:
+                                if hasattr(self.milvus_manager, 'search_with_params'):
+                                    similar_docs = self.milvus_manager.search_with_params(
+                                        vector=doc_vector,
+                                        limit=5,
+                                        search_params={"metric_type": "COSINE", "params": {"ef": 128}}
+                                    )
+                                else:
+                                    similar_docs = self.milvus_manager.search(doc_vector, 5)
+                                
+                                for hit in similar_docs:
+                                    if hit.score > 0.7:  # 높은 유사도만
+                                        next_level_docs.add(hit.id)
+                                        
+                            except Exception as e:
+                                logger.error(f"유사 문서 검색 오류: {e}")
+                                continue
+                    
+                    connected_docs.update(next_level_docs)
+                    current_docs = list(next_level_docs - connected_docs)
+                    
+                    if not current_docs:  # 더 이상 연결된 문서가 없으면 중단
+                        break
+                
+                connected_docs = list(connected_docs)
             
             # 3단계: 그래프 기반 랭킹
             graph_ranked_results = self._rank_by_graph_centrality(
@@ -237,7 +260,7 @@ class AdvancedRAGEngine:
             
             return {
                 "direct_matches": initial_results,
-                "connected_documents": list(connected_docs),
+                "connected_documents": connected_docs,
                 "graph_ranked_results": graph_ranked_results,
                 "connection_depth": max_hops
             }
@@ -297,15 +320,24 @@ class AdvancedRAGEngine:
     def _search_by_level(self, query, level, filter_expr=None, limit=10):
         """수준별 검색 실행"""
         try:
-            # 기본 검색 (레벨 필터는 메타데이터가 있을 때만 적용)
-            query_vector = self.search_engine.embedding_model.get_embedding(query)
-            results = self.milvus_manager.search(
-                vector=query_vector,
-                limit=limit,
-                filter_expr=filter_expr
-            )
-            
-            return self._format_results(results)
+            # 기본 하이브리드 검색 사용
+            if filter_expr:
+                # 필터가 있는 경우 벡터 검색만 사용
+                query_vector = self.search_engine.embedding_model.get_embedding(query)
+                if hasattr(self.milvus_manager, 'search_with_params'):
+                    results = self.milvus_manager.search_with_params(
+                        vector=query_vector,
+                        limit=limit,
+                        filter_expr=filter_expr
+                    )
+                else:
+                    results = self.milvus_manager.search(query_vector, limit, filter_expr)
+                
+                return self._format_results(results)
+            else:
+                # 필터가 없는 경우 하이브리드 검색 사용
+                results, _ = self.search_engine.hybrid_search(query, limit=limit)
+                return results
             
         except Exception as e:
             logger.error(f"레벨별 검색 오류: {e}")
@@ -358,7 +390,7 @@ class AdvancedRAGEngine:
                 "path": hit.entity.get('path', ''),
                 "title": hit.entity.get('title', '제목 없음'),
                 "chunk_text": hit.entity.get('chunk_text', ''),
-                "score": hit.score,
+                "score": float(hit.score),
                 "source": "formatted",
                 "file_type": hit.entity.get('file_type', ''),
                 "tags": hit.entity.get('tags', []),
@@ -421,11 +453,11 @@ class AdvancedRAGEngine:
         try:
             results = self.milvus_manager.query(
                 expr=f"id == {doc_id}",
-                output_fields=["embedding"],
+                output_fields=["vector"],
                 limit=1
             )
-            if results and "embedding" in results[0]:
-                return results[0]["embedding"]
+            if results and "vector" in results[0]:
+                return results[0]["vector"]
         except Exception as e:
             logger.error(f"문서 벡터 조회 오류: {e}")
         return None
