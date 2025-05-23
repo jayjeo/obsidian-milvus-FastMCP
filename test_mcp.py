@@ -1022,6 +1022,8 @@ class MilvusTest:
             print_colored("="*60, Colors.OKGREEN)
             print_colored("📋 Next steps:", Colors.OKBLUE)
             print_colored("1. 🔄 Restart Claude Desktop application", Colors.ENDC)
+            print_colored("   ⚠️ IMPORTANT: Don't just click the X button to close!", Colors.WARNING)
+            print_colored("   ⚠️ Use the menu option to quit properly for complete restart.", Colors.WARNING)
             print_colored("2. 🔧 Make sure Milvus server is running", Colors.ENDC)
             print_colored("3. 💬 In Claude Desktop, you can now use:", Colors.ENDC)
             print_colored("   • search_documents()", Colors.ENDC)
@@ -1104,6 +1106,7 @@ def show_results(test_results):
     if passed == total:
         print_colored("\n🎉 All tests successful!", Colors.OKGREEN)
         print_colored("Restart Claude Desktop and try using Milvus features!", Colors.OKGREEN)
+        print_colored("⚠️ IMPORTANT: Use menu > quit, not the X button for proper restart!", Colors.WARNING)
     elif passed > 0:
         print_colored(f"\n⚠️ {total - passed} tests not yet completed.", Colors.WARNING)
     else:
