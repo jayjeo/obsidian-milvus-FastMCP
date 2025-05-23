@@ -54,7 +54,7 @@ A **fully optimized MCP (Model Context Protocol) server** that brings **Milvus v
    USE_GPU = True  # Enable for better performance
    ```
 
-3. Test your installations and environment
+3. **Check and fix your installations**
    ```bash
    python test-mcp.py
    ```
