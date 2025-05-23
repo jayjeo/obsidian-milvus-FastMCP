@@ -49,62 +49,16 @@ class MilvusManager:
     
     def get_container_runtime_path(self):
         """Podman 실행 파일 경로 찾기"""
-        # Podman 경로 확인
-        if hasattr(config, 'PODMAN_PATH') and config.PODMAN_PATH:
-            logger.debug(f"Using Podman path from config: {config.PODMAN_PATH}")
-            # 경로가 유효한지 테스트
-            try:
-                result = subprocess.run(
-                    [config.PODMAN_PATH, "--version"],
-                    check=False,
-                    text=True,
-                    capture_output=True
-                )
-                if result.returncode == 0:
-                    return config.PODMAN_PATH
-                else:
-                    logger.warning(f"Podman path in config is invalid: {config.PODMAN_PATH}")
-            except Exception as e:
-                logger.warning(f"Error testing Podman path from config: {e}")
+        # config에서 Podman 경로 가져오기 (자동 탐지 포함)
+        try:
+            return config.get_podman_path()
+        except FileNotFoundError:
+            logger.error("Podman not found. Please install Podman or set PODMAN_PATH in config.")
+            raise
         
-        # 일반적인 Podman 설치 경로 목록
-        possible_paths = [
-            "podman",  # PATH에 있는 경우
-            r"C:\Program Files\RedHat\Podman\podman.exe",
-            r"C:\Users\%USERNAME%\AppData\Local\Programs\RedHat\Podman\podman.exe"
-        ]
-        
-        # PATH에서 Podman 찾기
-        podman_path = shutil.which("podman")
-        if podman_path:
-            logger.info(f"Found Podman in PATH: {podman_path}")
-            return podman_path
-            
-        # 각 경로 확인
-        for path in possible_paths:
-            try:
-                # %USERNAME% 환경 변수 처리
-                if "%USERNAME%" in path:
-                    path = path.replace("%USERNAME%", os.environ.get("USERNAME", ""))
-                    
-                # 테스트 명령 실행
-                result = subprocess.run(
-                    [path, "--version"],
-                    check=False,
-                    text=True,
-                    capture_output=True
-                )
-                if result.returncode == 0:
-                    logger.info(f"Found Podman at: {path}")
-                    return path
-            except FileNotFoundError:
-                continue
-        
-        # Podman을 찾지 못한 경우
-        logger.error("Podman not found in any of the expected locations")
-        logger.error("Please install Podman or add it to your PATH")
-        logger.error("Or specify the Podman path in config.py (PODMAN_PATH)")
-        raise FileNotFoundError("Podman executable not found")
+        # 일반적인 Podman 설치 경로 목록 - 이 부분은 config.py의 find_podman_path() 함수에서 처리됨
+        # 따라서 이미 config에서 처리된 경로를 사용
+        return None
     
     def get_container_status(self):
         """모든 Milvus 관련 컨테이너의 상태를 확인"""
@@ -408,8 +362,8 @@ class MilvusManager:
     
     def ensure_external_storage_directories(self):
         """외부 저장소 디렉토리가 존재하는지 확인하고 없으면 생성"""
-        # 외부 저장소 경로 설정 (Podman 볼륨 대신 로컬 디렉토리 사용)
-        external_storage_path = "G:/JJ Dropbox/J J/PythonWorks/milvus/obsidian-milvus-FastMCP/EmbeddingResult"
+        # 외부 저장소 경로 설정 (config에서 가져오기)
+        external_storage_path = config.get_external_storage_path()
         
         # 필요한 하위 디렉토리 목록
         subdirs = ['etcd', 'minio', 'milvus']

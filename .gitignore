@@ -43,6 +43,14 @@ wheels/
 .env.local
 .env.*.local
 
+# User-specific configuration
+config_local.py
+obsidian-vault/
+
+# Personal data directories
+volumes/
+EmbeddingResult/
+
 # IDE
 .vscode/
 .idea/

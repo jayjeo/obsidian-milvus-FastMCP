@@ -2,22 +2,32 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables (for backward compatibility)
+# Load environment variables (optional - auto-loads if .env file exists)
 load_dotenv()
 
-# Base path settings
+# Base path settings - Project root directory
 BASE_DIR = Path(__file__).resolve().parent
 
+##########################################################
+# 🔧 USER SETTINGS - Only modify this section!
 
+# 🗂️ Obsidian Vault Path (REQUIRED!)
+# Change the path below to your Obsidian vault path
+OBSIDIAN_VAULT_PATH = "G:\\jayjeo"  # ← Change this to your path!
+
+# 🔧 Podman Path (Usually auto-detected. Only modify if there are issues)
+PODMAN_PATH = ""  # Leave empty for auto-detection, or enter full path if needed
 
 ##########################################################
-# User settings - configure directly here
+# Other settings (modify if needed)
+
+# 📁 External storage path (Milvus data storage - usually no need to modify)
+EXTERNAL_STORAGE_PATH = str(BASE_DIR / "volumes")  # Uses volumes folder in project directory
 
 # Logging settings
 LOG_LEVEL = "ERROR"  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
 # Obsidian settings
-OBSIDIAN_VAULT_PATH = "G:\\jayjeo - 안전"  # Obsidian vault path
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 100
 CHUNK_MIN_SIZE = 100  # Minimum chunk size
@@ -28,28 +38,27 @@ MILVUS_PORT = 19530  # Milvus server port
 COLLECTION_NAME = "obsidian_notes"  # Milvus collection name
 
 # Search settings
-SEARCH_RESULTS_LIMIT = 100  # Limit the number of searcherable notes 
+SEARCH_RESULTS_LIMIT = 100  # Limit the number of searchable notes 
 
 # Container runtime settings
 CONTAINER_RUNTIME = "podman"  # Container runtime to use: "podman" only
-PODMAN_PATH = "C:\\Program Files\\RedHat\\Podman\\podman.exe"  # Podman execute file path (default assumes it's in PATH)
-PODMAN_COMPOSE_PATH = "podman-compose"  # Podman Compose execute file path (if available)
+PODMAN_COMPOSE_PATH = "podman-compose"  # Podman Compose executable path
 # Legacy Docker settings (no longer used)
 DOCKER_PATH = ""  # Not used anymore, kept for backward compatibility
 DOCKER_COMPOSE_PATH = ""  # Not used anymore, kept for backward compatibility
 
 # Embedding model settings
-EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"  # 다국어 지원 임베딩 모델
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"  # Multilingual embedding model
 VECTOR_DIM = 768  # Vector dimension
-EMBEDDING_CACHE_SIZE = 100  # Reduced cache size to decrease RAM usage
+EMBEDDING_CACHE_SIZE = 100  # Cache size to reduce RAM usage
 
 # LLM settings
 LLM_PROVIDER = "claude"  # LLM provider
-OLLAMA_BASE_URL = "http://localhost:11434"  # Ollama server URL (kept for backward compatibility)
-OLLAMA_MODEL = "qwen3:8b"  # Ollama model (kept for backward compatibility)
+OLLAMA_BASE_URL = "http://localhost:11434"  # Ollama server URL (backward compatibility)
+OLLAMA_MODEL = "qwen3:8b"  # Ollama model (backward compatibility)
 
 # Web server settings
-FLASK_PORT = 5678  # Web server port (e.g., http://localhost:5678/ or http://127.0.0.1:5678/)
+FLASK_PORT = 5678  # Web server port (e.g., http://localhost:5678/)
 
 # FastMCP 2.0 and Claude Desktop settings
 FASTMCP_URL = "http://localhost:5680"  # FastMCP URL
@@ -66,39 +75,38 @@ USERNAME = "admin"  # Admin username
 PASSWORD = "password"  # Admin password
 
 # FastMCP authentication settings
-FASTMCP_AUTH_ENABLED = False  # FastMCP 인증 사용 여부
-FASTMCP_USERNAME = ""  # FastMCP 사용자 이름 (인증 사용 시)
-FASTMCP_PASSWORD = ""  # FastMCP 비밀번호 (인증 사용 시)
+FASTMCP_AUTH_ENABLED = False  # Enable FastMCP authentication
+FASTMCP_USERNAME = ""  # FastMCP username (when auth enabled)
+FASTMCP_PASSWORD = ""  # FastMCP password (when auth enabled)
 
 # Performance settings
 BATCH_SIZE = 2000
 EMBEDDING_BATCH_SIZE = 2000
 
 # Full embedding settings
-SKIP_PDF_IN_FULL_EMBEDDING = False  # PDF 파일을 전체 임베딩에서 건너뛰지 여부
+SKIP_PDF_IN_FULL_EMBEDDING = False  # Skip PDF files in full embedding
 
 # GPU settings
 USE_GPU = True  # Enable GPU usage
 GPU_MEMORY_FRACTION = 0.95
-GPU_INDEX_TYPE = "GPU_IVF_FLAT"  # GPU index type for Milvus (GPU_IVF_FLAT is more compatible with Podman)
+GPU_INDEX_TYPE = "GPU_IVF_FLAT"  # GPU index type for Milvus
 GPU_DEVICE_ID = 0  # GPU device ID to use (0 for first GPU)
 
 # Advanced GPU optimization settings
-GPU_FORCE_TENSOR_CORES = True  # Force tensor core usage to accelerate computations
-GPU_ENABLE_CUDNN_BENCHMARK = True  # Enable cuDNN benchmark for performance optimization
-GPU_ENABLE_MEMORY_EFFICIENT_ATTENTION = True  # Re-enable memory-efficient attention for stability
-GPU_ENABLE_FLASH_ATTENTION = True  # Enable flash attention to accelerate transformer operations
+GPU_FORCE_TENSOR_CORES = True  # Force tensor core usage
+GPU_ENABLE_CUDNN_BENCHMARK = True  # Enable cuDNN benchmark
+GPU_ENABLE_MEMORY_EFFICIENT_ATTENTION = True  # Enable memory-efficient attention
+GPU_ENABLE_FLASH_ATTENTION = True  # Enable flash attention
 
 # Balanced GPU memory usage settings
-MAX_SEQ_LENGTH = 4096  # Balanced maximum sequence length
+MAX_SEQ_LENGTH = 4096  # Maximum sequence length
 GPU_MEMORY_GROWTH = True  # Enable dynamic GPU memory allocation
-GPU_MIXED_PRECISION = True  # Re-enable mixed precision for better stability
+GPU_MIXED_PRECISION = True  # Enable mixed precision
 GPU_CACHE_ALL_TENSORS = True  # Cache all tensors in GPU memory
 GPU_PARALLEL_PROCESSING = True  # Enable parallel processing
-GPU_MEMORY_PREALLOCATION = True  # Preallocate GPU memory to maximize utilization
+GPU_MEMORY_PREALLOCATION = True  # Preallocate GPU memory
 GPU_AGGRESSIVE_OPTIMIZATION = False  # Disable aggressive optimization for stability
 GPU_MULTI_STREAM_EXECUTION = True  # Enable multiple CUDA streams
-
 
 ########################################################## Do not change below
 # Podman Configuration
@@ -107,11 +115,11 @@ COMPOSE_COMMAND = "podman compose"
 # Alternative configurations for different setups
 PODMAN_CONFIGS = {
     "system_install": {
-        "podman_path": r"C:\\Program Files\\RedHat\\Podman\\podman.exe",
+        "podman_path": r"C:\Program Files\RedHat\Podman\podman.exe",
         "compose_command": "podman compose"
     },
     "user_install": {
-        "podman_path": r"C:\\Users\\{username}\\AppData\\Local\\Programs\\RedHat\\Podman\\podman.exe",
+        "podman_path": r"C:\Users\{username}\AppData\Local\Programs\RedHat\Podman\podman.exe",
         "compose_command": "podman compose"
     },
     "portable": {
@@ -142,11 +150,104 @@ IMAGES = {
     "milvus": "milvusdb/milvus:v2.3.4"
 }
 
-########################################################## Do not change below
-# Compatibility functions - for existing code that might call these functions
+########################################################## Advanced user environment variable support (optional)
+# The functions below use .env files or system environment variables if available
+# Regular users don't need to worry about this!
 
 def get_obsidian_vault_path():
-    return OBSIDIAN_VAULT_PATH
+    """Return Obsidian vault path (environment variable first, then config value)"""
+    return os.getenv('OBSIDIAN_VAULT_PATH', OBSIDIAN_VAULT_PATH)
+
+def get_external_storage_path():
+    """Return external storage path (environment variable first, then config value)"""
+    return os.getenv('EXTERNAL_STORAGE_PATH', EXTERNAL_STORAGE_PATH)
+
+def find_podman_path():
+    """Automatically find Podman executable path."""
+    import shutil
+    import subprocess
+    
+    # 1. Use path set in config first
+    if PODMAN_PATH and os.path.exists(PODMAN_PATH):
+        return PODMAN_PATH
+    
+    # 2. Check environment variable
+    env_path = os.getenv('PODMAN_PATH')
+    if env_path and os.path.exists(env_path):
+        return env_path
+    
+    # 3. Find Podman in PATH
+    podman_path = shutil.which("podman")
+    if podman_path:
+        return podman_path
+    
+    # 4. Check common installation paths
+    possible_paths = [
+        r"C:\Program Files\RedHat\Podman\podman.exe",
+        r"C:\Users\{}\AppData\Local\Programs\RedHat\Podman\podman.exe".format(os.environ.get("USERNAME", "")),
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            try:
+                # Test execution
+                result = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    return path
+            except:
+                continue
+    
+    return None
+
+def get_podman_path():
+    """Return Podman path (with auto-detection)."""
+    podman_path = find_podman_path()
+    if podman_path:
+        return podman_path
+    
+    raise FileNotFoundError("Podman executable not found. Please install Podman or set PODMAN_PATH in config.py")
+
+def validate_paths():
+    """Validate configured paths."""
+    errors = []
+    
+    # Validate Obsidian vault path
+    vault_path = get_obsidian_vault_path()
+    if not os.path.exists(vault_path):
+        errors.append(f"❌ Obsidian vault path does not exist: {vault_path}")
+        errors.append(f"   → Please modify OBSIDIAN_VAULT_PATH in config.py to the correct path")
+    else:
+        print(f"✅ Obsidian vault path: {vault_path}")
+    
+    # Create storage path
+    storage_path = Path(get_external_storage_path())
+    storage_path.mkdir(parents=True, exist_ok=True)
+    
+    # Create subdirectories
+    for subdir in ['etcd', 'minio', 'milvus']:
+        (storage_path / subdir).mkdir(exist_ok=True)
+    
+    print(f"✅ Data storage path: {storage_path}")
+    
+    # Validate Podman path
+    try:
+        podman_path = get_podman_path()
+        print(f"✅ Podman path: {podman_path}")
+    except FileNotFoundError:
+        errors.append("❌ Podman not found")
+        errors.append("   → Please install Podman or set PODMAN_PATH in config.py")
+    
+    if errors:
+        print("\n🚨 Configuration errors:")
+        for error in errors:
+            print(error)
+        print("\n📝 Please open config.py and fix the issues above!")
+        return False
+    
+    print("\n✅ All configurations are correct!")
+    return True
+
+########################################################## Compatibility functions
 
 def get_milvus_host():
     return MILVUS_HOST
@@ -201,36 +302,43 @@ def get_username():
 
 def get_password():
     return PASSWORD
-# 🚀 자동 속도 최적화 설정
+
+# 🚀 Auto speed optimization settings
 FAST_MODE = True
 DISABLE_COMPLEX_GPU_OPTIMIZATION = True
 MEMORY_CHECK_INTERVAL = 30
-DISABLE_PROGRESS_MONITORING = False  # 진행률은 유지
+DISABLE_PROGRESS_MONITORING = False  # Keep progress monitoring
 MAX_WORKERS = 1
 EMBEDDING_CACHE_SIZE = 10000
 
-# 🎯 고급 Milvus 최적화 설정
-ADVANCED_SEARCH_ENABLED = True  # 고급 검색 기능 활성화
-KNOWLEDGE_GRAPH_ENABLED = True  # 지식 그래프 기능 활성화
-MULTI_QUERY_FUSION_ENABLED = True  # 다중 쿼리 융합 활성화
-PERFORMANCE_MONITORING_ENABLED = True  # 성능 모니터링 활성화
-HNSW_AUTO_OPTIMIZATION = True  # HNSW 자동 최적화
+# 🎯 Advanced Milvus optimization settings
+ADVANCED_SEARCH_ENABLED = True  # Enable advanced search features
+KNOWLEDGE_GRAPH_ENABLED = True  # Enable knowledge graph features
+MULTI_QUERY_FUSION_ENABLED = True  # Enable multi-query fusion
+PERFORMANCE_MONITORING_ENABLED = True  # Enable performance monitoring
+HNSW_AUTO_OPTIMIZATION = True  # Enable HNSW auto optimization
 
-# 검색 성능 최적화
-SEARCH_CACHE_SIZE = 1000  # 검색 결과 캐시 크기
-SEARCH_TIMEOUT = 30  # 검색 타임아웃 (초)
-MAX_SEARCH_RESULTS = 1000  # 최대 검색 결과 수
+# Search performance optimization
+SEARCH_CACHE_SIZE = 1000  # Search result cache size
+SEARCH_TIMEOUT = 30  # Search timeout (seconds)
+MAX_SEARCH_RESULTS = 1000  # Maximum search results
 
-# 메타데이터 필터링 설정
-ENABLE_COMPLEX_FILTERING = True  # 복잡한 필터링 활성화
-FILTER_CACHE_SIZE = 500  # 필터 캐시 크기
+# Metadata filtering settings
+ENABLE_COMPLEX_FILTERING = True  # Enable complex filtering
+FILTER_CACHE_SIZE = 500  # Filter cache size
 
-# RAG 최적화 설정
-RAG_CONTEXT_WINDOW = 4096  # RAG 컨텍스트 윈도우 크기
-RAG_CHUNK_OVERLAP_RATIO = 0.1  # RAG 청크 오버랩 비율
-RAG_SIMILARITY_THRESHOLD = 0.7  # RAG 유사도 임계값
+# RAG optimization settings
+RAG_CONTEXT_WINDOW = 4096  # RAG context window size
+RAG_CHUNK_OVERLAP_RATIO = 0.1  # RAG chunk overlap ratio
+RAG_SIMILARITY_THRESHOLD = 0.7  # RAG similarity threshold
 
-# 지식 그래프 설정
-KG_MAX_DEPTH = 3  # 지식 그래프 최대 깊이
-KG_MAX_CONNECTIONS = 100  # 최대 연결 수
-KG_SIMILARITY_THRESHOLD = 0.8  # 지식 그래프 유사도 임계값
+# Knowledge graph settings
+KG_MAX_DEPTH = 3  # Knowledge graph maximum depth
+KG_MAX_CONNECTIONS = 100  # Maximum connections
+KG_SIMILARITY_THRESHOLD = 0.8  # Knowledge graph similarity threshold
+
+########################################################## Auto validation on startup
+if __name__ == "__main__":
+    print("🔧 Obsidian-Milvus-FastMCP Configuration Validation")
+    print("=" * 52)
+    validate_paths()
