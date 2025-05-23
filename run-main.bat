@@ -1,5 +1,4 @@
 @echo off
-g:
-cd "G:\JJ Dropbox\J J\PythonWorks\milvus\obsidian-milvus-FastMCP"
+cd /d "%~dp0"
 python main.py
 pause

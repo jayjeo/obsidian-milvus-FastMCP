@@ -170,7 +170,6 @@ class MilvusPodmanController:
         
         # 기존 데이터 위치도 확인
         self.legacy_data_paths = [
-            Path("G:/JJ Dropbox/J J/PythonWorks/milvus/obsidian-milvus-openwebui/EmbeddingResult"),
             self.project_dir / "EmbeddingResult"
         ]
         
@@ -862,8 +861,8 @@ class MilvusTest:
             return False
     
     def test_claude_desktop_config(self):
-        """5. Generate Claude Desktop configuration file (using local MCP server)"""
-        print_step(5, "Generate Claude Desktop configuration file")
+        """5. Generate Claude Desktop configuration file (using config.py project path)"""
+        print_step(5, "Generate Claude Desktop configuration file (Auto-path from config.py)")
         
         # Determine config file path
         if os.name == 'nt':  # Windows
@@ -926,12 +925,27 @@ class MilvusTest:
                 print_colored(f"   🗑️ Removing: {server}", Colors.WARNING)
                 del existing_config['mcpServers'][server]
         
+        # Import config to get the actual project path
+        try:
+            import sys
+            sys.path.insert(0, str(self.project_dir))
+            import config
+            
+            # Use the project path from config.py (auto-detected)
+            project_path_str = config.get_project_absolute_path()
+            mcp_server_path_str = os.path.join(project_path_str, "mcp_server.py")
+            
+            print_colored(f"📍 Using project path from config.py: {project_path_str}", Colors.OKBLUE)
+            
+        except Exception as e:
+            print_colored(f"⚠️ Could not import config.py: {e}", Colors.WARNING)
+            print_colored("Falling back to detected project directory", Colors.WARNING)
+            # Fallback to detected path
+            project_path_str = str(self.project_dir)
+            mcp_server_path_str = str(self.mcp_server_path)
+        
         # Use the exact server name from your config
         milvus_server_name = "obsidian-assistant"
-        
-        # Create the exact config from your request - using raw string paths
-        mcp_server_path_str = str(self.mcp_server_path)
-        project_path_str = str(self.project_dir)
         
         milvus_config = {
             "command": "python",
@@ -946,8 +960,9 @@ class MilvusTest:
         # Show what we're adding
         print_colored(f"➕ Adding '{milvus_server_name}' server with config:", Colors.OKGREEN)
         print_colored(f"   Command: {milvus_config['command']}", Colors.ENDC)
-        print_colored(f"   Script: {milvus_config['args'][0]}", Colors.ENDC)
-        print_colored(f"   Environment: PYTHONPATH = {milvus_config['env']['PYTHONPATH']}", Colors.ENDC)
+        print_colored(f"   Script: {mcp_server_path_str}", Colors.ENDC)
+        print_colored(f"   Environment: PYTHONPATH = {project_path_str}", Colors.ENDC)
+        print_colored(f"🎯 Project path auto-detected from config.py!", Colors.OKGREEN)
         
         existing_config['mcpServers'][milvus_server_name] = milvus_config
         
@@ -977,7 +992,7 @@ class MilvusTest:
                     print_colored("✅ Configuration verified successfully!", Colors.OKGREEN)
                     
                     # Show the exact matching config format requested
-                    print_colored(f"\n🎯 EXACT CONFIG INSTALLED:", Colors.OKGREEN)
+                    print_colored(f"\n🎯 EXACT CONFIG INSTALLED (using config.py path):", Colors.OKGREEN)
                     exact_config = {
                         "mcpServers": {
                             "obsidian-assistant": {
@@ -992,6 +1007,8 @@ class MilvusTest:
                         }
                     }
                     print_colored(json.dumps(exact_config, indent=2), Colors.ENDC)
+                    print_colored(f"\n📁 Project path source: config.get_project_absolute_path()", Colors.OKBLUE)
+                    print_colored(f"📋 Actual path: {project_path_str}", Colors.OKBLUE)
                     
                 else:
                     print_colored("⚠️ Configuration saved but may not be correct", Colors.WARNING)

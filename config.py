@@ -8,6 +8,10 @@ load_dotenv()
 # Base path settings - Project root directory
 BASE_DIR = Path(__file__).resolve().parent
 
+# Project absolute path for Claude Desktop config (auto-detected)
+# This path will be used when test_mcp.py option 5 generates claude_desktop_config.json
+PROJECT_ABSOLUTE_PATH = str(BASE_DIR)
+
 ##########################################################
 # 🔧 USER SETTINGS - Only modify this section!
 
@@ -302,6 +306,10 @@ def get_username():
 
 def get_password():
     return PASSWORD
+
+def get_project_absolute_path():
+    """프로젝트 절대 경로 반환 (Claude Desktop 설정용)"""
+    return PROJECT_ABSOLUTE_PATH
 
 # 🚀 Auto speed optimization settings
 FAST_MODE = True

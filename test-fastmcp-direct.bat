@@ -6,8 +6,7 @@ echo ================================================================
 echo.
 
 REM Change to the correct directory
-g:
-cd /d "G:\JJ Dropbox\J J\PythonWorks\milvus\obsidian-milvus-FastMCP"
+cd /d "%~dp0"
 
 echo Current directory: %CD%
 echo.
