@@ -30,6 +30,109 @@ def initialize():
     
     return processor
 
+def perform_complete_physical_reset():
+    """Complete physical reset of Milvus data"""
+    from colorama import Fore, Style
+    import subprocess
+    import shutil
+    
+    try:
+        # 1단계: Milvus 서비스 중지
+        print(f"{Fore.BLUE}[1/4] Stopping Milvus containers...{Style.RESET_ALL}")
+        
+        # Podman 컨테이너 중지
+        stop_commands = [
+            "podman stop milvus-standalone milvus-minio milvus-etcd",
+            "podman rm milvus-standalone milvus-minio milvus-etcd"
+        ]
+        
+        for cmd in stop_commands:
+            try:
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                print(f"{Fore.CYAN}Executed: {cmd}{Style.RESET_ALL}")
+                if result.returncode == 0:
+                    print(f"{Fore.GREEN}✅ Success{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}⚠️ Command completed with warnings (this is normal){Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.YELLOW}⚠️ {cmd} - {e} (this is normal if containers weren't running){Style.RESET_ALL}")
+        
+        # 2단계: MilvusData 폴더 완전 삭제
+        print(f"\n{Fore.BLUE}[2/4] Deleting physical data files...{Style.RESET_ALL}")
+        
+        milvus_data_path = os.path.join(os.path.dirname(__file__), "MilvusData")
+        
+        if os.path.exists(milvus_data_path):
+            print(f"{Fore.CYAN}Deleting: {milvus_data_path}{Style.RESET_ALL}")
+            try:
+                # Windows에서 읽기 전용 파일 처리를 위한 함수
+                def handle_remove_readonly(func, path, exc):
+                    import stat
+                    if os.path.exists(path):
+                        os.chmod(path, stat.S_IWRITE)
+                        func(path)
+                
+                shutil.rmtree(milvus_data_path, onerror=handle_remove_readonly)
+                print(f"{Fore.GREEN}✅ MilvusData folder deleted successfully{Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.RED}❌ Error deleting MilvusData folder: {e}{Style.RESET_ALL}")
+                return False
+        else:
+            print(f"{Fore.YELLOW}⚠️ MilvusData folder not found (already clean){Style.RESET_ALL}")
+        
+        # 3단계: Podman 볼륨 삭제 (추가 보장)
+        print(f"\n{Fore.BLUE}[3/4] Removing Podman volumes...{Style.RESET_ALL}")
+        
+        volume_commands = [
+            "podman volume rm milvus-etcd-data milvus-minio-data milvus-db-data",
+            "podman network rm milvus"
+        ]
+        
+        for cmd in volume_commands:
+            try:
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                print(f"{Fore.CYAN}Executed: {cmd}{Style.RESET_ALL}")
+                if result.returncode == 0:
+                    print(f"{Fore.GREEN}✅ Success{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}⚠️ Command completed with warnings (volumes may not exist){Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.YELLOW}⚠️ {cmd} - {e} (this is normal if volumes don't exist){Style.RESET_ALL}")
+        
+        # 4단계: Milvus 재시작
+        print(f"\n{Fore.BLUE}[4/4] Restarting Milvus...{Style.RESET_ALL}")
+        
+        start_script = os.path.join(os.path.dirname(__file__), "start-milvus.bat")
+        if os.path.exists(start_script):
+            print(f"{Fore.CYAN}Executing: {start_script}{Style.RESET_ALL}")
+            try:
+                # 백그라운드에서 시작 스크립트 실행
+                subprocess.Popen([start_script], shell=True, cwd=os.path.dirname(__file__))
+                
+                # Milvus 시작 대기 (간단한 대기 시간)
+                print(f"{Fore.CYAN}Waiting for Milvus to start...{Style.RESET_ALL}")
+                time.sleep(10)
+                
+                print(f"{Fore.GREEN}✅ Milvus restart initiated{Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.RED}❌ Error starting Milvus: {e}{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Please manually run: start-milvus.bat{Style.RESET_ALL}")
+                return False
+        else:
+            print(f"{Fore.YELLOW}⚠️ start-milvus.bat not found. Please start Milvus manually.{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.GREEN}🎉 Complete physical reset finished successfully!{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}💾 All old data has been permanently deleted{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🚀 Milvus is starting with a clean state{Style.RESET_ALL}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"{Fore.RED}❌ Error during complete physical reset: {e}{Style.RESET_ALL}")
+        import traceback
+        print(f"{Fore.RED}Stack trace:\n{traceback.format_exc()}{Style.RESET_ALL}")
+        return False
+
 def perform_full_embedding(processor):
     """Perform full embedding (reindex all files)"""
     from colorama import Fore, Style
@@ -47,51 +150,32 @@ def perform_full_embedding(processor):
         recreate_choice = input("Delete and recreate collection? (y/n): ")
         
         if recreate_choice.lower() == 'y':
-            print(f"\n{Fore.CYAN}[FORCE DELETE] Running powerful collection reset script...{Style.RESET_ALL}")
+            print(f"\n{Fore.RED}[COMPLETE PHYSICAL RESET] Starting complete Milvus reset...{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}This will:{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}  1. Stop all Milvus containers{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}  2. Delete all physical data files (MilvusData folder){Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}  3. Restart Milvus with clean state{Style.RESET_ALL}")
             
-            # 강제 삭제 스크립트 실행
+            # 완전한 물리적 리셋 실행
+            success = perform_complete_physical_reset()
+            
+            if not success:
+                print(f"{Fore.RED}❌ Complete physical reset failed{Style.RESET_ALL}")
+                return
+            
+            print(f"{Fore.GREEN}✅ Complete physical reset completed successfully!{Style.RESET_ALL}")
+            
+            # 물리적 리셋 후 새로운 MilvusManager 인스턴스 생성
+            print(f"{Fore.CYAN}Reconnecting to fresh Milvus instance...{Style.RESET_ALL}")
             try:
-                script_path = os.path.join(os.path.dirname(__file__), "force_reset_collection.py")
-                
-                # 스크립트가 존재하는지 확인
-                if not os.path.exists(script_path):
-                    print(f"{Fore.RED}Error: force_reset_collection.py not found at {script_path}{Style.RESET_ALL}")
-                    return
-                
-                print(f"{Fore.BLUE}Executing: python {script_path}{Style.RESET_ALL}")
-                
-                # subprocess로 스크립트 실행 (자동으로 'y' 입력)
-                process = subprocess.Popen(
-                    ["python", script_path],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    cwd=os.path.dirname(__file__)
-                )
-                
-                # 자동으로 'y' 입력하여 확인
-                output, _ = process.communicate(input='y\n')
-                
-                # 출력 표시
-                print(output)
-                
-                if process.returncode == 0:
-                    print(f"{Fore.GREEN}✅ Force collection reset completed successfully!{Style.RESET_ALL}")
-                else:
-                    print(f"{Fore.RED}❌ Force collection reset failed with return code: {process.returncode}{Style.RESET_ALL}")
-                    return
-                    
+                # 잠시 대기 후 재연결
+                time.sleep(5)
+                processor.milvus_manager = MilvusManager()
+                print(f"{Fore.GREEN}✅ Successfully connected to fresh Milvus instance{Style.RESET_ALL}")
             except Exception as e:
-                print(f"{Fore.RED}Error running force reset script: {e}{Style.RESET_ALL}")
-                # 폴백: 기존 방식으로 시도
-                print(f"{Fore.YELLOW}Falling back to regular collection recreation...{Style.RESET_ALL}")
-                try:
-                    processor.milvus_manager.recreate_collection()
-                    print(f"{Fore.GREEN}Successfully recreated Milvus collection using fallback method.{Style.RESET_ALL}")
-                except Exception as e2:
-                    print(f"{Fore.RED}Fallback method also failed: {e2}{Style.RESET_ALL}")
-                    return
+                print(f"{Fore.RED}❌ Error reconnecting to Milvus: {e}{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Please wait a moment and try again{Style.RESET_ALL}")
+                return
         else:
             # 사용자가 컬렉션을 재생성하지 않더라도 전체 재처리임을 표시
             processor.embedding_progress["is_full_reindex"] = True

@@ -69,7 +69,7 @@ From the menu, select `1. Start MCP Server`
 
 5. **Interactive Setup & Testing**
    ```bash
-   python test_mcp.py
+   python setup.py
    ```
    
    This interactive script will guide you through:
@@ -148,7 +148,7 @@ obsidian-milvus-FastMCP/
 ├── SIMPLE-SETUP.md           # 📖 Detailed setup instructions
 ├── main.py                   # 🚀 Main program
 ├── mcp_server.py            # 🔌 MCP server for Claude
-├── test_mcp.py              # 🧪 Interactive setup & testing
+├── setup.py              # 🧪 Interactive setup & testing
 ├── volumes/                  # 📁 Auto-created data storage
 └── ...                       # Other program files
 ```

@@ -9,7 +9,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
 
 # Project absolute path for Claude Desktop config (auto-detected)
-# This path will be used when test_mcp.py option 5 generates claude_desktop_config.json
+# This path will be used when setup.py option 5 generates claude_desktop_config.json
 PROJECT_ABSOLUTE_PATH = str(BASE_DIR)
 
 ##########################################################

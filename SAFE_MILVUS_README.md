@@ -9,7 +9,7 @@ This project provides a safe and reliable way to set up Milvus vector database w
 ### Using Interactive Setup (Recommended)
 ```bash
 cd your-project-directory
-python test_mcp.py
+python setup.py
 # Follow the interactive prompts
 ```
 
@@ -54,7 +54,7 @@ After setup:
 
 ## 🛠️ Usage
 
-1. **Run Setup**: `python test_mcp.py` or `python safe_milvus_setup.py`
+1. **Run Setup**: `python setup.py` or `python safe_milvus_setup.py`
 2. **Verify Data**: Check the output shows your data is safely stored
 3. **Continue**: Use your Milvus setup normally - your data is protected
 

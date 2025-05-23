@@ -37,7 +37,7 @@ if not exist "mcp_server.py" (
     echo Current directory: %CD%
     echo.
     echo Please make sure you are running this script from the correct project directory.
-    echo The directory should contain: mcp_server.py, test_mcp.py, config.py
+    echo The directory should contain: mcp_server.py, setup.py, config.py
     echo.
     pause
     exit /b 1
@@ -46,15 +46,15 @@ if not exist "mcp_server.py" (
 echo ✅ mcp_server.py found
 
 REM Check if the test file exists
-if not exist "test_mcp.py" (
-    echo ❌ ERROR: test_mcp.py not found in current directory
+if not exist "setup.py" (
+    echo ❌ ERROR: setup.py not found in current directory
     echo Current directory: %CD%
     echo.
     pause
     exit /b 1
 )
 
-echo ✅ test_mcp.py found
+echo ✅ setup.py found
 
 REM Check if config file exists
 if not exist "config.py" (
@@ -91,7 +91,7 @@ echo 4. Testing MCP server functionality...
 echo ================================================================
 
 echo Testing MCP server with test script...
-python test_mcp.py
+python setup.py
 if %errorlevel% neq 0 (
     echo ❌ MCP server test failed
     echo Please check the error messages above

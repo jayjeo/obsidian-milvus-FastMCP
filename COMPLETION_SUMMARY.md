@@ -7,7 +7,7 @@ Created a safe and reliable Milvus setup system that protects your embedding dat
 ## 📁 Files Created/Modified
 
 1. **`safe_milvus_setup.py`** - Standalone safe setup script
-2. **`test_mcp.py`** - Enhanced with safe Milvus deployment (option 2)
+2. **`setup.py`** - Enhanced with safe Milvus deployment (option 2)
 3. **`SAFE_MILVUS_README.md`** - Simple setup guide
 4. **`README.md`** - Updated installation section with comprehensive guide
 
@@ -15,7 +15,7 @@ Created a safe and reliable Milvus setup system that protects your embedding dat
 
 ### Quick Start
 ```bash
-python test_mcp.py
+python setup.py
 # Follow the interactive prompts for complete setup
 ```
 

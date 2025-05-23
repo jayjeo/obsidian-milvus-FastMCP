@@ -158,10 +158,8 @@ class MilvusPodmanController:
             "milvus": self.data_base_path / "milvus_data"
         }
         
-        # 기존 데이터 위치도 확인
-        self.legacy_data_paths = [
-            self.project_dir / "EmbeddingResult"
-        ]
+        # 기존 데이터 위치도 확인 (현재는 없음)
+        self.legacy_data_paths = []
         
         self.images = {
             "etcd": "quay.io/coreos/etcd:v3.5.5",
@@ -1072,6 +1070,140 @@ class MilvusTest:
             self.test_results["claude_desktop_config"] = False
             return False
 
+def perform_complete_physical_reset():
+    """Perform complete physical reset - Hard deletion of all data"""
+    print_header("⚠️ COMPLETE PHYSICAL RESET - HARD DELETION ⚠️")
+    print_colored("This will PERMANENTLY DELETE ALL data:", Colors.FAIL)
+    print_colored("• All Milvus collections and vector data", Colors.FAIL)
+    print_colored("• All embedding data", Colors.FAIL)
+    print_colored("• All container data", Colors.FAIL)
+    print_colored("• All persistent storage", Colors.FAIL)
+    print_colored("\n⚠️ THIS ACTION CANNOT BE UNDONE! ⚠️", Colors.FAIL)
+    
+    # Triple confirmation
+    confirm1 = input_colored("\nType 'DELETE' to confirm hard deletion: ", Colors.FAIL)
+    if confirm1 != 'DELETE':
+        print_colored("Reset cancelled.", Colors.OKGREEN)
+        return
+    
+    confirm2 = input_colored("Type 'YES' to confirm you understand data will be lost: ", Colors.FAIL)
+    if confirm2 != 'YES':
+        print_colored("Reset cancelled.", Colors.OKGREEN)
+        return
+    
+    confirm3 = input_colored("Type 'RESET' for final confirmation: ", Colors.FAIL)
+    if confirm3 != 'RESET':
+        print_colored("Reset cancelled.", Colors.OKGREEN)
+        return
+    
+    print_colored("\n🔥 Starting complete physical reset...", Colors.WARNING)
+    
+    # Check if Podman is available
+    podman_available, podman_path = check_podman()
+    
+    if podman_available:
+        print_colored("🐳 Stopping and removing all Milvus containers...", Colors.WARNING)
+        
+        # Stop and remove containers
+        containers = ["milvus-standalone", "milvus-minio", "milvus-etcd"]
+        for container in containers:
+            try:
+                subprocess.run([podman_path, "stop", container], capture_output=True)
+                subprocess.run([podman_path, "rm", "-f", container], capture_output=True)
+                print_colored(f"  ✅ Container {container} removed", Colors.OKGREEN)
+            except Exception as e:
+                print_colored(f"  ⚠️ Error removing {container}: {e}", Colors.WARNING)
+        
+        # Remove network
+        try:
+            subprocess.run([podman_path, "network", "rm", "milvus-network"], capture_output=True)
+            print_colored("  ✅ Network milvus-network removed", Colors.OKGREEN)
+        except Exception as e:
+            print_colored(f"  ⚠️ Error removing network: {e}", Colors.WARNING)
+        
+        # Remove volumes
+        try:
+            result = subprocess.run([podman_path, "volume", "ls", "-q"], capture_output=True, text=True)
+            volumes = result.stdout.strip().split('\n')
+            milvus_volumes = [v for v in volumes if 'milvus' in v.lower()]
+            
+            for volume in milvus_volumes:
+                subprocess.run([podman_path, "volume", "rm", "-f", volume], capture_output=True)
+                print_colored(f"  ✅ Volume {volume} removed", Colors.OKGREEN)
+        except Exception as e:
+            print_colored(f"  ⚠️ Error removing volumes: {e}", Colors.WARNING)
+    
+    # Delete all data directories
+    print_colored("\n🗂️ Removing all data directories...", Colors.WARNING)
+    
+    # Get project directory
+    project_dir = Path(__file__).parent.resolve()
+    
+    # Import config to get data paths
+    try:
+        import sys
+        sys.path.insert(0, str(project_dir))
+        import config
+        data_base_path = Path(config.get_external_storage_path())
+    except Exception as e:
+        print_colored(f"Warning: Could not import config.py: {e}", Colors.WARNING)
+        data_base_path = project_dir / "MilvusData"
+    
+    # Data directories to remove
+    data_dirs_to_remove = [
+        data_base_path,
+        project_dir / "MilvusData",
+        project_dir / "embedding_cache",
+        project_dir / "__pycache__",
+    ]
+    
+    for data_dir in data_dirs_to_remove:
+        if data_dir.exists():
+            try:
+                if data_dir.is_dir():
+                    shutil.rmtree(data_dir)
+                    print_colored(f"  ✅ Directory removed: {data_dir}", Colors.OKGREEN)
+                else:
+                    data_dir.unlink()
+                    print_colored(f"  ✅ File removed: {data_dir}", Colors.OKGREEN)
+            except Exception as e:
+                print_colored(f"  ❌ Error removing {data_dir}: {e}", Colors.FAIL)
+        else:
+            print_colored(f"  ⚪ Not found: {data_dir}", Colors.ENDC)
+    
+    # Remove any .pyc files
+    print_colored("\n🧹 Cleaning Python cache files...", Colors.WARNING)
+    try:
+        for pyc_file in project_dir.rglob("*.pyc"):
+            pyc_file.unlink()
+        for pyo_file in project_dir.rglob("*.pyo"):
+            pyo_file.unlink()
+        print_colored("  ✅ Python cache files cleaned", Colors.OKGREEN)
+    except Exception as e:
+        print_colored(f"  ⚠️ Error cleaning cache: {e}", Colors.WARNING)
+    
+    # Remove any temporary files
+    print_colored("\n🧹 Cleaning temporary files...", Colors.WARNING)
+    temp_patterns = ["*.tmp", "*.temp", "*.log", "*.bak"]
+    for pattern in temp_patterns:
+        try:
+            for temp_file in project_dir.rglob(pattern):
+                temp_file.unlink()
+            print_colored(f"  ✅ Cleaned {pattern} files", Colors.OKGREEN)
+        except Exception as e:
+            print_colored(f"  ⚠️ Error cleaning {pattern}: {e}", Colors.WARNING)
+    
+    print_colored("\n" + "="*60, Colors.FAIL)
+    print_colored("🔥 COMPLETE PHYSICAL RESET FINISHED 🔥", Colors.FAIL)
+    print_colored("="*60, Colors.FAIL)
+    print_colored("✅ All containers stopped and removed", Colors.OKGREEN)
+    print_colored("✅ All data directories deleted", Colors.OKGREEN)
+    print_colored("✅ All cache files cleaned", Colors.OKGREEN)
+    print_colored("✅ All temporary files removed", Colors.OKGREEN)
+    print_colored("\n💡 System is now in clean state", Colors.OKBLUE)
+    print_colored("💡 Run setup again to start fresh", Colors.OKBLUE)
+    print_colored("="*60, Colors.FAIL)
+
 def show_menu():
     """Display main menu"""
     print_header("Milvus MCP Interactive Test")
@@ -1083,6 +1215,7 @@ def show_menu():
     print_colored("5. Generate Claude Desktop configuration file", Colors.ENDC)
     print_colored("6. View all results", Colors.ENDC)
     print_colored("7. Run all tests automatically", Colors.ENDC)
+    print_colored("8. ⚠️ Complete Physical Reset (Hard Delete All Data)", Colors.FAIL)
     print_colored("0. Exit", Colors.ENDC)
 
 def show_results(test_results):
@@ -1173,7 +1306,7 @@ def main():
     while True:
         show_menu()
         
-        choice = input_colored("\nSelect (0-7): ")
+        choice = input_colored("\nSelect (0-8): ")
         
         try:
             choice = int(choice)
@@ -1195,8 +1328,10 @@ def main():
                 show_results(tester.test_results)
             elif choice == 7:
                 run_all_tests(tester)
+            elif choice == 8:
+                perform_complete_physical_reset()
             else:
-                print_colored("❌ Invalid selection. Please enter a number between 0-7.", Colors.FAIL)
+                print_colored("❌ Invalid selection. Please enter a number between 0-8.", Colors.FAIL)
         
         except ValueError:
             print_colored("❌ Please enter a number.", Colors.FAIL)
