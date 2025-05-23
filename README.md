@@ -77,7 +77,7 @@
    - Mac: `brew install podman`
    - Linux: Check your distribution's package manager
    **Run podman** : If you cannot find the path, run `find-podman-desktop.bat`
-   
+
 5. **Interactive Setup & Testing**
    ```bash
    run-setup.bat
@@ -110,7 +110,11 @@
 - **Start Searching**: Use natural language queries in Claude Desktop
 - **Advanced Features**: Access all search modes and filtering options through Claude
 
-Based on the default settings in config.py, the path for Milvus's container (installation files) is the _volumes_ folder, and the vector embedding data files are stored in _MilvusData_. Therefore, the two are completely separated, so even if Milvus's container is reinstalled, the data files remain safely preserved.
+##### Backup & Restore Milvus Data (Embedding Data)
+
+- **Backup**: Run `backup-all-data.bat`
+- **Restore**: Run `restore-backup.bat` 
+- **Reset Container**: Run `safe-container-reset.bat` (This is safe for preserving Milvus data)  
 
 ### ⚠️ **EMERGENCY RESET WARNING**
 

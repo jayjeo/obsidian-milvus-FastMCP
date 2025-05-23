@@ -177,6 +177,99 @@ class MilvusManager:
             logger.error(f"Command error: {e.stderr}")
             return {}
     
+    def create_missing_container(self, container_type, container_name):
+        """누락된 컨테이너를 개별적으로 생성"""
+        try:
+            runtime_path = self.get_container_runtime_path()
+            project_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            # 네트워크 확인 및 생성
+            network_name = "milvus"
+            self.ensure_network_exists(network_name)
+            
+            if container_type == "etcd":
+                cmd = [
+                    runtime_path, "run", "-d", "--name", container_name,
+                    "--network", network_name,
+                    "-v", f"{project_dir}/volumes/etcd:/etcd",
+                    "-e", "ETCD_AUTO_COMPACTION_MODE=revision",
+                    "-e", "ETCD_AUTO_COMPACTION_RETENTION=1000",
+                    "-e", "ETCD_QUOTA_BACKEND_BYTES=4294967296",
+                    "--user", "0:0",
+                    "quay.io/coreos/etcd:v3.5.0",
+                    "etcd", "-advertise-client-urls=http://127.0.0.1:2379",
+                    "-listen-client-urls", "http://0.0.0.0:2379", "--data-dir", "/etcd"
+                ]
+            elif container_type == "minio":
+                cmd = [
+                    runtime_path, "run", "-d", "--name", container_name,
+                    "--network", network_name,
+                    "-v", f"{project_dir}/MilvusData/minio:/minio_data",
+                    "-e", "MINIO_ACCESS_KEY=minioadmin",
+                    "-e", "MINIO_SECRET_KEY=minioadmin",
+                    "--user", "0:0",
+                    "minio/minio:RELEASE.2023-03-20T20-16-18Z",
+                    "server", "/minio_data"
+                ]
+            elif container_type == "standalone":
+                cmd = [
+                    runtime_path, "run", "-d", "--name", container_name,
+                    "--network", network_name,
+                    "-p", "19530:19530", "-p", "9091:9091",
+                    "-v", f"{project_dir}/MilvusData/milvus:/var/lib/milvus",
+                    "-e", "ETCD_ENDPOINTS=milvus-etcd:2379",
+                    "-e", "MINIO_ADDRESS=milvus-minio:9000",
+                    "--user", "0:0",
+                    "milvusdb/milvus:v2.3.4",
+                    "milvus", "run", "standalone"
+                ]
+            else:
+                logger.error(f"Unknown container type: {container_type}")
+                return False
+            
+            # 컨테이너 생성
+            logger.info(f"Creating {container_type} container: {container_name}")
+            result = subprocess.run(cmd, check=True, text=True, capture_output=True)
+            logger.info(f"Successfully created {container_type} container")
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error creating {container_type} container: {e}")
+            if hasattr(e, 'stderr') and e.stderr:
+                logger.error(f"Command error: {e.stderr}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error creating {container_type} container: {e}")
+            return False
+    
+    def ensure_network_exists(self, network_name):
+        """네트워크가 존재하는지 확인하고 없으면 생성"""
+        try:
+            runtime_path = self.get_container_runtime_path()
+            
+            # 네트워크 존재 확인
+            result = subprocess.run(
+                [runtime_path, "network", "exists", network_name],
+                capture_output=True, text=True
+            )
+            
+            if result.returncode != 0:
+                # 네트워크 생성
+                logger.info(f"Creating network: {network_name}")
+                result = subprocess.run(
+                    [runtime_path, "network", "create", network_name],
+                    check=True, text=True, capture_output=True
+                )
+                logger.info(f"Successfully created network: {network_name}")
+            else:
+                logger.debug(f"Network {network_name} already exists")
+                
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Network operation failed for {network_name}: {e}")
+            # 네트워크 오류는 중요하지 않을 수 있으므로 계속 진행
+        except Exception as e:
+            logger.warning(f"Unexpected network error: {e}")
+    
     def start_container(self, container_name):
         """특정 컨테이너 시작"""
         try:
@@ -192,8 +285,13 @@ class MilvusManager:
             )
             return True
         except subprocess.CalledProcessError as e:
-            logger.error(f"Error starting container {container_name}: {e}")
-            logger.error(f"Command error: {e.stderr}")
+            # 컨테이너가 존재하지 않는 경우는 정상적인 상황 (reset 후 등)
+            if "no container" in str(e).lower() or "not found" in str(e).lower():
+                logger.info(f"Container {container_name} not found (expected after reset) - will create new one")
+            else:
+                logger.error(f"Error starting container {container_name}: {e}")
+                if hasattr(e, 'stderr') and e.stderr:
+                    logger.error(f"Command error: {e.stderr}")
             return False
     
     def ensure_external_storage_directories(self):
@@ -251,13 +349,23 @@ class MilvusManager:
                     if self.start_container(container_name):
                         logger.info(f"Successfully started container: {container_name}")
                     else:
-                        logger.warning(f"Failed to start container individually: {container_name}")
+                        # 컨테이너가 존재하지 않는 경우 새로 생성 시도
+                        logger.info(f"Container {container_name} not available, attempting to recreate...")
+                        if self.create_missing_container(container_type, container_name):
+                            logger.info(f"Successfully recreated {container_type} container")
+                        else:
+                            logger.error(f"Failed to recreate {container_type} container")
+                            all_running = False
+                            break
+                else:
+                    logger.info(f"Container {container_name} does not exist (normal after reset), creating it...")
+                    # 컨테이너가 없으므로 새로 생성
+                    if self.create_missing_container(container_type, container_name):
+                        logger.info(f"Successfully created {container_type} container")
+                    else:
+                        logger.error(f"Failed to create {container_type} container")
                         all_running = False
                         break
-                else:
-                    logger.info(f"Container {container_name} does not exist, need to create it")
-                    all_running = False
-                    break
         
         # 개별 시작이 실패했거나 일부 컨테이너가 없는 경우에만 podman-compose로 전체 시작
         if not all_running:
