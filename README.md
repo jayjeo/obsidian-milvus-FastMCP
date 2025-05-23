@@ -97,7 +97,7 @@ From the menu, select `1. Start MCP Server`
 - Keep MCP Server Running: python main.py (option 1)
 - Open Claude Desktop: Your Obsidian vault is now searchable
 - Start Searching: Use natural language queries in Claude Desktop
-
+- Based on the default settings in config.py, the path for Milvus's container (installation files) is the _volumes_ folder, and the vector embedding data files are stored in _MilvusData_. Therefore, the two are completely separated, so even if Milvus's container is reinstalled, the data files remain safely preserved.
 
 ## 🎯 Path Configuration Examples
 

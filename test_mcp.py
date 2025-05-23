@@ -136,9 +136,9 @@ class MilvusPodmanController:
         self.podman_path = podman_path
         self.network = "milvus-network"
         
-        # 프로젝트 디렉토리 내에 안전한 저장소 만들기
+        # 프로젝트 디렉토리 내에 안전한 저장소 만들기 (config.py와 동일한 경로 사용)
         self.project_dir = Path(__file__).parent.resolve()
-        self.data_base_path = self.project_dir / "milvus_persistent_data"
+        self.data_base_path = self.project_dir / "MilvusData"
         
         # 각 서비스별 데이터 경로 (절대 경로 사용)
         self.data_paths = {

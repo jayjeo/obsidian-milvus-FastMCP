@@ -50,6 +50,7 @@ obsidian-vault/
 # Personal data directories
 volumes/
 EmbeddingResult/
+MilvusData/
 
 # IDE
 .vscode/

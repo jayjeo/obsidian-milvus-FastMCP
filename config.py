@@ -26,7 +26,7 @@ PODMAN_PATH = ""  # Leave empty for auto-detection, or enter full path if needed
 # Other settings (modify if needed)
 
 # 📁 External storage path (Milvus data storage - usually no need to modify)
-EXTERNAL_STORAGE_PATH = str(BASE_DIR / "volumes")  # Uses volumes folder in project directory
+EXTERNAL_STORAGE_PATH = str(BASE_DIR / "MilvusData")  # Uses MilvusData folder in project directory (separated from project files)
 
 # Logging settings
 LOG_LEVEL = "ERROR"  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
