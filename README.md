@@ -5,72 +5,42 @@ A **fully optimized MCP (Model Context Protocol) server** that brings **Milvus v
 ## 🎯 **Key Features & Milvus Advantages**
 
 ### **🔍 Intelligent Search Capabilities**
-- **Adaptive Search Strategy**: Automatically adjusts search complexity based on query type
-- **Hierarchical Retrieval**: Document → Section → Chunk level searching  
-- **Semantic Graph Search**: Explores document relationships through meaning vectors
-- **Multi-Modal Search**: Combines text + attachment file searching
-- **Multi-Query Fusion**: Merges multiple queries for enhanced accuracy
+- **Adaptive Search Strategy**: Automatically adjusts search complexity and parameters based on query type
+- **Hierarchical Retrieval**: Multi-level searching across Document → Section → Chunk levels  
+- **Semantic Graph Search**: Explores document relationships through meaning vectors and knowledge graphs
+- **Multi-Modal & Multi-Query Fusion**: Combines text + attachment file searching with multiple query merging for enhanced accuracy
 
 ### **🏷️ Advanced Metadata Filtering**
 - **Complex Tag Logic**: AND/OR/NOT combinations (`{"and": ["work"], "or": ["urgent"], "not": ["archived"]}`)
-- **Time-Range Filtering**: Search by creation/modification dates
-- **File Size & Type Filtering**: Target specific document types and sizes
-- **Content Quality Scoring**: Filter by document relevance and quality metrics
+- **Time-Range & Content Filtering**: Search by creation/modification dates, file size, type, and quality metrics
+- **Similarity-Based Clustering**: Groups related content automatically with selective high-relevance results
 
-### **⚡ HNSW Index Optimization**
-- **GPU Acceleration**: Leverages GPU processing for massive collections
-- **Adaptive Parameters**: Auto-tunes search parameters based on query complexity  
-- **Performance Monitoring**: Real-time benchmarking and optimization recommendations
-- **Memory-Efficient**: Smart caching and batch processing
+### **⚡ HNSW Index & Performance Optimization**
+- **GPU Acceleration**: Leverages GPU processing for 5-10x performance improvement on massive collections
+- **Adaptive Parameters**: Auto-tunes search parameters (ef/nprobe adjustment 64→512) based on query complexity
+- **Memory-Efficient Processing**: Smart caching, batch processing, and real-time optimization recommendations
 
 ### **🧠 Advanced RAG Patterns**
-- **Context-Aware Retrieval**: Expands search context intelligently
-- **Temporal Search**: Balances relevance with recency
-- **Knowledge Graph Exploration**: Maps semantic connections between documents
-- **Similarity-Based Clustering**: Groups related content automatically
+- **Context-Aware Retrieval**: Expands search context intelligently with temporal search balancing relevance and recency
+- **Knowledge Graph Exploration**: Maps semantic connections between documents for enhanced understanding
 
-## 🚀 **Performance Benefits**
-
-### **Search Speed Optimization**
-- **Adaptive Parameters**: Automatic ef/nprobe adjustment based on query complexity
-- **GPU Acceleration**: 5-10x performance improvement for large-scale vector searches
-- **Batch Processing**: Optimized concurrent multi-query processing
-
-### **Search Accuracy Enhancement**
-- **HNSW Optimization**: Dynamic ef parameter adjustment (64→512) for accuracy/speed balance
-- **Metadata Fusion**: Combined vector + metadata composite search
-- **Similarity Threshold**: Selective return of high-relevance results only
-
-### **Advanced Feature Activation**
-- **Knowledge Graph**: Semantic connection network construction between documents
-- **Multi-Query Fusion**: Enhanced accuracy through multiple search term combination
-- **Real-time Monitoring**: Performance metrics and optimization recommendations
+## 🚀 **Performance Benefits & Benchmark Results**
 
 ### **Milvus Advantages Fully Utilized:**
+1. **HNSW Indexing**: 3-5x faster search on large collections with dynamic accuracy/speed balance
+2. **GPU Acceleration**: Massive performance boost for vector operations and concurrent processing
+3. **Metadata Filtering**: Precise results through complex conditions and composite search
+4. **Advanced RAG**: Context-aware retrieval with semantic understanding and fusion techniques
 
-1. **HNSW Indexing**: 3-5x faster search on large collections
-2. **GPU Acceleration**: Massive performance boost for vector operations  
-3. **Metadata Filtering**: Precise results through complex conditions
-4. **Advanced RAG**: Context-aware retrieval with semantic understanding
-5. **Real-time Optimization**: Adaptive performance tuning
-
-### **Benchmark Results:**
-- **Collection Size**: 100K+ documents
-- **Search Latency**: <50ms average
-- **GPU Speedup**: 5x faster than CPU-only
-- **Memory Efficiency**: 40% reduction vs naive implementations
-- **Accuracy Improvement**: 25% better relevance with fusion techniques
+### **Proven Performance:**
+- **Collection Size**: 100K+ documents with <50ms average search latency
+- **Efficiency Gains**: 5x GPU speedup, 40% memory reduction vs naive implementations
+- **Accuracy Improvement**: 25% better relevance with multi-query fusion techniques
 
 ## 📊 **Monitoring & Analytics**
 
-The server provides comprehensive performance monitoring:
+Comprehensive performance monitoring includes real-time benchmarks for search latency and throughput, collection statistics with document counts and file type distribution, automatic optimization recommendations with tuning suggestions, resource usage tracking for memory and GPU utilization, and search pattern analysis covering query frequency and result quality metrics.
 
-- **Real-time Benchmarks**: Search latency, throughput metrics
-- **Collection Statistics**: Document counts, file type distribution
-- **Optimization Recommendations**: Automatic tuning suggestions
-- **Resource Usage**: Memory, GPU utilization tracking
-- **Search Pattern Analysis**: Query frequency, result quality metrics
-- 
 
 ## 🛠️ **Installation & Setup**
 
