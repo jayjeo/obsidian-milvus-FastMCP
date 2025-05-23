@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-인터랙티브 Milvus MCP 테스트 - 단계별 테스트 및 자동 문제 해결
-사용자가 직접 각 단계를 선택하여 테스트하고, 문제 발생 시 자동으로 해결합니다.
+Interactive Milvus MCP Test - Step-by-step testing with automatic problem resolution
+Users can directly select each step to test, and the system automatically resolves issues when they occur.
 """
 
 import asyncio
@@ -15,7 +15,7 @@ from pathlib import Path
 from datetime import datetime
 
 class Colors:
-    """터미널 색상 코드"""
+    """Terminal color codes"""
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
     OKCYAN = '\033[96m'
@@ -26,47 +26,47 @@ class Colors:
     BOLD = '\033[1m'
 
 def print_colored(message, color=Colors.ENDC):
-    """색상이 있는 출력"""
+    """Print with color"""
     print(f"{color}{message}{Colors.ENDC}")
 
 def print_header(title):
-    """헤더 출력"""
+    """Print header"""
     print_colored(f"\n{'='*60}", Colors.HEADER)
     print_colored(f"🔧 {title}", Colors.HEADER)
     print_colored(f"{'='*60}", Colors.HEADER)
 
 def print_step(step_num, title):
-    """단계 제목 출력"""
+    """Print step title"""
     print_colored(f"\n{step_num}. {title}", Colors.OKBLUE)
     print_colored("-" * 40, Colors.OKBLUE)
 
 def input_colored(prompt, color=Colors.OKCYAN):
-    """색상이 있는 입력"""
+    """Colored input"""
     return input(f"{color}{prompt}{Colors.ENDC}")
 
 def install_package(package_name, import_name=None):
-    """패키지 자동 설치"""
+    """Automatic package installation"""
     if import_name is None:
         import_name = package_name
     
     try:
         __import__(import_name)
-        print_colored(f"✅ {package_name} 이미 설치됨", Colors.OKGREEN)
+        print_colored(f"✅ {package_name} already installed", Colors.OKGREEN)
         return True
     except ImportError:
-        print_colored(f"⚠️ {package_name} 패키지가 없습니다. 설치를 시도합니다...", Colors.WARNING)
+        print_colored(f"⚠️ {package_name} package not found. Attempting installation...", Colors.WARNING)
         
         try:
             subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
-            print_colored(f"✅ {package_name} 설치 완료", Colors.OKGREEN)
+            print_colored(f"✅ {package_name} installation complete", Colors.OKGREEN)
             return True
         except subprocess.CalledProcessError as e:
-            print_colored(f"❌ {package_name} 설치 실패: {e}", Colors.FAIL)
+            print_colored(f"❌ {package_name} installation failed: {e}", Colors.FAIL)
             return False
 
 def check_milvus_server():
-    """Milvus 서버 상태 확인"""
-    # 여러 엔드포인트로 확인
+    """Check Milvus server status"""
+    # Check multiple endpoints
     endpoints = [
         "http://localhost:19530/health",
         "http://localhost:9091/healthz", 
@@ -82,7 +82,7 @@ def check_milvus_server():
         except:
             continue
     
-    # TCP 포트 연결 확인
+    # Check TCP port connection
     try:
         import socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -94,12 +94,12 @@ def check_milvus_server():
         return False
 
 def get_podman_path():
-    """Podman 실행 파일 경로 찾기"""
+    """Find Podman executable path"""
     possible_paths = [
-        "podman",  # PATH에 있는 경우
-        "/usr/bin/podman",  # Linux 기본 경로
+        "podman",  # In PATH
+        "/usr/bin/podman",  # Linux default path
         "/opt/homebrew/bin/podman",  # macOS Homebrew
-        "/usr/local/bin/podman",  # macOS 기타
+        "/usr/local/bin/podman",  # macOS other
         "C:\\Program Files\\RedHat\\Podman\\podman.exe",  # Windows
     ]
     
@@ -114,7 +114,7 @@ def get_podman_path():
     return None
 
 def check_podman():
-    """Podman 설치 및 상태 확인"""
+    """Check Podman installation and status"""
     podman_path = get_podman_path()
     if not podman_path:
         return False, None
@@ -129,7 +129,7 @@ def check_podman():
     return False, None
 
 class MilvusPodmanController:
-    """Podman을 사용한 Milvus 컨트롤러"""
+    """Milvus controller using Podman"""
     
     def __init__(self, podman_path):
         self.podman_path = podman_path
@@ -148,7 +148,7 @@ class MilvusPodmanController:
         self.web_port = "9091"
     
     def run_command(self, cmd):
-        """명령어 실행"""
+        """Execute command"""
         try:
             if isinstance(cmd, str):
                 result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
@@ -159,60 +159,60 @@ class MilvusPodmanController:
             return False, "", str(e)
     
     def start_machine(self):
-        """Podman 머신 시작 (필요시)"""
-        # Windows/macOS에서는 Podman 머신이 필요할 수 있음
+        """Start Podman machine (if needed)"""
+        # Windows/macOS may need Podman machine
         if os.name == 'nt' or sys.platform == 'darwin':
-            print_colored("🔧 Podman 머신을 시작합니다...", Colors.OKBLUE)
+            print_colored("🔧 Starting Podman machine...", Colors.OKBLUE)
             success, _, _ = self.run_command([self.podman_path, "machine", "start"])
             if success:
-                print_colored("✅ Podman 머신 시작 완료", Colors.OKGREEN)
+                print_colored("✅ Podman machine start complete", Colors.OKGREEN)
             else:
-                print_colored("⚠️ Podman 머신 시작 실패 (이미 실행 중일 수 있음)", Colors.WARNING)
+                print_colored("⚠️ Podman machine start failed (may already be running)", Colors.WARNING)
             time.sleep(2)
     
     def create_network(self):
-        """네트워크 생성"""
-        print_colored(f"🌐 네트워크 '{self.network}' 생성 중...", Colors.OKBLUE)
-        # 기존 네트워크 확인
+        """Create network"""
+        print_colored(f"🌐 Creating network '{self.network}'...", Colors.OKBLUE)
+        # Check existing network
         success, _, _ = self.run_command([self.podman_path, "network", "exists", self.network])
         if not success:
             success, _, _ = self.run_command([self.podman_path, "network", "create", self.network])
             if success:
-                print_colored("✅ 네트워크 생성 완료", Colors.OKGREEN)
+                print_colored("✅ Network creation complete", Colors.OKGREEN)
             else:
-                print_colored("❌ 네트워크 생성 실패", Colors.FAIL)
+                print_colored("❌ Network creation failed", Colors.FAIL)
                 return False
         else:
-            print_colored("✅ 네트워크가 이미 존재합니다", Colors.OKGREEN)
+            print_colored("✅ Network already exists", Colors.OKGREEN)
         return True
     
     def create_volumes(self):
-        """볼륨 생성"""
-        print_colored("💾 영구 볼륨들을 생성합니다...", Colors.OKBLUE)
+        """Create volumes"""
+        print_colored("💾 Creating persistent volumes...", Colors.OKBLUE)
         for name, volume in self.volumes.items():
             success, _, _ = self.run_command([self.podman_path, "volume", "exists", volume])
             if not success:
                 success, _, _ = self.run_command([self.podman_path, "volume", "create", volume])
                 if success:
-                    print_colored(f"  ✅ 볼륨 {volume} 생성 완료", Colors.OKGREEN)
+                    print_colored(f"  ✅ Volume {volume} creation complete", Colors.OKGREEN)
                 else:
-                    print_colored(f"  ❌ 볼륨 {volume} 생성 실패", Colors.FAIL)
+                    print_colored(f"  ❌ Volume {volume} creation failed", Colors.FAIL)
                     return False
             else:
-                print_colored(f"  ✅ 볼륨 {volume} 이미 존재", Colors.OKGREEN)
+                print_colored(f"  ✅ Volume {volume} already exists", Colors.OKGREEN)
         return True
     
     def stop_containers(self):
-        """기존 컨테이너 정리"""
-        print_colored("🧹 기존 컨테이너들을 정리합니다...", Colors.OKBLUE)
+        """Clean up existing containers"""
+        print_colored("🧹 Cleaning up existing containers...", Colors.OKBLUE)
         containers = ["milvus-standalone", "milvus-minio", "milvus-etcd"]
         for container in containers:
             self.run_command([self.podman_path, "stop", container])
             self.run_command([self.podman_path, "rm", container])
     
     def start_etcd(self):
-        """etcd 컨테이너 시작"""
-        print_colored("[1/3] 📊 etcd 시작 중...", Colors.OKBLUE)
+        """Start etcd container"""
+        print_colored("[1/3] 📊 Starting etcd...", Colors.OKBLUE)
         cmd = [
             self.podman_path, "run", "-d", "--name", "milvus-etcd", 
             "--network", self.network,
@@ -227,14 +227,14 @@ class MilvusPodmanController:
         ]
         success, _, stderr = self.run_command(cmd)
         if success:
-            print_colored("  ✅ etcd 시작 완료", Colors.OKGREEN)
+            print_colored("  ✅ etcd start complete", Colors.OKGREEN)
         else:
-            print_colored(f"  ❌ etcd 시작 실패: {stderr}", Colors.FAIL)
+            print_colored(f"  ❌ etcd start failed: {stderr}", Colors.FAIL)
         return success
     
     def start_minio(self):
-        """MinIO 컨테이너 시작"""
-        print_colored("[2/3] 🗄️ MinIO 시작 중...", Colors.OKBLUE)
+        """Start MinIO container"""
+        print_colored("[2/3] 🗄️ Starting MinIO...", Colors.OKBLUE)
         cmd = [
             self.podman_path, "run", "-d", "--name", "milvus-minio",
             "--network", self.network,
@@ -247,14 +247,14 @@ class MilvusPodmanController:
         ]
         success, _, stderr = self.run_command(cmd)
         if success:
-            print_colored("  ✅ MinIO 시작 완료", Colors.OKGREEN)
+            print_colored("  ✅ MinIO start complete", Colors.OKGREEN)
         else:
-            print_colored(f"  ❌ MinIO 시작 실패: {stderr}", Colors.FAIL)
+            print_colored(f"  ❌ MinIO start failed: {stderr}", Colors.FAIL)
         return success
     
     def start_milvus(self):
-        """Milvus 컨테이너 시작"""
-        print_colored("[3/3] 🚀 Milvus 시작 중...", Colors.OKBLUE)
+        """Start Milvus container"""
+        print_colored("[3/3] 🚀 Starting Milvus...", Colors.OKBLUE)
         cmd = [
             self.podman_path, "run", "-d", "--name", "milvus-standalone",
             "--network", self.network,
@@ -269,14 +269,14 @@ class MilvusPodmanController:
         ]
         success, _, stderr = self.run_command(cmd)
         if success:
-            print_colored("  ✅ Milvus 시작 완료", Colors.OKGREEN)
+            print_colored("  ✅ Milvus start complete", Colors.OKGREEN)
         else:
-            print_colored(f"  ❌ Milvus 시작 실패: {stderr}", Colors.FAIL)
+            print_colored(f"  ❌ Milvus start failed: {stderr}", Colors.FAIL)
         return success
     
     def check_status(self):
-        """컨테이너 상태 확인"""
-        print_colored("\n📊 컨테이너 상태:", Colors.OKBLUE)
+        """Check container status"""
+        print_colored("\n📊 Container status:", Colors.OKBLUE)
         success, stdout, _ = self.run_command([
             self.podman_path, "ps", 
             "--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
@@ -286,38 +286,38 @@ class MilvusPodmanController:
         return success
     
     def check_container_logs(self, container_name):
-        """컨테이너 로그 확인"""
-        print_colored(f"📋 {container_name} 로그 확인 중...", Colors.OKBLUE)
+        """Check container logs"""
+        print_colored(f"📋 Checking {container_name} logs...", Colors.OKBLUE)
         success, stdout, stderr = self.run_command([self.podman_path, "logs", "--tail", "20", container_name])
         if success:
-            print_colored(f"📋 {container_name} 최근 로그:", Colors.OKBLUE)
+            print_colored(f"📋 {container_name} recent logs:", Colors.OKBLUE)
             print_colored(stdout, Colors.ENDC)
             if stderr:
-                print_colored("🔴 에러 로그:", Colors.WARNING)
+                print_colored("🔴 Error logs:", Colors.WARNING)
                 print_colored(stderr, Colors.ENDC)
         return success
     
     def diagnose_milvus_issues(self):
-        """Milvus 문제 진단"""
-        print_colored("\n🔍 Milvus 문제 진단 중...", Colors.OKBLUE)
+        """Diagnose Milvus issues"""
+        print_colored("\n🔍 Diagnosing Milvus issues...", Colors.OKBLUE)
         
-        # 1. 컨테이너 상태 확인
+        # 1. Check container status
         success, stdout, _ = self.run_command([self.podman_path, "ps", "-a", "--filter", "name=milvus"])
         if success:
-            print_colored("📊 Milvus 관련 컨테이너 상태:", Colors.OKBLUE)
+            print_colored("📊 Milvus-related container status:", Colors.OKBLUE)
             print_colored(stdout, Colors.ENDC)
         
-        # 2. 개별 컨테이너 로그 확인
+        # 2. Check individual container logs
         containers = ["milvus-etcd", "milvus-minio", "milvus-standalone"]
         for container in containers:
-            # 컨테이너가 실행 중인지 확인
+            # Check if container exists
             success, _, _ = self.run_command([self.podman_path, "container", "exists", container])
             if success:
                 self.check_container_logs(container)
                 print("-" * 50)
         
-        # 3. 포트 확인
-        print_colored("🔌 포트 사용 상황 확인:", Colors.OKBLUE)
+        # 3. Check ports
+        print_colored("🔌 Checking port usage:", Colors.OKBLUE)
         try:
             import socket
             ports_to_check = [19530, 9091, 2379, 9000]
@@ -328,51 +328,51 @@ class MilvusPodmanController:
                 sock.close()
                 
                 if result == 0:
-                    print_colored(f"  ✅ 포트 {port}: 열림", Colors.OKGREEN)
+                    print_colored(f"  ✅ Port {port}: Open", Colors.OKGREEN)
                 else:
-                    print_colored(f"  ❌ 포트 {port}: 닫힘", Colors.FAIL)
+                    print_colored(f"  ❌ Port {port}: Closed", Colors.FAIL)
         except Exception as e:
-            print_colored(f"포트 확인 오류: {e}", Colors.WARNING)
+            print_colored(f"Port check error: {e}", Colors.WARNING)
         
-        # 4. 네트워크 확인
-        print_colored("🌐 네트워크 상태:", Colors.OKBLUE)
+        # 4. Check network
+        print_colored("🌐 Network status:", Colors.OKBLUE)
         success, stdout, _ = self.run_command([self.podman_path, "network", "inspect", self.network])
         if success:
-            print_colored("  ✅ 네트워크 정상", Colors.OKGREEN)
+            print_colored("  ✅ Network normal", Colors.OKGREEN)
         else:
-            print_colored("  ❌ 네트워크 문제", Colors.FAIL)
+            print_colored("  ❌ Network issues", Colors.FAIL)
     
     def restart_milvus_container(self):
-        """Milvus 컨테이너만 재시작"""
-        print_colored("🔄 Milvus 컨테이너를 재시작합니다...", Colors.OKBLUE)
+        """Restart Milvus container only"""
+        print_colored("🔄 Restarting Milvus container...", Colors.OKBLUE)
         
-        # Milvus 컨테이너 정지
+        # Stop Milvus container
         self.run_command([self.podman_path, "stop", "milvus-standalone"])
         self.run_command([self.podman_path, "rm", "milvus-standalone"])
         
-        # 잠시 대기
+        # Wait briefly
         time.sleep(5)
         
-        # Milvus 재시작
+        # Restart Milvus
         if self.start_milvus():
-            print_colored("✅ Milvus 컨테이너 재시작 완료", Colors.OKGREEN)
+            print_colored("✅ Milvus container restart complete", Colors.OKGREEN)
             return True
         else:
-            print_colored("❌ Milvus 컨테이너 재시작 실패", Colors.FAIL)
+            print_colored("❌ Milvus container restart failed", Colors.FAIL)
             return False
     
     def wait_for_milvus_ready(self, max_wait_time=180):
-        """Milvus 준비 상태까지 대기 (확장된 대기 시간과 진단)"""
-        print_colored(f"⏳ Milvus 서비스 준비 대기 중 (최대 {max_wait_time}초)...", Colors.WARNING)
+        """Wait for Milvus ready state (extended wait time with diagnostics)"""
+        print_colored(f"⏳ Waiting for Milvus service ready (max {max_wait_time} seconds)...", Colors.WARNING)
         
         for i in range(max_wait_time):
             if check_milvus_server():
-                print_colored(f"\n✅ Milvus 서버 준비 완료! ({i+1}초 소요)", Colors.OKGREEN)
+                print_colored(f"\n✅ Milvus server ready! (took {i+1} seconds)", Colors.OKGREEN)
                 return True
             
-            # 30초마다 상태 체크
+            # Status check every 30 seconds
             if i > 0 and i % 30 == 0:
-                print_colored(f"\n⏳ {i}초 경과... 상태 확인 중", Colors.WARNING)
+                print_colored(f"\n⏳ {i} seconds elapsed... Checking status", Colors.WARNING)
                 self.check_status()
             
             time.sleep(1)
@@ -380,28 +380,28 @@ class MilvusPodmanController:
                 print(f"\n[{i}s]", end="")
             print(".", end="", flush=True)
         
-        print_colored(f"\n⚠️ {max_wait_time}초 대기 후에도 Milvus가 준비되지 않았습니다.", Colors.WARNING)
+        print_colored(f"\n⚠️ Milvus not ready after {max_wait_time} seconds wait.", Colors.WARNING)
         
-        # 진단 실행
+        # Run diagnostics
         self.diagnose_milvus_issues()
         
-        # 추가 대기 옵션 제공
-        choice = input_colored("\n🔧 추가로 60초 더 대기하시겠습니까? (y/n): ")
+        # Offer additional wait option
+        choice = input_colored("\n🔧 Would you like to wait an additional 60 seconds? (y/n): ")
         if choice.lower() == 'y':
             return self.wait_for_milvus_ready(60)
         
         return False
     
     def start_all(self):
-        """전체 Milvus 스택 시작"""
+        """Start complete Milvus stack"""
         print_colored("="*60, Colors.HEADER)
-        print_colored("         Milvus with Podman 시작", Colors.HEADER)
+        print_colored("         Starting Milvus with Podman", Colors.HEADER)
         print_colored("="*60, Colors.HEADER)
         
-        # Podman 머신 시작 (필요시)
+        # Start Podman machine (if needed)
         self.start_machine()
         
-        # 인프라 설정
+        # Infrastructure setup
         self.stop_containers()
         
         if not self.create_network():
@@ -410,96 +410,96 @@ class MilvusPodmanController:
         if not self.create_volumes():
             return False
         
-        # 서비스 시작
+        # Start services
         if not self.start_etcd():
             return False
         
         if not self.start_minio():
             return False
         
-        print_colored("⏳ 의존성 서비스 준비 대기 중...", Colors.WARNING)
+        print_colored("⏳ Waiting for dependency services to be ready...", Colors.WARNING)
         time.sleep(15)
         
         if not self.start_milvus():
             return False
         
-        print_colored("\n⏳ 서비스 준비 완료 대기 중...", Colors.WARNING)
+        print_colored("\n⏳ Waiting for service readiness...", Colors.WARNING)
         time.sleep(20)
         
-        # 최종 상태 확인
+        # Final status check
         self.check_status()
         
         print_colored("\n" + "="*60, Colors.OKGREEN)
-        print_colored("                    🎉 성공! 🎉", Colors.OKGREEN)
+        print_colored("                    🎉 Success! 🎉", Colors.OKGREEN)
         print_colored("="*60, Colors.OKGREEN)
         print_colored(f"🌐 Milvus API:    http://localhost:{self.api_port}", Colors.OKGREEN)
-        print_colored(f"🌐 웹 인터페이스: http://localhost:{self.web_port}", Colors.OKGREEN)
-        print_colored("💾 데이터는 재시작 후에도 유지됩니다", Colors.OKGREEN)
+        print_colored(f"🌐 Web Interface: http://localhost:{self.web_port}", Colors.OKGREEN)
+        print_colored("💾 Data persists after restart", Colors.OKGREEN)
         print_colored("="*60, Colors.OKGREEN)
         
         return True
 
 def start_milvus_server():
-    """Milvus 서버 시작 시도 (Podman 사용)"""
-    print_colored("🚀 Milvus 서버를 시작하려고 시도합니다...", Colors.WARNING)
+    """Attempt to start Milvus server (using Podman)"""
+    print_colored("🚀 Attempting to start Milvus server...", Colors.WARNING)
     
-    # Podman 확인
+    # Check Podman
     podman_available, podman_path = check_podman()
     
     if podman_available:
-        print_colored(f"📦 Podman을 사용하여 Milvus를 시작합니다...", Colors.OKBLUE)
-        print_colored(f"   Podman 경로: {podman_path}", Colors.ENDC)
+        print_colored(f"📦 Starting Milvus using Podman...", Colors.OKBLUE)
+        print_colored(f"   Podman path: {podman_path}", Colors.ENDC)
         
         try:
             controller = MilvusPodmanController(podman_path)
             
             if controller.start_all():
-                # 개선된 서버 시작 대기 및 확인
+                # Enhanced server startup wait and verification
                 if controller.wait_for_milvus_ready():
-                    print_colored("✅ Milvus 서버가 완전히 준비되었습니다!", Colors.OKGREEN)
+                    print_colored("✅ Milvus server is fully ready!", Colors.OKGREEN)
                     return True
                 else:
-                    print_colored("⚠️ Milvus 컨테이너는 실행 중이지만 서비스가 완전히 준비되지 않았습니다.", Colors.WARNING)
+                    print_colored("⚠️ Milvus containers are running but service is not fully ready.", Colors.WARNING)
                     
-                    # 재시작 옵션 제공
-                    choice = input_colored("🔄 Milvus 컨테이너를 재시작해보시겠습니까? (y/n): ")
+                    # Offer restart option
+                    choice = input_colored("🔄 Would you like to restart the Milvus container? (y/n): ")
                     if choice.lower() == 'y':
                         if controller.restart_milvus_container():
-                            return controller.wait_for_milvus_ready(120)  # 2분 추가 대기
+                            return controller.wait_for_milvus_ready(120)  # 2 minute additional wait
                     
-                    print_colored("💡 수동 확인 방법:", Colors.OKBLUE)
-                    print_colored("1. 컨테이너 로그 확인: podman logs milvus-standalone", Colors.ENDC)
-                    print_colored("2. 포트 확인: netstat -an | grep 19530", Colors.ENDC)
-                    print_colored("3. 웹 인터페이스 확인: http://localhost:9091", Colors.ENDC)
-                    print_colored("4. 시간이 지난 후 다시 연결 테스트 시도", Colors.ENDC)
+                    print_colored("💡 Manual verification methods:", Colors.OKBLUE)
+                    print_colored("1. Check container logs: podman logs milvus-standalone", Colors.ENDC)
+                    print_colored("2. Check ports: netstat -an | grep 19530", Colors.ENDC)
+                    print_colored("3. Check web interface: http://localhost:9091", Colors.ENDC)
+                    print_colored("4. Try connection test again after some time", Colors.ENDC)
                     
                     return False
             else:
                 return False
             
         except Exception as e:
-            print_colored(f"❌ Podman을 사용한 Milvus 시작 실패: {e}", Colors.FAIL)
+            print_colored(f"❌ Milvus startup with Podman failed: {e}", Colors.FAIL)
             return False
     else:
-        print_colored("❌ Podman을 찾을 수 없습니다.", Colors.FAIL)
-        print_colored("💡 해결 방법:", Colors.OKBLUE)
-        print_colored("1. Podman을 설치하세요:", Colors.ENDC)
+        print_colored("❌ Podman not found.", Colors.FAIL)
+        print_colored("💡 Solution:", Colors.OKBLUE)
+        print_colored("1. Install Podman:", Colors.ENDC)
         print_colored("   - Windows: https://github.com/containers/podman/blob/main/docs/tutorials/podman-for-windows.md", Colors.ENDC)
         print_colored("   - macOS: brew install podman", Colors.ENDC)
-        print_colored("   - Linux: 배포판별 패키지 매니저 사용", Colors.ENDC)
-        print_colored("2. 또는 Milvus를 직접 설치하세요: https://milvus.io/docs/install_standalone-docker.md", Colors.ENDC)
+        print_colored("   - Linux: Use distribution package manager", Colors.ENDC)
+        print_colored("2. Or install Milvus directly: https://milvus.io/docs/install_standalone-docker.md", Colors.ENDC)
         return False
 
 class MilvusTest:
     def __init__(self):
         self.test_results = {}
-        # 현재 프로젝트 디렉토리 확인
+        # Check current project directory
         self.project_dir = Path(__file__).parent.resolve()
         self.mcp_server_path = self.project_dir / "mcp_server.py"
     
     def test_dependencies(self):
-        """1. 필수 패키지 설치 및 확인"""
-        print_step(1, "필수 패키지 설치 및 확인")
+        """1. Install and check required packages"""
+        print_step(1, "Install and check required packages")
         
         packages = [
             ("mcp", "mcp.server.fastmcp"),
@@ -514,39 +514,39 @@ class MilvusTest:
                 all_installed = False
         
         if all_installed:
-            print_colored("✅ 모든 필수 패키지가 설치되었습니다!", Colors.OKGREEN)
+            print_colored("✅ All required packages are installed!", Colors.OKGREEN)
         else:
-            print_colored("❌ 일부 패키지 설치에 실패했습니다.", Colors.FAIL)
-            print_colored("💡 수동으로 설치해보세요: pip install mcp pymilvus requests numpy", Colors.OKBLUE)
+            print_colored("❌ Some package installations failed.", Colors.FAIL)
+            print_colored("💡 Try manual installation: pip install mcp pymilvus requests numpy", Colors.OKBLUE)
         
         self.test_results["dependencies"] = all_installed
         return all_installed
     
     def test_milvus_connection(self):
-        """2. Milvus 연결 테스트"""
-        print_step(2, "Milvus 연결 테스트")
+        """2. Milvus connection test"""
+        print_step(2, "Milvus connection test")
         
-        # 먼저 서버 상태 확인
+        # First check server status
         if not check_milvus_server():
-            print_colored("❌ Milvus 서버에 연결할 수 없습니다.", Colors.FAIL)
+            print_colored("❌ Cannot connect to Milvus server.", Colors.FAIL)
             
-            choice = input_colored("🔧 Milvus 서버를 자동으로 시작하시겠습니까? (y/n): ")
+            choice = input_colored("🔧 Would you like to automatically start Milvus server? (y/n): ")
             if choice.lower() == 'y':
                 if start_milvus_server():
-                    print_colored("✅ Milvus 서버가 시작되었습니다!", Colors.OKGREEN)
+                    print_colored("✅ Milvus server has been started!", Colors.OKGREEN)
                 else:
-                    print_colored("❌ Milvus 서버 시작에 실패했습니다.", Colors.FAIL)
+                    print_colored("❌ Milvus server startup failed.", Colors.FAIL)
                     self.test_results["milvus_connection"] = False
                     return False
             else:
-                print_colored("💡 Milvus 서버를 수동으로 시작해주세요.", Colors.OKBLUE)
+                print_colored("💡 Please start Milvus server manually.", Colors.OKBLUE)
                 self.test_results["milvus_connection"] = False
                 return False
         
         try:
             from pymilvus import connections, utility
             
-            # Milvus 서버 연결
+            # Connect to Milvus server
             connections.connect(
                 alias="default",
                 host='localhost',
@@ -554,13 +554,13 @@ class MilvusTest:
             )
             
             if connections.has_connection("default"):
-                print_colored("✅ Milvus 연결 성공!", Colors.OKGREEN)
+                print_colored("✅ Milvus connection successful!", Colors.OKGREEN)
                 
-                # 서버 정보 출력
+                # Display server info
                 try:
-                    print_colored(f"📊 Milvus 서버 정보:", Colors.OKBLUE)
+                    print_colored(f"📊 Milvus server info:", Colors.OKBLUE)
                     collections = utility.list_collections()
-                    print_colored(f"   기존 컬렉션 수: {len(collections)}", Colors.ENDC)
+                    print_colored(f"   Existing collections: {len(collections)}", Colors.ENDC)
                     if collections:
                         for col in collections:
                             print_colored(f"   - {col}", Colors.ENDC)
@@ -570,26 +570,26 @@ class MilvusTest:
                 self.test_results["milvus_connection"] = True
                 return True
             else:
-                print_colored("❌ Milvus 연결 실패", Colors.FAIL)
+                print_colored("❌ Milvus connection failed", Colors.FAIL)
                 self.test_results["milvus_connection"] = False
                 return False
                 
         except Exception as e:
-            print_colored(f"❌ Milvus 연결 오류: {e}", Colors.FAIL)
-            print_colored("💡 해결 방법:", Colors.OKBLUE)
-            print_colored("1. Milvus 서버가 실행 중인지 확인하세요", Colors.ENDC)
-            print_colored("2. 포트 19530이 사용 가능한지 확인하세요", Colors.ENDC)
-            print_colored("3. 방화벽 설정을 확인하세요", Colors.ENDC)
+            print_colored(f"❌ Milvus connection error: {e}", Colors.FAIL)
+            print_colored("💡 Solution:", Colors.OKBLUE)
+            print_colored("1. Check if Milvus server is running", Colors.ENDC)
+            print_colored("2. Check if port 19530 is available", Colors.ENDC)
+            print_colored("3. Check firewall settings", Colors.ENDC)
             
             self.test_results["milvus_connection"] = False
             return False
     
     def test_collection_operations(self):
-        """3. 컬렉션 생성 및 조작 테스트"""
-        print_step(3, "컬렉션 생성 및 조작 테스트")
+        """3. Collection creation and manipulation test"""
+        print_step(3, "Collection creation and manipulation test")
         
         if not self.test_results.get("milvus_connection", False):
-            print_colored("⚠️ Milvus 연결이 필요합니다. 먼저 2번 테스트를 실행하세요.", Colors.WARNING)
+            print_colored("⚠️ Milvus connection required. Please run test 2 first.", Colors.WARNING)
             return False
         
         try:
@@ -598,17 +598,17 @@ class MilvusTest:
             
             collection_name = "test_obsidian_notes"
             
-            # 기존 컬렉션이 있다면 삭제
+            # Drop existing collection if exists
             if utility.has_collection(collection_name):
-                choice = input_colored(f"🗑️ 기존 테스트 컬렉션 '{collection_name}'을 삭제하시겠습니까? (y/n): ")
+                choice = input_colored(f"🗑️ Delete existing test collection '{collection_name}'? (y/n): ")
                 if choice.lower() == 'y':
                     utility.drop_collection(collection_name)
-                    print_colored(f"✅ 기존 컬렉션 삭제 완료", Colors.OKGREEN)
+                    print_colored(f"✅ Existing collection deleted", Colors.OKGREEN)
                 else:
                     collection_name = f"test_obsidian_notes_{int(time.time())}"
-                    print_colored(f"📝 새로운 컬렉션 이름 사용: {collection_name}", Colors.OKBLUE)
+                    print_colored(f"📝 Using new collection name: {collection_name}", Colors.OKBLUE)
             
-            # 필드 스키마 정의
+            # Define field schema
             fields = [
                 FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
                 FieldSchema(name="file_path", dtype=DataType.VARCHAR, max_length=500),
@@ -616,18 +616,18 @@ class MilvusTest:
                 FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=384)
             ]
             
-            # 컬렉션 스키마 생성
+            # Create collection schema
             schema = CollectionSchema(fields, f"Test collection for Obsidian notes")
             
-            # 컬렉션 생성
+            # Create collection
             collection = Collection(collection_name, schema)
-            print_colored(f"✅ 컬렉션 '{collection_name}' 생성 성공", Colors.OKGREEN)
+            print_colored(f"✅ Collection '{collection_name}' created successfully", Colors.OKGREEN)
             
-            # 테스트 데이터 생성
+            # Generate test data
             test_data = [
-                ["test.md", "# 테스트 문서\n\n이것은 테스트 문서입니다.", np.random.rand(384).tolist()],
-                ["example.md", "# 예제 문서\n\n예제 내용입니다.", np.random.rand(384).tolist()],
-                ["sample.md", "# 샘플 노트\n\n샘플 내용입니다.", np.random.rand(384).tolist()]
+                ["test.md", "# Test Document\n\nThis is a test document.", np.random.rand(384).tolist()],
+                ["example.md", "# Example Document\n\nExample content.", np.random.rand(384).tolist()],
+                ["sample.md", "# Sample Note\n\nSample content.", np.random.rand(384).tolist()]
             ]
             
             entities = [
@@ -636,24 +636,24 @@ class MilvusTest:
                 [item[2] for item in test_data]   # embedding
             ]
             
-            # 데이터 삽입
+            # Insert data
             insert_result = collection.insert(entities)
-            print_colored(f"✅ 테스트 데이터 삽입 성공: {len(insert_result.primary_keys)}개 항목", Colors.OKGREEN)
+            print_colored(f"✅ Test data insertion successful: {len(insert_result.primary_keys)} items", Colors.OKGREEN)
             
-            # 인덱스 생성
+            # Create index
             index_params = {
                 "metric_type": "L2",
                 "index_type": "IVF_FLAT",
                 "params": {"nlist": 128}
             }
             collection.create_index("embedding", index_params)
-            print_colored("✅ 벡터 인덱스 생성 성공", Colors.OKGREEN)
+            print_colored("✅ Vector index creation successful", Colors.OKGREEN)
             
-            # 컬렉션 로드
+            # Load collection
             collection.load()
-            print_colored("✅ 컬렉션 메모리 로드 성공", Colors.OKGREEN)
+            print_colored("✅ Collection memory load successful", Colors.OKGREEN)
             
-            # 검색 테스트
+            # Search test
             search_vectors = [np.random.rand(384).tolist()]
             search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
             
@@ -665,46 +665,46 @@ class MilvusTest:
                 output_fields=["file_path", "content"]
             )
             
-            print_colored(f"✅ 검색 테스트 성공: {len(results[0])}개 결과", Colors.OKGREEN)
+            print_colored(f"✅ Search test successful: {len(results[0])} results", Colors.OKGREEN)
             for i, hit in enumerate(results[0]):
-                print_colored(f"   {i+1}. {hit.entity.get('file_path')}: 거리 {hit.distance:.4f}", Colors.ENDC)
+                print_colored(f"   {i+1}. {hit.entity.get('file_path')}: distance {hit.distance:.4f}", Colors.ENDC)
             
             self.test_results["collection_operations"] = True
             return True
             
         except Exception as e:
-            print_colored(f"❌ 컬렉션 조작 오류: {e}", Colors.FAIL)
-            print_colored("💡 해결 방법:", Colors.OKBLUE)
-            print_colored("1. Milvus 서버 메모리가 충분한지 확인하세요", Colors.ENDC)
-            print_colored("2. 컬렉션 이름이 유효한지 확인하세요", Colors.ENDC)
-            print_colored("3. 데이터 타입과 스키마가 올바른지 확인하세요", Colors.ENDC)
+            print_colored(f"❌ Collection operation error: {e}", Colors.FAIL)
+            print_colored("💡 Solution:", Colors.OKBLUE)
+            print_colored("1. Check if Milvus server has sufficient memory", Colors.ENDC)
+            print_colored("2. Check if collection name is valid", Colors.ENDC)
+            print_colored("3. Check if data types and schema are correct", Colors.ENDC)
             
             self.test_results["collection_operations"] = False
             return False
     
     def test_mcp_server_file(self):
-        """4. 로컬 MCP 서버 파일 테스트"""
-        print_step(4, "로컬 MCP 서버 파일 테스트")
+        """4. Local MCP server file test"""
+        print_step(4, "Local MCP server file test")
         
-        # 로컬 MCP 서버 파일 확인
+        # Check local MCP server file
         if not self.mcp_server_path.exists():
-            print_colored(f"❌ MCP 서버 파일을 찾을 수 없습니다: {self.mcp_server_path}", Colors.FAIL)
-            print_colored("💡 mcp_server.py 파일이 프로젝트 디렉토리에 있는지 확인하세요.", Colors.OKBLUE)
+            print_colored(f"❌ MCP server file not found: {self.mcp_server_path}", Colors.FAIL)
+            print_colored("💡 Check if mcp_server.py file exists in the project directory.", Colors.OKBLUE)
             self.test_results["mcp_server_file"] = False
             return False
         
-        print_colored(f"✅ MCP 서버 파일 발견: {self.mcp_server_path}", Colors.OKGREEN)
+        print_colored(f"✅ MCP server file found: {self.mcp_server_path}", Colors.OKGREEN)
         
-        # 파일 구문 검사
+        # File syntax check
         try:
             with open(self.mcp_server_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # 기본 구문 검사
+            # Basic syntax check
             compile(content, str(self.mcp_server_path), 'exec')
-            print_colored("✅ MCP 서버 파일 구문 검사 통과", Colors.OKGREEN)
+            print_colored("✅ MCP server file syntax check passed", Colors.OKGREEN)
             
-            # 중요한 임포트와 함수 확인
+            # Check important imports and functions
             required_elements = [
                 "from mcp.server.fastmcp import FastMCP",
                 "@mcp.tool()",
@@ -718,35 +718,35 @@ class MilvusTest:
                     missing_elements.append(element)
             
             if missing_elements:
-                print_colored("⚠️ 일부 필수 요소가 누락되었습니다:", Colors.WARNING)
+                print_colored("⚠️ Some required elements are missing:", Colors.WARNING)
                 for missing in missing_elements:
                     print_colored(f"   - {missing}", Colors.WARNING)
             else:
-                print_colored("✅ 모든 필수 MCP 요소가 포함되어 있습니다", Colors.OKGREEN)
+                print_colored("✅ All required MCP elements are included", Colors.OKGREEN)
             
             self.test_results["mcp_server_file"] = True
             return True
             
         except SyntaxError as e:
-            print_colored(f"❌ MCP 서버 파일 구문 오류: {e}", Colors.FAIL)
-            print_colored(f"   라인 {e.lineno}: {e.text}", Colors.FAIL)
+            print_colored(f"❌ MCP server file syntax error: {e}", Colors.FAIL)
+            print_colored(f"   Line {e.lineno}: {e.text}", Colors.FAIL)
             self.test_results["mcp_server_file"] = False
             return False
         except Exception as e:
-            print_colored(f"❌ MCP 서버 파일 확인 오류: {e}", Colors.FAIL)
+            print_colored(f"❌ MCP server file check error: {e}", Colors.FAIL)
             self.test_results["mcp_server_file"] = False
             return False
     
     def test_claude_desktop_config(self):
-        """5. Claude Desktop 설정 파일 생성 (로컬 MCP 서버 사용)"""
-        print_step(5, "Claude Desktop 설정 파일 생성")
+        """5. Generate Claude Desktop configuration file (using local MCP server)"""
+        print_step(5, "Generate Claude Desktop configuration file")
         
-        # MCP 서버 파일이 존재하는지 확인
+        # Check if MCP server file exists
         if not self.test_results.get("mcp_server_file", False):
-            print_colored("⚠️ 먼저 4번 테스트(MCP 서버 파일 테스트)를 실행하세요.", Colors.WARNING)
+            print_colored("⚠️ Please run test 4 (MCP server file test) first.", Colors.WARNING)
             return False
         
-        # 설정 파일 경로 결정
+        # Determine config file path
         if os.name == 'nt':  # Windows
             config_dir = Path(os.environ.get('APPDATA', '')) / 'Claude'
         else:  # macOS/Linux
@@ -754,12 +754,12 @@ class MilvusTest:
         
         config_file = config_dir / 'claude_desktop_config.json'
         
-        print_colored(f"📍 설정 파일 경로: {config_file}", Colors.OKBLUE)
+        print_colored(f"📍 Config file path: {config_file}", Colors.OKBLUE)
         
-        # 설정 디렉토리가 없으면 생성
+        # Create config directory if it doesn't exist
         config_dir.mkdir(parents=True, exist_ok=True)
         
-        # 기존 설정 읽기
+        # Read existing config
         existing_config = {"mcpServers": {}}
         
         if config_file.exists():
@@ -767,53 +767,53 @@ class MilvusTest:
                 with open(config_file, 'r', encoding='utf-8') as f:
                     existing_config = json.load(f)
                 
-                # mcpServers 키가 없으면 생성
+                # Create mcpServers key if it doesn't exist
                 if 'mcpServers' not in existing_config:
                     existing_config['mcpServers'] = {}
                 
-                print_colored(f"✅ 기존 설정 로드. 현재 MCP 서버: {len(existing_config['mcpServers'])}개", Colors.OKGREEN)
+                print_colored(f"✅ Existing config loaded. Current MCP servers: {len(existing_config['mcpServers'])}", Colors.OKGREEN)
                 
-                # 기존 서버 목록 출력
+                # Display existing server list
                 if existing_config['mcpServers']:
-                    print_colored("📋 보존되는 기존 MCP 서버:", Colors.OKBLUE)
+                    print_colored("📋 Preserving existing MCP servers:", Colors.OKBLUE)
                     for server_name in existing_config['mcpServers'].keys():
                         print_colored(f"   • {server_name}", Colors.ENDC)
                 
-                # 백업 생성 확인
-                choice = input_colored("💾 기존 설정을 백업하시겠습니까? (y/n): ")
+                # Check backup creation
+                choice = input_colored("💾 Would you like to backup existing config? (y/n): ")
                 if choice.lower() == 'y':
                     backup_file = config_dir / f'claude_desktop_config_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
                     shutil.copy2(config_file, backup_file)
-                    print_colored(f"📋 백업 생성: {backup_file}", Colors.OKGREEN)
+                    print_colored(f"📋 Backup created: {backup_file}", Colors.OKGREEN)
                 
             except Exception as e:
-                print_colored(f"⚠️ 기존 설정 읽기 오류: {e}", Colors.WARNING)
-                print_colored("새로운 설정으로 시작합니다.", Colors.OKBLUE)
+                print_colored(f"⚠️ Error reading existing config: {e}", Colors.WARNING)
+                print_colored("Starting with new config.", Colors.OKBLUE)
                 existing_config = {"mcpServers": {}}
         else:
-            print_colored("📝 새로운 설정 파일을 생성합니다.", Colors.OKBLUE)
+            print_colored("📝 Creating new config file.", Colors.OKBLUE)
         
-        # 잘못된 기존 설정 제거 확인
+        # Check for problematic existing configs
         problematic_servers = []
         for server_name, server_config in existing_config['mcpServers'].items():
             if server_name == "milvus-obsidian" and server_config.get("args", []) == ["-m", "milvus_mcp.server"]:
                 problematic_servers.append(server_name)
         
         if problematic_servers:
-            print_colored("🔧 잘못된 기존 Milvus 설정을 발견했습니다:", Colors.WARNING)
+            print_colored("🔧 Found incorrect existing Milvus config:", Colors.WARNING)
             for server in problematic_servers:
-                print_colored(f"   - {server}: python -m milvus_mcp.server (잘못된 모듈 경로)", Colors.WARNING)
+                print_colored(f"   - {server}: python -m milvus_mcp.server (incorrect module path)", Colors.WARNING)
             
-            choice = input_colored("🗑️ 이 설정들을 제거하고 새로운 설정으로 교체하시겠습니까? (y/n): ")
+            choice = input_colored("🗑️ Remove these configs and replace with new correct config? (y/n): ")
             if choice.lower() == 'y':
                 for server in problematic_servers:
                     del existing_config['mcpServers'][server]
-                    print_colored(f"🗑️ 제거됨: {server}", Colors.OKGREEN)
+                    print_colored(f"🗑️ Removed: {server}", Colors.OKGREEN)
         
-        # 올바른 Milvus MCP 서버 설정
+        # Correct Milvus MCP server config
         milvus_server_name = "obsidian-milvus"
         
-        # Windows 경로를 JSON에서 사용할 수 있도록 이스케이프 처리
+        # Escape Windows paths for JSON use
         escaped_mcp_path = str(self.mcp_server_path).replace('\\', '\\\\')
         escaped_project_path = str(self.project_dir).replace('\\', '\\\\')
         
@@ -828,79 +828,79 @@ class MilvusTest:
             }
         }
         
-        # 설정 옵션 제공
+        # Provide config options
         if milvus_server_name in existing_config['mcpServers']:
-            print_colored(f"⚠️ '{milvus_server_name}' 서버가 이미 존재합니다.", Colors.WARNING)
-            choice = input_colored("🔄 기존 설정을 업데이트하시겠습니까? (y/n): ")
+            print_colored(f"⚠️ '{milvus_server_name}' server already exists.", Colors.WARNING)
+            choice = input_colored("🔄 Update existing config? (y/n): ")
             if choice.lower() != 'y':
-                print_colored("⏭️ Milvus 서버 설정을 건너뜁니다.", Colors.WARNING)
+                print_colored("⏭️ Skipping Milvus server config.", Colors.WARNING)
                 self.test_results["claude_desktop_config"] = True
                 return True
-            print_colored(f"🔄 '{milvus_server_name}' 서버 설정 업데이트", Colors.OKGREEN)
+            print_colored(f"🔄 Updating '{milvus_server_name}' server config", Colors.OKGREEN)
         else:
-            print_colored(f"➕ '{milvus_server_name}' 서버 추가", Colors.OKGREEN)
+            print_colored(f"➕ Adding '{milvus_server_name}' server", Colors.OKGREEN)
         
         existing_config['mcpServers'][milvus_server_name] = milvus_config
         
-        # 설정 저장
+        # Save config
         try:
             with open(config_file, 'w', encoding='utf-8') as f:
                 json.dump(existing_config, f, indent=2, ensure_ascii=False)
             
-            print_colored(f"✅ Claude Desktop 설정 완료!", Colors.OKGREEN)
-            print_colored(f"📋 총 MCP 서버: {len(existing_config['mcpServers'])}개", Colors.OKGREEN)
+            print_colored(f"✅ Claude Desktop configuration complete!", Colors.OKGREEN)
+            print_colored(f"📋 Total MCP servers: {len(existing_config['mcpServers'])}", Colors.OKGREEN)
             
-            # 최종 서버 목록
-            print_colored("\n📋 설정된 모든 MCP 서버:", Colors.OKBLUE)
+            # Final server list
+            print_colored("\n📋 All configured MCP servers:", Colors.OKBLUE)
             for server_name in existing_config['mcpServers'].keys():
-                marker = " [새로 추가/업데이트]" if server_name == milvus_server_name else ""
+                marker = " [newly added/updated]" if server_name == milvus_server_name else ""
                 print_colored(f"   • {server_name}{marker}", Colors.ENDC)
             
-            # 설정 세부 정보 표시
-            print_colored(f"\n🔧 '{milvus_server_name}' 서버 설정:", Colors.OKBLUE)
-            print_colored(f"   명령어: python", Colors.ENDC)
-            print_colored(f"   스크립트: {self.mcp_server_path}", Colors.ENDC)
-            print_colored(f"   프로젝트 경로: {self.project_dir}", Colors.ENDC)
-            print_colored(f"   Milvus 호스트: localhost:19530", Colors.ENDC)
+            # Display config details
+            print_colored(f"\n🔧 '{milvus_server_name}' server config:", Colors.OKBLUE)
+            print_colored(f"   Command: python", Colors.ENDC)
+            print_colored(f"   Script: {self.mcp_server_path}", Colors.ENDC)
+            print_colored(f"   Project path: {self.project_dir}", Colors.ENDC)
+            print_colored(f"   Milvus host: localhost:19530", Colors.ENDC)
             
-            print_colored("\n🎉 Claude Desktop을 재시작하여 변경사항을 적용하세요!", Colors.OKGREEN)
+            print_colored("\n🎉 Restart Claude Desktop to apply changes!", Colors.OKGREEN)
             
             self.test_results["claude_desktop_config"] = True
             return True
             
         except Exception as e:
-            print_colored(f"❌ 설정 저장 오류: {e}", Colors.FAIL)
-            print_colored("💡 해결 방법:", Colors.OKBLUE)
-            print_colored("1. Claude Desktop이 실행 중이 아닌지 확인하세요", Colors.ENDC)
-            print_colored("2. 설정 디렉토리에 쓰기 권한이 있는지 확인하세요", Colors.ENDC)
-            print_colored("3. 디스크 공간이 충분한지 확인하세요", Colors.ENDC)
+            print_colored(f"❌ Config save error: {e}", Colors.FAIL)
+            print_colored("💡 Solution:", Colors.OKBLUE)
+            print_colored("1. Check if Claude Desktop is not running", Colors.ENDC)
+            print_colored("2. Check if you have write permissions to config directory", Colors.ENDC)
+            print_colored("3. Check if sufficient disk space is available", Colors.ENDC)
             
             self.test_results["claude_desktop_config"] = False
             return False
 
 def show_menu():
-    """메인 메뉴 표시"""
-    print_header("Milvus MCP 인터랙티브 테스트")
-    print_colored("다음 중 실행할 테스트를 선택하세요:", Colors.OKBLUE)
-    print_colored("1. 필수 패키지 설치 및 확인", Colors.ENDC)
-    print_colored("2. Milvus 연결 테스트", Colors.ENDC)  
-    print_colored("3. 컬렉션 생성 및 조작 테스트", Colors.ENDC)
-    print_colored("4. 로컬 MCP 서버 파일 테스트", Colors.ENDC)
-    print_colored("5. Claude Desktop 설정 파일 생성", Colors.ENDC)
-    print_colored("6. 전체 결과 보기", Colors.ENDC)
-    print_colored("7. 전체 테스트 자동 실행", Colors.ENDC)
-    print_colored("0. 종료", Colors.ENDC)
+    """Display main menu"""
+    print_header("Milvus MCP Interactive Test")
+    print_colored("Select test to run:", Colors.OKBLUE)
+    print_colored("1. Install and check required packages", Colors.ENDC)
+    print_colored("2. Milvus connection test", Colors.ENDC)  
+    print_colored("3. Collection creation and manipulation test", Colors.ENDC)
+    print_colored("4. Local MCP server file test", Colors.ENDC)
+    print_colored("5. Generate Claude Desktop configuration file", Colors.ENDC)
+    print_colored("6. View all results", Colors.ENDC)
+    print_colored("7. Run all tests automatically", Colors.ENDC)
+    print_colored("0. Exit", Colors.ENDC)
 
 def show_results(test_results):
-    """테스트 결과 표시"""
-    print_header("테스트 결과 요약")
+    """Display test results"""
+    print_header("Test Results Summary")
     
     tests = [
-        ("필수 패키지", "dependencies"),
-        ("Milvus 연결", "milvus_connection"),
-        ("컬렉션 조작", "collection_operations"),
-        ("MCP 서버 파일", "mcp_server_file"),
-        ("Claude Desktop 설정", "claude_desktop_config")
+        ("Required packages", "dependencies"),
+        ("Milvus connection", "milvus_connection"),
+        ("Collection operations", "collection_operations"),
+        ("MCP server file", "mcp_server_file"),
+        ("Claude Desktop config", "claude_desktop_config")
     ]
     
     passed = 0
@@ -909,55 +909,55 @@ def show_results(test_results):
     for test_name, test_key in tests:
         result = test_results.get(test_key, None)
         if result is True:
-            status = "✅ 통과"
+            status = "✅ Passed"
             passed += 1
         elif result is False:
-            status = "❌ 실패"
+            status = "❌ Failed"
         else:
-            status = "⏸️ 미실행"
+            status = "⏸️ Not run"
         
         print_colored(f"{test_name:<20} {status}", Colors.ENDC)
     
-    print_colored(f"\n총 {passed}/{total}개 테스트 통과", Colors.OKBLUE)
+    print_colored(f"\nTotal {passed}/{total} tests passed", Colors.OKBLUE)
     
     if passed == total:
-        print_colored("\n🎉 모든 테스트가 성공했습니다!", Colors.OKGREEN)
-        print_colored("Claude Desktop을 재시작하고 Milvus 기능을 사용해보세요!", Colors.OKGREEN)
+        print_colored("\n🎉 All tests successful!", Colors.OKGREEN)
+        print_colored("Restart Claude Desktop and try using Milvus features!", Colors.OKGREEN)
     elif passed > 0:
-        print_colored(f"\n⚠️ {total - passed}개 테스트가 아직 완료되지 않았습니다.", Colors.WARNING)
+        print_colored(f"\n⚠️ {total - passed} tests not yet completed.", Colors.WARNING)
     else:
-        print_colored("\n❌ 아직 실행된 테스트가 없습니다.", Colors.WARNING)
+        print_colored("\n❌ No tests have been run yet.", Colors.WARNING)
 
 def run_all_tests(tester):
-    """전체 테스트 자동 실행"""
-    print_header("전체 테스트 자동 실행")
+    """Run all tests automatically"""
+    print_header("Run All Tests Automatically")
     
     tests = [
-        ("1. 필수 패키지 설치", tester.test_dependencies),
-        ("2. Milvus 연결 테스트", tester.test_milvus_connection),
-        ("3. 컬렉션 조작 테스트", tester.test_collection_operations),
-        ("4. MCP 서버 파일 테스트", tester.test_mcp_server_file),
-        ("5. Claude Desktop 설정", tester.test_claude_desktop_config)
+        ("1. Install required packages", tester.test_dependencies),
+        ("2. Milvus connection test", tester.test_milvus_connection),
+        ("3. Collection operations test", tester.test_collection_operations),
+        ("4. MCP server file test", tester.test_mcp_server_file),
+        ("5. Claude Desktop config", tester.test_claude_desktop_config)
     ]
     
     for test_name, test_func in tests:
-        print_colored(f"\n▶️ {test_name} 실행 중...", Colors.OKBLUE)
+        print_colored(f"\n▶️ Running {test_name}...", Colors.OKBLUE)
         test_func()
         
-        # 각 테스트 후 잠시 대기
+        # Brief wait after each test
         time.sleep(1)
     
     show_results(tester.test_results)
 
 def main():
-    """메인 함수"""
+    """Main function"""
     tester = MilvusTest()
     
-    print_header("Obsidian-Milvus FastMCP 테스트 도구")
-    print_colored(f"📂 프로젝트 디렉토리: {tester.project_dir}", Colors.OKBLUE)
-    print_colored(f"📄 MCP 서버 파일: {tester.mcp_server_path}", Colors.OKBLUE)
+    print_header("Obsidian-Milvus FastMCP Test Tool")
+    print_colored(f"📂 Project directory: {tester.project_dir}", Colors.OKBLUE)
+    print_colored(f"📄 MCP server file: {tester.mcp_server_path}", Colors.OKBLUE)
     
-    # 프로젝트 파일들이 존재하는지 미리 확인
+    # Pre-check if project files exist
     required_files = ['mcp_server.py', 'config.py']
     missing_files = []
     for file in required_files:
@@ -965,26 +965,26 @@ def main():
             missing_files.append(file)
     
     if missing_files:
-        print_colored(f"❌ 필수 파일이 누락되었습니다: {', '.join(missing_files)}", Colors.FAIL)
-        print_colored(f"현재 디렉토리가 올바른 프로젝트 폴더인지 확인해주세요.", Colors.WARNING)
-        print_colored(f"프로젝트 폴더에는 다음 파일들이 있어야 합니다:", Colors.OKBLUE)
+        print_colored(f"❌ Required files missing: {', '.join(missing_files)}", Colors.FAIL)
+        print_colored(f"Check if current directory is the correct project folder.", Colors.WARNING)
+        print_colored(f"Project folder should contain these files:", Colors.OKBLUE)
         for file in required_files:
             status = "✅" if file not in missing_files else "❌"
             print_colored(f"   {status} {file}", Colors.ENDC)
-        print_colored("\n올바른 프로젝트 폴더에서 스크립트를 실행해주세요.", Colors.WARNING)
-        input_colored("\n계속하려면 Enter를 누르세요...")
+        print_colored("\nPlease run script from correct project folder.", Colors.WARNING)
+        input_colored("\nPress Enter to continue...")
         return
     
     while True:
         show_menu()
         
-        choice = input_colored("\n선택하세요 (0-7): ")
+        choice = input_colored("\nSelect (0-7): ")
         
         try:
             choice = int(choice)
             
             if choice == 0:
-                print_colored("👋 프로그램을 종료합니다.", Colors.OKGREEN)
+                print_colored("👋 Exiting program.", Colors.OKGREEN)
                 break
             elif choice == 1:
                 tester.test_dependencies()
@@ -1001,18 +1001,18 @@ def main():
             elif choice == 7:
                 run_all_tests(tester)
             else:
-                print_colored("❌ 잘못된 선택입니다. 0-7 사이의 숫자를 입력하세요.", Colors.FAIL)
+                print_colored("❌ Invalid selection. Please enter a number between 0-7.", Colors.FAIL)
         
         except ValueError:
-            print_colored("❌ 숫자를 입력해주세요.", Colors.FAIL)
+            print_colored("❌ Please enter a number.", Colors.FAIL)
         except KeyboardInterrupt:
-            print_colored("\n\n⏹️ 사용자에 의해 중단되었습니다.", Colors.WARNING)
+            print_colored("\n\n⏹️ Interrupted by user.", Colors.WARNING)
             break
         except Exception as e:
-            print_colored(f"\n❌ 예상치 못한 오류: {e}", Colors.FAIL)
+            print_colored(f"\n❌ Unexpected error: {e}", Colors.FAIL)
         
-        # 다음 선택을 위한 대기
-        input_colored("\n계속하려면 Enter를 누르세요...")
+        # Wait for next selection
+        input_colored("\nPress Enter to continue...")
 
 if __name__ == "__main__":
     main()
