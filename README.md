@@ -43,26 +43,6 @@
 - **Multilingual Support**: Advanced embedding models for global language support
 - **Container-based Deployment**: Reliable Podman-based Milvus deployment
 
-## 🚀 Quick Start
-
-### 1. Edit Configuration
-Open `config.py` and modify the vault path:
-
-```python
-# 🗂️ Obsidian Vault Path (REQUIRED!)
-# Change the path below to your Obsidian vault path
-OBSIDIAN_VAULT_PATH = "C:\\Users\\YourName\\Documents\\My Obsidian Vault"  # ← Change this!
-```
-
-### 2. Verify Setup
-```bash
-python config.py
-```
-
-### 3. Run the Program
-```bash
-python main.py
-```
 
 ### 4. Start MCP Server
 From the menu, select `1. Start MCP Server`
@@ -80,7 +60,7 @@ From the menu, select `1. Start MCP Server`
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/jayjeo/obsidian-milvus-FastMCP
    cd obsidian-milvus-fastmcp
    ```
 
