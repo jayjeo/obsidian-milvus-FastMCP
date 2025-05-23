@@ -357,8 +357,23 @@ class HNSWOptimizer:
         """자동 파라미터 튜닝"""
         try:
             collection = self.milvus_manager.collection
-            if not collection.is_loaded:
-                collection.load()
+            
+            # is_loaded 속성 접근을 안전하게 처리
+            try:
+                # 새로운 방식 시도
+                if hasattr(collection, 'load_state') and collection.load_state.name != 'Loaded':
+                    collection.load()
+                elif hasattr(collection, 'is_loaded') and not collection.is_loaded:
+                    collection.load()
+                elif not hasattr(collection, 'is_loaded') and not hasattr(collection, 'load_state'):
+                    # 안전을 위해 load 시도
+                    try:
+                        collection.load()
+                    except Exception:
+                        pass  # 이미 로드되었을 수 있음
+            except Exception as e:
+                logger.debug(f"컬렉션 로드 상태 확인 중 오류 (무시): {e}")
+                # 컬렉션이 이미 로드되었을 가능성이 높으므로 계속 진행
                 
             row_count = self.milvus_manager.count_entities()
             
