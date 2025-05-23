@@ -53,6 +53,28 @@ def install_package(package_name, import_name=None):
         __import__(import_name)
         print_colored(f"✅ {package_name} already installed", Colors.OKGREEN)
         return True
+    
+    def show_data_info(self):
+        """데이터 저장 정보 표시"""
+        print_colored("
+💾 데이터 저장 정보:", Colors.OKBLUE)
+        print_colored(f"📂 베이스 경로: {self.data_base_path}", Colors.ENDC)
+        
+        total_size = 0
+        for service, path in self.data_paths.items():
+            if path.exists():
+                # 디렉토리 크기 계산
+                try:
+                    size = sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
+                    size_mb = size / (1024 * 1024)
+                    total_size += size_mb
+                    print_colored(f"  📁 {service}: {path} ({size_mb:.1f}MB)", Colors.ENDC)
+                except:
+                    print_colored(f"  📁 {service}: {path} (크기 계산 실패)", Colors.ENDC)
+            else:
+                print_colored(f"  📁 {service}: {path} (비어있음)", Colors.ENDC)
+        
+        print_colored(f"📊 총 데이터 크기: {total_size:.1f}MB", Colors.OKGREEN)
     except ImportError:
         print_colored(f"⚠️ {package_name} package not found. Attempting installation...", Colors.WARNING)
         
@@ -129,16 +151,29 @@ def check_podman():
     return False, None
 
 class MilvusPodmanController:
-    """Milvus controller using Podman"""
+    """Safe Milvus controller - 데이터 보존 중심"""
     
     def __init__(self, podman_path):
         self.podman_path = podman_path
         self.network = "milvus-network"
-        self.volumes = {
-            "etcd": "milvus-etcd-vol",
-            "minio": "milvus-minio-vol", 
-            "milvus": "milvus-data-vol"
+        
+        # 프로젝트 디렉토리 내에 안전한 저장소 만들기
+        self.project_dir = Path(__file__).parent.resolve()
+        self.data_base_path = self.project_dir / "milvus_persistent_data"
+        
+        # 각 서비스별 데이터 경로 (절대 경로 사용)
+        self.data_paths = {
+            "etcd": self.data_base_path / "etcd_data",
+            "minio": self.data_base_path / "minio_data",
+            "milvus": self.data_base_path / "milvus_data"
         }
+        
+        # 기존 데이터 위치도 확인
+        self.legacy_data_paths = [
+            Path("G:/JJ Dropbox/J J/PythonWorks/milvus/obsidian-milvus-openwebui/EmbeddingResult"),
+            self.project_dir / "EmbeddingResult"
+        ]
+        
         self.images = {
             "etcd": "quay.io/coreos/etcd:v3.5.5",
             "minio": "minio/minio:RELEASE.2023-03-20T20-16-18Z",
@@ -186,37 +221,36 @@ class MilvusPodmanController:
             print_colored("✅ Network already exists", Colors.OKGREEN)
         return True
     
-    def create_volumes(self):
-        """Create volumes"""
-        print_colored("💾 Creating persistent volumes...", Colors.OKBLUE)
-        for name, volume in self.volumes.items():
-            success, _, _ = self.run_command([self.podman_path, "volume", "exists", volume])
-            if not success:
-                success, _, _ = self.run_command([self.podman_path, "volume", "create", volume])
-                if success:
-                    print_colored(f"  ✅ Volume {volume} creation complete", Colors.OKGREEN)
-                else:
-                    print_colored(f"  ❌ Volume {volume} creation failed", Colors.FAIL)
-                    return False
-            else:
-                print_colored(f"  ✅ Volume {volume} already exists", Colors.OKGREEN)
-        return True
-    
+
     def stop_containers(self):
-        """Clean up existing containers"""
-        print_colored("🧹 Cleaning up existing containers...", Colors.OKBLUE)
+        """기존 컴테이너 정리 (데이터는 보존)"""
+        print_colored("🧹 기존 컴테이너 정리 중...", Colors.OKBLUE)
         containers = ["milvus-standalone", "milvus-minio", "milvus-etcd"]
+        
         for container in containers:
-            self.run_command([self.podman_path, "stop", container])
-            self.run_command([self.podman_path, "rm", container])
+            # 컴테이너 중지
+            success, _, _ = self.run_command([self.podman_path, "stop", container])
+            if success:
+                print_colored(f"  ✅ {container} 중지됨", Colors.OKGREEN)
+            
+            # 컴테이너 삭제 (볼륨은 보존)
+            success, _, _ = self.run_command([self.podman_path, "rm", container])
+            if success:
+                print_colored(f"  ✅ {container} 삭제됨", Colors.OKGREEN)
+        
+        print_colored("💡 데이터는 안전하게 보존됩니다!", Colors.OKGREEN)
     
     def start_etcd(self):
-        """Start etcd container"""
-        print_colored("[1/3] 📊 Starting etcd...", Colors.OKBLUE)
+        """Start etcd container with persistent data"""
+        print_colored("[1/3] 📊 etcd 시작 중...", Colors.OKBLUE)
+        
+        # 절대 경로로 변환
+        etcd_data_path = str(self.data_paths["etcd"].resolve())
+        
         cmd = [
             self.podman_path, "run", "-d", "--name", "milvus-etcd", 
             "--network", self.network,
-            "-v", f"{self.volumes['etcd']}:/etcd",
+            "-v", f"{etcd_data_path}:/etcd",
             "-e", "ETCD_AUTO_COMPACTION_MODE=revision",
             "-e", "ETCD_AUTO_COMPACTION_RETENTION=1000", 
             "-e", "ETCD_QUOTA_BACKEND_BYTES=4294967296",
@@ -225,40 +259,127 @@ class MilvusPodmanController:
             "etcd", "-advertise-client-urls=http://127.0.0.1:2379",
             "-listen-client-urls", "http://0.0.0.0:2379", "--data-dir", "/etcd"
         ]
+        
         success, _, stderr = self.run_command(cmd)
         if success:
-            print_colored("  ✅ etcd start complete", Colors.OKGREEN)
+            print_colored("  ✅ etcd 시작 완료", Colors.OKGREEN)
+            print_colored(f"  💾 데이터 위치: {etcd_data_path}", Colors.ENDC)
         else:
-            print_colored(f"  ❌ etcd start failed: {stderr}", Colors.FAIL)
+            print_colored(f"  ❌ etcd 시작 실패: {stderr}", Colors.FAIL)
         return success
     
+    def check_and_migrate_data(self):
+        """기존 데이터 확인 및 마이그레이션"""
+        print_colored("🔍 기존 embedding 데이터 확인 중...", Colors.OKBLUE)
+        
+        # 기존 데이터 확인
+        existing_data = False
+        migration_source = None
+        
+        for legacy_path in self.legacy_data_paths:
+            if legacy_path.exists():
+                print_colored(f"📂 기존 데이터 발견: {legacy_path}", Colors.WARNING)
+                
+                # 각 서비스 데이터 확인
+                for service in ["etcd", "minio", "milvus"]:
+                    service_path = legacy_path / service
+                    if service_path.exists() and any(service_path.iterdir()):
+                        existing_data = True
+                        migration_source = legacy_path
+                        print_colored(f"  ✅ {service} 데이터 있음", Colors.OKGREEN)
+                
+                if existing_data:
+                    break
+        
+        if existing_data:
+            print_colored("📋 기존 embedding 데이터가 발견되었습니다!", Colors.WARNING)
+            print_colored("🔒 이 데이터를 안전하게 보존하고 새 위치로 복사합니다.", Colors.OKGREEN)
+            
+            choice = input_colored("계속 진행하시겠습니까? (y/n): ")
+            if choice.lower() != 'y':
+                print_colored("작업이 취소되었습니다.", Colors.WARNING)
+                return False
+            
+            # 데이터 마이그레이션
+            self.migrate_data(migration_source)
+        
+        # 데이터 디렉토리 준비
+        self.create_data_directories()
+        return True
+    
+    def migrate_data(self, source_path):
+        """데이터 마이그레이션"""
+        print_colored("🔄 데이터 마이그레이션 시작...", Colors.OKBLUE)
+        
+        import shutil
+        
+        for service in ["etcd", "minio", "milvus"]:
+            source_service_path = source_path / service
+            target_service_path = self.data_paths[service]
+            
+            if source_service_path.exists() and any(source_service_path.iterdir()):
+                if not target_service_path.exists():
+                    print_colored(f"  🔄 {service} 데이터 복사 중...", Colors.OKBLUE)
+                    target_service_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copytree(source_service_path, target_service_path)
+                    print_colored(f"  ✅ {service} 데이터 복사 완료", Colors.OKGREEN)
+                else:
+                    print_colored(f"  ⚪ {service} 데이터 이미 존재", Colors.ENDC)
+        
+        print_colored(f"📋 원본 데이터는 {source_path}에 그대로 보존됩니다.", Colors.OKGREEN)
+    
+    def create_data_directories(self):
+        """데이터 디렉토리 생성"""
+        print_colored("📁 데이터 디렉토리 준비 중...", Colors.OKBLUE)
+        
+        # 베이스 디렉토리 생성
+        self.data_base_path.mkdir(parents=True, exist_ok=True)
+        print_colored(f"  ✅ 베이스 디렉토리: {self.data_base_path}", Colors.OKGREEN)
+        
+        # 각 서비스별 디렉토리 생성
+        for service, path in self.data_paths.items():
+            path.mkdir(parents=True, exist_ok=True)
+            print_colored(f"  ✅ {service} 디렉토리: {path}", Colors.OKGREEN)
+        
+        return True
+    
     def start_minio(self):
-        """Start MinIO container"""
-        print_colored("[2/3] 🗄️ Starting MinIO...", Colors.OKBLUE)
+        """Start MinIO container with persistent data"""
+        print_colored("[2/3] 🗄️ MinIO 시작 중...", Colors.OKBLUE)
+        
+        # 절대 경로로 변환
+        minio_data_path = str(self.data_paths["minio"].resolve())
+        
         cmd = [
             self.podman_path, "run", "-d", "--name", "milvus-minio",
             "--network", self.network,
-            "-v", f"{self.volumes['minio']}:/minio_data",
+            "-v", f"{minio_data_path}:/minio_data",
             "-e", "MINIO_ACCESS_KEY=minioadmin",
             "-e", "MINIO_SECRET_KEY=minioadmin", 
             "--user", "0:0",
             self.images["minio"],
             "server", "/minio_data"
         ]
+        
         success, _, stderr = self.run_command(cmd)
         if success:
-            print_colored("  ✅ MinIO start complete", Colors.OKGREEN)
+            print_colored("  ✅ MinIO 시작 완료", Colors.OKGREEN)
+            print_colored(f"  💾 데이터 위치: {minio_data_path}", Colors.ENDC)
         else:
-            print_colored(f"  ❌ MinIO start failed: {stderr}", Colors.FAIL)
+            print_colored(f"  ❌ MinIO 시작 실패: {stderr}", Colors.FAIL)
         return success
     
     def start_milvus(self):
-        """Start Milvus container"""
-        print_colored("[3/3] 🚀 Starting Milvus...", Colors.OKBLUE)
+        """Start Milvus container with persistent data"""
+        print_colored("[3/3] 🚀 Milvus 시작 중...", Colors.OKBLUE)
+        
+        # 절대 경로로 변환
+        milvus_data_path = str(self.data_paths["milvus"].resolve())
+        
         cmd = [
             self.podman_path, "run", "-d", "--name", "milvus-standalone",
             "--network", self.network,
-            "-v", f"{self.volumes['milvus']}:/var/lib/milvus",
+            "-v", f"{milvus_data_path}:/var/lib/milvus",
             "-p", f"{self.api_port}:{self.api_port}",
             "-p", f"{self.web_port}:{self.web_port}",
             "-e", "ETCD_ENDPOINTS=milvus-etcd:2379",
@@ -267,11 +388,13 @@ class MilvusPodmanController:
             self.images["milvus"],
             "milvus", "run", "standalone"
         ]
+        
         success, _, stderr = self.run_command(cmd)
         if success:
-            print_colored("  ✅ Milvus start complete", Colors.OKGREEN)
+            print_colored("  ✅ Milvus 시작 완룼", Colors.OKGREEN)
+            print_colored(f"  💾 데이터 위치: {milvus_data_path}", Colors.ENDC)
         else:
-            print_colored(f"  ❌ Milvus start failed: {stderr}", Colors.FAIL)
+            print_colored(f"  ❌ Milvus 시작 실패: {stderr}", Colors.FAIL)
         return success
     
     def check_status(self):
@@ -395,19 +518,20 @@ class MilvusPodmanController:
     def start_all(self):
         """Start complete Milvus stack"""
         print_colored("="*60, Colors.HEADER)
-        print_colored("         Starting Milvus with Podman", Colors.HEADER)
+        print_colored("    안전한 Milvus 시작 (데이터 보존)", Colors.HEADER)
         print_colored("="*60, Colors.HEADER)
         
-        # Start Podman machine (if needed)
+        # 1. 기존 데이터 확인 및 마이그레이션
+        if not self.check_and_migrate_data():
+            return False
+        
+        # 2. Podman 머신 시작
         self.start_machine()
         
-        # Infrastructure setup
+        # 3. 기존 컴테이너 정리
         self.stop_containers()
         
         if not self.create_network():
-            return False
-        
-        if not self.create_volumes():
             return False
         
         # Start services

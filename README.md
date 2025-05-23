@@ -46,57 +46,119 @@ Comprehensive performance monitoring includes real-time benchmarks for search la
 
 ### **Prerequisites**
 - Python 3.8+
-- Milvus 2.3.4+ (via Podman/Docker)
+- Podman (for Milvus deployment)
 - Claude Desktop
 - Obsidian vault
 
-### **Quick Start**
+### **Complete Setup Guide**
 
-1. **Clone and Install**
-   ```bash
-   git clone https://github.com/jayjeo/obsidian-milvus-FastMCP
-   cd obsidian-milvus-FastMCP
-   pip install -r requirements.txt
-   ```
+#### **Step 1: Project Setup**
+```bash
+git clone https://github.com/jayjeo/obsidian-milvus-FastMCP
+cd obsidian-milvus-FastMCP
+pip install -r requirements.txt
+```
 
-2. **Configure Settings** (`config.py`)
-   ```python
-   OBSIDIAN_VAULT_PATH = "path/to/your/obsidian/vault"
-   MILVUS_HOST = "localhost"
-   MILVUS_PORT = 19530
-   USE_GPU = True  # Enable for better performance
-   ```
+#### **Step 2: Configuration**
+Edit `config.py` with your settings:
+```python
+OBSIDIAN_VAULT_PATH = "path/to/your/obsidian/vault"
+MILVUS_HOST = "localhost"
+MILVUS_PORT = 19530
+USE_GPU = True  # Enable for better performance
+```
 
-3. **Check and fix your installations**
-   ```bash
-   python test_mcp.py
-   ```
+#### **Step 3: Interactive Setup & Testing**
+```bash
+python test_mcp.py
+```
 
-3. **Start Milvus**
-   ```bash
-   # Using Podman (recommended)
-   start-milvus.bat
-   ```
+This interactive script will guide you through:
+1. **Package Installation** - Installs required dependencies
+2. **Milvus Setup** - Automatically deploys Milvus using Podman with persistent data storage
+3. **Collection Testing** - Verifies database operations
+4. **MCP Server Validation** - Checks server files
+5. **Claude Desktop Integration** - Configures Claude Desktop automatically
 
-4. **Initialize Documents**
-   ```bash
-   python main.py  # Press 2 or 3 and start embedding
-   ```
+#### **Step 4: Document Processing & Embedding**
+```bash
+python main.py
+# Select option 2 or 3 to start embedding your documents
+```
 
-5. **Launch MCP Server**
-   ```bash
-   python main.py # Press 1 and do not turn this off
-   ```
+#### **Step 5: Launch MCP Server**
+```bash
+python main.py
+# Select option 1 and keep this running
+```
+(Safe Milvus Setup: [SAFE_MILVUS_README.md](SAFE_MILVUS_README.md))
 
-6. **Connect to Claude Desktop**
-   - Add the server configuration to Claude Desktop's MCP settings
-     - python test_mcp.py, and press 5
-     - Change to your correct path
+### **Data Safety & Persistence**
+
+Your embedding data is stored in a safe, persistent location:
+```
+project/
+├── milvus_persistent_data/     # 🔒 Safe data storage
+│   ├── etcd_data/             # Metadata
+│   ├── minio_data/            # Object storage
+│   └── milvus_data/           # Vector embeddings
+```
+
+**Benefits:**
+- ✅ **Data Persistence**: Survives container restarts
+- ✅ **Automatic Migration**: Detects and preserves existing data
+- ✅ **Backup Protection**: Auto-backup before operations
+- ✅ **Transparent Management**: Clear data location and size info
+
+### **Alternative Setup Methods**
+
+#### **Manual Milvus Deployment**
+```bash
+# Using provided scripts
+start-milvus.bat  # Windows
+./start-milvus.sh # Linux/macOS
+```
+
+#### **Direct Safe Setup**
+```bash
+# Use the dedicated safe setup script
+python safe_milvus_setup.py
+```
+
+### **Verification**
+
+After setup, you should see:
+```
+💾 Data Storage Info:
+📂 Base Path: .../milvus_persistent_data
+  📁 etcd: .../etcd_data (15.2MB)
+  📁 minio: .../minio_data (8.7MB)
+  📁 milvus: .../milvus_data (245.8MB)
+📊 Total Data Size: 269.7MB
+
+🌐 Milvus API:    http://localhost:19530
+🌐 Web Interface: http://localhost:9091
+```
 
 
-## 🛠️ **Usage**
+## 🎮 **Usage**
 
-1. Repeat 3, 5, and 6 above
+Once setup is complete:
+
+1. **Keep MCP Server Running**: `python main.py` (option 1)
+2. **Open Claude Desktop**: Your Obsidian vault is now searchable
+3. **Start Searching**: Use natural language queries in Claude Desktop
+
+### **Daily Workflow**
+```bash
+# Start the MCP server
+python main.py  # Select option 1
+
+# In Claude Desktop, you can now:
+# - Search your vault: "Find notes about machine learning"
+# - Explore connections: "What documents relate to my AI project?"
+# - Complex queries: "Show urgent work items from last month"
+```
 
 ## 🎮 **Usage Examples**
 
