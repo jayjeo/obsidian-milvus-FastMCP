@@ -54,27 +54,6 @@ def install_package(package_name, import_name=None):
         print_colored(f"✅ {package_name} already installed", Colors.OKGREEN)
         return True
     
-    def show_data_info(self):
-        """데이터 저장 정보 표시"""
-        print_colored("
-💾 데이터 저장 정보:", Colors.OKBLUE)
-        print_colored(f"📂 베이스 경로: {self.data_base_path}", Colors.ENDC)
-        
-        total_size = 0
-        for service, path in self.data_paths.items():
-            if path.exists():
-                # 디렉토리 크기 계산
-                try:
-                    size = sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
-                    size_mb = size / (1024 * 1024)
-                    total_size += size_mb
-                    print_colored(f"  📁 {service}: {path} ({size_mb:.1f}MB)", Colors.ENDC)
-                except:
-                    print_colored(f"  📁 {service}: {path} (크기 계산 실패)", Colors.ENDC)
-            else:
-                print_colored(f"  📁 {service}: {path} (비어있음)", Colors.ENDC)
-        
-        print_colored(f"📊 총 데이터 크기: {total_size:.1f}MB", Colors.OKGREEN)
     except ImportError:
         print_colored(f"⚠️ {package_name} package not found. Attempting installation...", Colors.WARNING)
         
@@ -180,6 +159,27 @@ class MilvusPodmanController:
         }
         self.api_port = "19530"
         self.web_port = "9091"
+    
+    def show_data_info(self):
+        """데이터 저장 정보 표시"""
+        print_colored("\n💾 데이터 저장 정보:", Colors.OKBLUE)
+        print_colored(f"📂 베이스 경로: {self.data_base_path}", Colors.ENDC)
+        
+        total_size = 0
+        for service, path in self.data_paths.items():
+            if path.exists():
+                # 디렉토리 크기 계산
+                try:
+                    size = sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
+                    size_mb = size / (1024 * 1024)
+                    total_size += size_mb
+                    print_colored(f"  📁 {service}: {path} ({size_mb:.1f}MB)", Colors.ENDC)
+                except:
+                    print_colored(f"  📁 {service}: {path} (크기 계산 실패)", Colors.ENDC)
+            else:
+                print_colored(f"  📁 {service}: {path} (비어있음)", Colors.ENDC)
+        
+        print_colored(f"📊 총 데이터 크기: {total_size:.1f}MB", Colors.OKGREEN)
     
     def run_command(self, cmd):
         """Execute command"""
