@@ -66,16 +66,18 @@
 
 3. **Install dependencies**
    ```bash
-   `one-click-install.bat` (with administrator privileges)
-   or 
-   pip install -r requirements.txt (if above does not work)
+   CMD at your directory, 
+   conda install -c conda-forge -y python pip
+   conda run -n base pip install pymilvus mcp fastmcp sentence-transformers torch
+   conda run -n base pip install PyPDF2 markdown beautifulsoup4 python-dotenv watchdog psutil colorama pyyaml tqdm requests
    ```
 
 4. **Install Podman**
    - Windows: Download from [Podman.io](https://podman.io/getting-started/installation)
    - Mac: `brew install podman`
    - Linux: Check your distribution's package manager
-
+   **Run podman** : If you cannot find the path, run `find-podman-desktop.bat`
+   
 5. **Interactive Setup & Testing**
    ```bash
    run-setup.bat
