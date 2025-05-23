@@ -75,7 +75,7 @@ python test_mcp.py
 
 This interactive script will guide you through:
 1. **Package Installation** - Installs required dependencies
-2. **Milvus Setup** - Automatically deploys Milvus using Podman with persistent data storage
+2. **Milvus Setup** - Automatically deploys Milvus using Podman with persistent data storage ([SAFE_MILVUS_README.md](SAFE_MILVUS_README.md))
 3. **Collection Testing** - Verifies database operations
 4. **MCP Server Validation** - Checks server files
 5. **Claude Desktop Integration** - Configures Claude Desktop automatically
@@ -91,7 +91,7 @@ python main.py
 python main.py
 # Select option 1 and keep this running
 ```
-(Safe Milvus Setup: [SAFE_MILVUS_README.md](SAFE_MILVUS_README.md))
+
 
 ### **Data Safety & Persistence**
 
