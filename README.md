@@ -80,12 +80,12 @@ Comprehensive performance monitoring includes real-time benchmarks for search la
 
 4. **Initialize Documents**
    ```bash
-   python main.py  # Processes and embeds your Obsidian vault
+   python main.py  # Press 2 or 3 and start embedding
    ```
 
 5. **Launch MCP Server**
    ```bash
-   python mcp_server.py
+   python main.py # Press 1 and do not turn this off
    ```
 
 6. **Connect to Claude Desktop**
@@ -93,6 +93,10 @@ Comprehensive performance monitoring includes real-time benchmarks for search la
      - python test_mcp.py, and press 5
      - Change to your correct path
 
+
+## 🛠️ **Usage**
+
+1. Repeat 3, 5, and 6 above
 
 ## 🎮 **Usage Examples**
 
