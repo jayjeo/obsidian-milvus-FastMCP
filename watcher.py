@@ -2,6 +2,7 @@ import os
 import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+import config
 
 class ObsidianWatcher(FileSystemEventHandler):
     def __init__(self, processor):
@@ -49,10 +50,9 @@ class ObsidianWatcher(FileSystemEventHandler):
         
         if event.src_path.endswith(('.md', '.pdf')):
             try:
-                rel_path = os.path.relpath(
-                    event.src_path, 
-                    os.path.expanduser(self.processor.vault_path)
-                )
+                # config.py에서 직접 경로를 가져와 더 안전하게 처리
+                vault_path = config.get_obsidian_vault_path()
+                rel_path = os.path.relpath(event.src_path, vault_path)
                 print(f"File deleted: {rel_path}")
                 self.processor.milvus_manager.delete_by_path(rel_path)
             except Exception as e:
@@ -65,10 +65,11 @@ def start_watcher(processor):
         event_handler = ObsidianWatcher(processor)
         observer = Observer()
         
-        # 경로가 존재하는지 확인
-        vault_path = processor.vault_path
+        # config에서 경로를 가져와 존재하는지 확인
+        vault_path = config.get_obsidian_vault_path()
         if not os.path.exists(vault_path):
             print(f"경고: 볼트 경로를 찾을 수 없습니다: {vault_path}")
+            print(f"config.py에서 OBSIDIAN_VAULT_PATH를 확인해주세요.")
             return
             
         observer.schedule(
@@ -77,7 +78,7 @@ def start_watcher(processor):
             recursive=True
         )
         observer.start()
-        print(f"Started watching Obsidian vault at {processor.vault_path}")
+        print(f"Started watching Obsidian vault at {vault_path}")
         
         try:
             while True:

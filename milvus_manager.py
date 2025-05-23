@@ -116,8 +116,8 @@ class MilvusManager:
     
     def ensure_external_storage_directories(self):
         """외부 저장소 디렉토리를 확인하고 필요한 경우 생성"""
-        # 외부 저장소 경로 설정
-        external_storage_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "EmbeddingResult")
+        # config에서 설정된 외부 저장소 경로 사용
+        external_storage_path = config.get_external_storage_path()
         logger.info(f"외부 저장소 경로: {external_storage_path}")
         
         # 디렉토리가 존재하지 않으면 생성

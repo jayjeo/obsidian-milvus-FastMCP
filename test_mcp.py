@@ -138,7 +138,18 @@ class MilvusPodmanController:
         
         # 프로젝트 디렉토리 내에 안전한 저장소 만들기 (config.py와 동일한 경로 사용)
         self.project_dir = Path(__file__).parent.resolve()
-        self.data_base_path = self.project_dir / "MilvusData"
+        
+        # config.py에서 external storage path 가져오기
+        try:
+            import sys
+            sys.path.insert(0, str(self.project_dir))
+            import config
+            # config.py에서 정의된 경로 사용
+            self.data_base_path = Path(config.get_external_storage_path())
+        except Exception as e:
+            print_colored(f"Warning: Could not import config.py: {e}", Colors.WARNING)
+            # 폴백: 기본값 사용
+            self.data_base_path = self.project_dir / "MilvusData"
         
         # 각 서비스별 데이터 경로 (절대 경로 사용)
         self.data_paths = {

@@ -217,3 +217,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 5. **GPU acceleration**: Significant performance boost for large vaults
 
 **Happy knowledge exploring!** 🚀📚
+[acubens555@gmail.com](mailto:acubens555@gmail.com)
+Jay Jeong
+Ph.D. in Economics
+Research Fellow at KCTDI
