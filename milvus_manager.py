@@ -289,32 +289,32 @@ class MilvusManager:
             if "no container" in str(e).lower() or "not found" in str(e).lower():
                 logger.info(f"Container {container_name} not found (expected after reset) - will create new one")
             else:
-                logger.error(f"Error starting container {container_name}: {e}")
+                logger.warning(f"Unexpected error starting container {container_name}: {e}")
                 if hasattr(e, 'stderr') and e.stderr:
-                    logger.error(f"Command error: {e.stderr}")
+                    logger.warning(f"Command error: {e.stderr}")
             return False
     
     def _cleanup_conflicting_containers(self):
-        """충돌하는 컨테이너들을 자동으로 정리"""
+        """충돌하는 컨테이너들을 자동으로 정리 (강화된 버전)"""
         try:
             runtime_path = self.get_container_runtime_path()
             
             logger.info("Cleaning up conflicting containers...")
             
-            # 모든 Milvus 컨테이너 중지 및 제거
+            # 1단계: 모든 Milvus 관련 컨테이너 강제 중지 및 제거
             for container_name in self.milvus_containers.values():
                 try:
-                    # 컨테이너 중지
+                    # 컨테이너 강제 중지
                     subprocess.run(
-                        [runtime_path, "stop", container_name],
+                        [runtime_path, "stop", container_name, "--time", "0"],
                         check=False,  # 오류 무시
                         text=True,
                         capture_output=True
                     )
                     
-                    # 컨테이너 제거
+                    # 컨테이너 강제 제거
                     subprocess.run(
-                        [runtime_path, "rm", container_name],
+                        [runtime_path, "rm", container_name, "--force"],
                         check=False,  # 오류 무시
                         text=True,
                         capture_output=True
@@ -323,10 +323,10 @@ class MilvusManager:
                 except Exception as e:
                     logger.debug(f"Error cleaning container {container_name}: {e}")
             
-            # Pod 정리
+            # 2단계: 모든 Pod 강제 정리
             try:
                 subprocess.run(
-                    [runtime_path, "pod", "stop", "--all"],
+                    [runtime_path, "pod", "stop", "--all", "--time", "0"],
                     check=False,
                     text=True,
                     capture_output=True
@@ -340,19 +340,30 @@ class MilvusManager:
             except Exception as e:
                 logger.debug(f"Error cleaning pods: {e}")
             
-            # 네트워크 정리
+            # 3단계: Milvus 네트워크 정리
             try:
                 subprocess.run(
-                    [runtime_path, "network", "rm", "milvus"],
+                    [runtime_path, "network", "rm", "milvus", "--force"],
                     check=False,
                     text=True,
                     capture_output=True
                 )
             except Exception as e:
                 logger.debug(f"Error cleaning network: {e}")
+            
+            # 4단계: 시스템 정리
+            try:
+                subprocess.run(
+                    [runtime_path, "system", "prune", "--force"],
+                    check=False,
+                    text=True,
+                    capture_output=True
+                )
+            except Exception as e:
+                logger.debug(f"Error in system prune: {e}")
                 
             logger.info("Container cleanup completed")
-            time.sleep(2)  # 정리 완료를 위한 대기
+            time.sleep(3)  # 정리 완료를 위한 충분한 대기시간
             
         except Exception as e:
             logger.warning(f"Error during container cleanup: {e}")
@@ -434,6 +445,10 @@ class MilvusManager:
         if not all_running:
             logger.info("Some containers are missing or failed to start individually. Starting all with podman-compose...")
             
+            # 시작하기 전에 충돌 가능성 미리 제거
+            logger.info("Pre-emptively cleaning up any existing containers to avoid conflicts...")
+            self._cleanup_conflicting_containers()
+            
             # 프로젝트 루트 디렉토리 찾기
             project_dir = os.path.dirname(os.path.abspath(__file__))
             
@@ -494,13 +509,15 @@ class MilvusManager:
                 
                 logger.error(error_msg)
                 
-                # 만약 컨테이너 이름 충돌 오류라면 더 구체적인 메시지 제공
-                if "already in use" in str(e):
+                # 컨테이너 이름 충돌 감지 개선 - stderr와 전체 에러 메시지에서 검색
+                error_text = str(e) + (e.stderr if hasattr(e, 'stderr') and e.stderr else "")
+                if "already in use" in error_text or "name is already in use" in error_text:
                     logger.warning("Container name conflict detected. Cleaning up conflicting containers...")
                     # 자동으로 충돌하는 컨테이너 제거 시도
                     self._cleanup_conflicting_containers()
                     # 다시 시도
                     try:
+                        logger.info("Retrying container startup after cleanup...")
                         if not compose_path:
                             subprocess.run(
                                 [runtime_path, "compose", "-f", compose_file, "up", "-d"],
@@ -518,9 +535,10 @@ class MilvusManager:
                         logger.info("Successfully started containers after conflict resolution")
                     except Exception as retry_e:
                         logger.error(f"Failed to start containers even after cleanup: {retry_e}")
-                        raise RuntimeError(f"Failed to start Milvus containers after cleanup. Please run 'fix-container-conflicts.bat' manually.")
+                        logger.error("Please restart the application or run emergency-reset.bat")
+                        raise RuntimeError(f"Failed to start Milvus containers after cleanup. Please try restarting.")
                 else:
-                    logger.error("Container startup failed for other reasons")
+                    logger.error("Container startup failed for other reasons. Please check Podman installation.")
                     raise RuntimeError(f"Failed to start Milvus containers. Please check Podman installation.")
         else:
             logger.info("All required containers are now running")
@@ -739,7 +757,7 @@ class MilvusManager:
                             if self.start_container(container_name):
                                 logger.info(f"Successfully started {container_type} container")
                             else:
-                                logger.warning(f"Failed to start {container_type} container individually")
+                                logger.info(f"Container {container_name} not available for restart (normal after reset)")
                     
                     # 재연결 시도
                     time.sleep(5)  # 컨테이너가 시작될 시간을 줌
@@ -748,7 +766,7 @@ class MilvusManager:
                             self.connect()
                             logger.info("Successfully reconnected to Milvus after recovery")
                         except Exception as e:
-                            logger.error(f"Failed to reconnect to Milvus after recovery: {e}")
+                            logger.warning(f"Failed to reconnect to Milvus after recovery: {e}")
                 else:
                     # 서비스는 실행 중이지만 컨테이너 상태 확인 (로깅만)
                     container_status = self.get_container_status()
