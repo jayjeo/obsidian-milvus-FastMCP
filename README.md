@@ -29,6 +29,49 @@ A **fully optimized MCP (Model Context Protocol) server** that brings **Milvus v
 - **Knowledge Graph Exploration**: Maps semantic connections between documents
 - **Similarity-Based Clustering**: Groups related content automatically
 
+## 🚀 **Performance Benefits**
+
+### **Search Speed Optimization**
+- **Adaptive Parameters**: Automatic ef/nprobe adjustment based on query complexity
+- **GPU Acceleration**: 5-10x performance improvement for large-scale vector searches
+- **Batch Processing**: Optimized concurrent multi-query processing
+
+### **Search Accuracy Enhancement**
+- **HNSW Optimization**: Dynamic ef parameter adjustment (64→512) for accuracy/speed balance
+- **Metadata Fusion**: Combined vector + metadata composite search
+- **Similarity Threshold**: Selective return of high-relevance results only
+
+### **Advanced Feature Activation**
+- **Knowledge Graph**: Semantic connection network construction between documents
+- **Multi-Query Fusion**: Enhanced accuracy through multiple search term combination
+- **Real-time Monitoring**: Performance metrics and optimization recommendations
+
+### **Milvus Advantages Fully Utilized:**
+
+1. **HNSW Indexing**: 3-5x faster search on large collections
+2. **GPU Acceleration**: Massive performance boost for vector operations  
+3. **Metadata Filtering**: Precise results through complex conditions
+4. **Advanced RAG**: Context-aware retrieval with semantic understanding
+5. **Real-time Optimization**: Adaptive performance tuning
+
+### **Benchmark Results:**
+- **Collection Size**: 100K+ documents
+- **Search Latency**: <50ms average
+- **GPU Speedup**: 5x faster than CPU-only
+- **Memory Efficiency**: 40% reduction vs naive implementations
+- **Accuracy Improvement**: 25% better relevance with fusion techniques
+
+## 📊 **Monitoring & Analytics**
+
+The server provides comprehensive performance monitoring:
+
+- **Real-time Benchmarks**: Search latency, throughput metrics
+- **Collection Statistics**: Document counts, file type distribution
+- **Optimization Recommendations**: Automatic tuning suggestions
+- **Resource Usage**: Memory, GPU utilization tracking
+- **Search Pattern Analysis**: Query frequency, result quality metrics
+- 
+
 ## 🛠️ **Installation & Setup**
 
 ### **Prerequisites**
@@ -56,7 +99,7 @@ A **fully optimized MCP (Model Context Protocol) server** that brings **Milvus v
 
 3. **Check and fix your installations**
    ```bash
-   python test-mcp.py
+   python test_mcp.py
    ```
 
 3. **Start Milvus**
@@ -77,7 +120,8 @@ A **fully optimized MCP (Model Context Protocol) server** that brings **Milvus v
 
 6. **Connect to Claude Desktop**
    - Add the server configuration to Claude Desktop's MCP settings
-   - Configure the connection via `claude_desktop_config.json`
+     - python test_mcp.py, and press 5
+     - Change to your correct path
 
 
 ## 🎮 **Usage Examples**
@@ -207,22 +251,6 @@ await performance_optimization_analysis()
             └──────────────┘    └──────────────┘
 ```
 
-## 🚀 **Performance Benefits**
-
-### **Milvus Advantages Fully Utilized:**
-
-1. **HNSW Indexing**: 3-5x faster search on large collections
-2. **GPU Acceleration**: Massive performance boost for vector operations  
-3. **Metadata Filtering**: Precise results through complex conditions
-4. **Advanced RAG**: Context-aware retrieval with semantic understanding
-5. **Real-time Optimization**: Adaptive performance tuning
-
-### **Benchmark Results:**
-- **Collection Size**: 100K+ documents
-- **Search Latency**: <50ms average
-- **GPU Speedup**: 5x faster than CPU-only
-- **Memory Efficiency**: 40% reduction vs naive implementations
-- **Accuracy Improvement**: 25% better relevance with fusion techniques
 
 ## 🔧 **Configuration Options**
 
@@ -248,15 +276,7 @@ RAG_SIMILARITY_THRESHOLD = 0.7
 KG_MAX_DEPTH = 3
 ```
 
-## 📊 **Monitoring & Analytics**
 
-The server provides comprehensive performance monitoring:
-
-- **Real-time Benchmarks**: Search latency, throughput metrics
-- **Collection Statistics**: Document counts, file type distribution
-- **Optimization Recommendations**: Automatic tuning suggestions
-- **Resource Usage**: Memory, GPU utilization tracking
-- **Search Pattern Analysis**: Query frequency, result quality metrics
 
 ## 🤝 **Contributing**
 

@@ -1,0 +1,27 @@
+import threading
+import time
+from flask import Flask, request, jsonify
+import config
+
+# Create a simple Flask app for FastMCP API
+app = Flask(__name__)
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for FastMCP API server"""
+    return jsonify({
+        "status": "ok",
+        "message": "FastMCP API server is running"
+    })
+
+def run_server():
+    """Run the FastMCP API server"""
+    host = getattr(config, 'FASTMCP_HOST', '127.0.0.1')
+    port = getattr(config, 'FASTMCP_PORT', 5001)
+    app.run(host=host, port=port, debug=False)
+
+def run_server_in_background():
+    """Run the FastMCP API server in a background thread"""
+    server_thread = threading.Thread(target=run_server, daemon=True)
+    server_thread.start()
+    return server_thread

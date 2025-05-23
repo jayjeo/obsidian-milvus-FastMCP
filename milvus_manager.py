@@ -1073,3 +1073,250 @@ class MilvusManager:
         except Exception as e:
             print(f"Warning: Error checking existing file {file_path}: {e}")
             return False
+    
+    # ==================== 고급 기능 패치 ====================
+    
+    def search_with_params(self, vector, limit=5, filter_expr=None, search_params=None):
+        """HNSW 파라미터를 지원하는 고급 검색"""
+        if search_params is None:
+            # 기본 HNSW 최적화 파라미터
+            if config.USE_GPU:
+                search_params = {
+                    "metric_type": "COSINE",
+                    "params": {"nprobe": 16}  # GPU IVF 파라미터
+                }
+            else:
+                search_params = {
+                    "metric_type": "COSINE", 
+                    "params": {"ef": 128}  # CPU HNSW 파라미터
+                }
+        
+        try:
+            search_args = {
+                "data": [vector],
+                "anns_field": "vector",
+                "param": search_params,
+                "limit": limit,
+                "output_fields": ["id", "path", "title", "content", "chunk_text", "tags", "file_type", "chunk_index", "created_at", "updated_at"]
+            }
+            
+            if filter_expr:
+                search_args["expr"] = filter_expr
+                
+            # GPU 최적화
+            if config.USE_GPU and self._is_gpu_available():
+                gpu_device_id = getattr(config, 'GPU_DEVICE_ID', 0)
+                search_args["search_options"] = {"device_id": gpu_device_id}
+            
+            results = self.collection.search(**search_args)
+            return results[0] if results else []
+            
+        except Exception as e:
+            logger.error(f"고급 검색 실패, 기본 검색으로 폴백: {e}")
+            return self.search(vector, limit, filter_expr)
+    
+    def get_performance_stats(self):
+        """성능 통계 수집"""
+        try:
+            stats = {
+                'total_entities': self.count_entities(),
+                'file_types': self.get_file_type_counts()
+            }
+            
+            # 인덱스 정보
+            try:
+                indexes = self.collection.indexes
+                if indexes:
+                    index_info = indexes[0]
+                    stats['index_type'] = index_info.params.get('index_type', 'Unknown')
+                    stats['metric_type'] = index_info.params.get('metric_type', 'Unknown')
+                else:
+                    stats['index_type'] = 'No Index'
+                    stats['metric_type'] = 'N/A'
+            except Exception as e:
+                stats['index_error'] = str(e)
+            
+            # 메모리 추정
+            vector_size = self.dimension * 4  # float32
+            estimated_mb = (stats['total_entities'] * vector_size) / (1024 * 1024)
+            stats['estimated_memory_mb'] = round(estimated_mb, 2)
+            
+            # GPU 상태
+            stats['gpu_available'] = self._is_gpu_available()
+            stats['gpu_enabled'] = config.USE_GPU
+            
+            return stats
+            
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def benchmark_search_strategies(self, test_queries=3):
+        """다양한 검색 전략 성능 벤치마크"""
+        import time
+        
+        sample_vector = [0.1] * self.dimension
+        
+        strategies = {
+            "fast": {"ef": 64, "nprobe": 8},
+            "balanced": {"ef": 128, "nprobe": 16}, 
+            "precise": {"ef": 256, "nprobe": 32}
+        }
+        
+        results = {}
+        
+        for strategy_name, params in strategies.items():
+            if config.USE_GPU:
+                search_params = {
+                    "metric_type": "COSINE",
+                    "params": {"nprobe": params["nprobe"]}
+                }
+            else:
+                search_params = {
+                    "metric_type": "COSINE",
+                    "params": {"ef": params["ef"]}
+                }
+            
+            latencies = []
+            for _ in range(test_queries):
+                start_time = time.time()
+                try:
+                    self.search_with_params(sample_vector, limit=10, search_params=search_params)
+                    latency = (time.time() - start_time) * 1000
+                    latencies.append(latency)
+                except Exception as e:
+                    logger.error(f"벤치마크 {strategy_name} 실패: {e}")
+                    latencies.append(float('inf'))  # 실패한 경우
+            
+            results[strategy_name] = {
+                "avg_latency_ms": sum(latencies) / len(latencies),
+                "min_latency_ms": min(latencies),
+                "max_latency_ms": max(latencies),
+                "success_rate": len([l for l in latencies if l != float('inf')]) / len(latencies)
+            }
+        
+        return results
+    
+    def advanced_metadata_search(self, query_vector, metadata_filters):
+        """고급 메타데이터 필터링 검색"""
+        try:
+            # 메타데이터 필터를 Milvus 표현식으로 변환
+            filter_expr = self._build_filter_expression(metadata_filters)
+            
+            # 고급 검색 파라미터 사용
+            search_params = {"metric_type": "COSINE", "params": {"ef": 256}}
+            
+            return self.search_with_params(
+                vector=query_vector,
+                limit=metadata_filters.get('limit', 20),
+                filter_expr=filter_expr,
+                search_params=search_params
+            )
+            
+        except Exception as e:
+            logger.error(f"고급 메타데이터 검색 중 오류: {e}")
+            return []
+    
+    def _build_filter_expression(self, metadata_filters):
+        """메타데이터 필터를 Milvus 표현식으로 변환"""
+        expressions = []
+        
+        # 시간 범위 필터
+        if 'time_range' in metadata_filters:
+            start_time, end_time = metadata_filters['time_range']
+            expressions.append(f"created_at >= '{start_time}' and created_at <= '{end_time}'")
+        
+        # 파일 타입 필터
+        if 'file_types' in metadata_filters:
+            file_types = metadata_filters['file_types']
+            if len(file_types) == 1:
+                expressions.append(f"file_type == '{file_types[0]}'")
+            else:
+                type_expr = " or ".join([f"file_type == '{ft}'" for ft in file_types])
+                expressions.append(f"({type_expr})")
+        
+        # 태그 필터 (간단한 문자열 포함 검색)
+        if 'tags' in metadata_filters:
+            tags = metadata_filters['tags']
+            for tag in tags:
+                expressions.append(f"tags like '%{tag}%'")
+        
+        # 모든 표현식을 AND로 결합
+        if expressions:
+            return " and ".join(expressions)
+        else:
+            return "id >= 0"  # 기본값
+    
+    def build_knowledge_graph(self, start_doc_id, max_depth=3, similarity_threshold=0.8):
+        """벡터 유사도 기반 지식 그래프 구축"""
+        
+        graph = {"nodes": [], "edges": [], "clusters": {}}
+        visited = set()
+        
+        # BFS로 지식 그래프 탐색
+        queue = [(start_doc_id, 0)]  # (doc_id, depth)
+        
+        while queue and len(graph["nodes"]) < 100:  # 최대 100개 노드
+            current_id, depth = queue.pop(0)
+            
+            if current_id in visited or depth > max_depth:
+                continue
+                
+            visited.add(current_id)
+            
+            # 현재 문서 정보 가져오기
+            doc_info = self.query(
+                expr=f"id == {current_id}",
+                output_fields=["id", "path", "title", "chunk_text"],
+                limit=1
+            )
+            
+            if not doc_info:
+                continue
+                
+            doc = doc_info[0]
+            
+            # 노드 추가
+            graph["nodes"].append({
+                "id": current_id,
+                "title": doc.get("title", ""),
+                "path": doc.get("path", ""),
+                "depth": depth
+            })
+            
+            # 유사한 문서들 찾기
+            if depth < max_depth:
+                # 임베딩 모델이 있다면 사용, 없다면 스킵
+                try:
+                    from embeddings import EmbeddingModel
+                    embedding_model = EmbeddingModel()
+                    doc_vector = embedding_model.get_embedding(doc.get("chunk_text", ""))
+                    
+                    similar_docs = self.search_with_params(
+                        vector=doc_vector,
+                        limit=10,
+                        search_params={"metric_type": "COSINE", "params": {"ef": 256}}
+                    )
+                    
+                    for hit in similar_docs:
+                        if (hit.score >= similarity_threshold and 
+                            hit.id not in visited and
+                            hit.id != current_id):
+                            
+                            # 엣지 추가
+                            graph["edges"].append({
+                                "source": current_id,
+                                "target": hit.id,
+                                "weight": float(hit.score),
+                                "type": "semantic_similarity"
+                            })
+                            
+                            # 다음 탐색 대상에 추가
+                            queue.append((hit.id, depth + 1))
+                except ImportError:
+                    logger.warning("임베딩 모델을 사용할 수 없어 지식 그래프 구축을 중단합니다.")
+                    break
+                except Exception as e:
+                    logger.error(f"지식 그래프 구축 중 오류: {e}")
+                    continue
+        
+        return graph

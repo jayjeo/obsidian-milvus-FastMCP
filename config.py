@@ -17,7 +17,7 @@ BASE_DIR = Path(__file__).resolve().parent
 LOG_LEVEL = "ERROR"  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
 # Obsidian settings
-OBSIDIAN_VAULT_PATH = "G:\\jayjeo"  # Obsidian vault path
+OBSIDIAN_VAULT_PATH = "G:\\jayjeo - 안전"  # Obsidian vault path
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 100
 CHUNK_MIN_SIZE = 100  # Minimum chunk size

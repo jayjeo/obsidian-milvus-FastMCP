@@ -741,11 +741,6 @@ class MilvusTest:
         """5. Generate Claude Desktop configuration file (using local MCP server)"""
         print_step(5, "Generate Claude Desktop configuration file")
         
-        # Check if MCP server file exists
-        if not self.test_results.get("mcp_server_file", False):
-            print_colored("⚠️ Please run test 4 (MCP server file test) first.", Colors.WARNING)
-            return False
-        
         # Determine config file path
         if os.name == 'nt':  # Windows
             config_dir = Path(os.environ.get('APPDATA', '')) / 'Claude'
@@ -758,6 +753,7 @@ class MilvusTest:
         
         # Create config directory if it doesn't exist
         config_dir.mkdir(parents=True, exist_ok=True)
+        print_colored(f"✅ Config directory ready: {config_dir}", Colors.OKGREEN)
         
         # Read existing config
         existing_config = {"mcpServers": {}}
@@ -775,16 +771,14 @@ class MilvusTest:
                 
                 # Display existing server list
                 if existing_config['mcpServers']:
-                    print_colored("📋 Preserving existing MCP servers:", Colors.OKBLUE)
+                    print_colored("📋 Existing MCP servers:", Colors.OKBLUE)
                     for server_name in existing_config['mcpServers'].keys():
                         print_colored(f"   • {server_name}", Colors.ENDC)
                 
-                # Check backup creation
-                choice = input_colored("💾 Would you like to backup existing config? (y/n): ")
-                if choice.lower() == 'y':
-                    backup_file = config_dir / f'claude_desktop_config_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
-                    shutil.copy2(config_file, backup_file)
-                    print_colored(f"📋 Backup created: {backup_file}", Colors.OKGREEN)
+                # Auto backup existing config
+                backup_file = config_dir / f'claude_desktop_config_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+                shutil.copy2(config_file, backup_file)
+                print_colored(f"📋 Auto backup created: {backup_file}", Colors.OKGREEN)
                 
             except Exception as e:
                 print_colored(f"⚠️ Error reading existing config: {e}", Colors.WARNING)
@@ -793,52 +787,43 @@ class MilvusTest:
         else:
             print_colored("📝 Creating new config file.", Colors.OKBLUE)
         
-        # Check for problematic existing configs
+        # Clean up any problematic existing configs
         problematic_servers = []
         for server_name, server_config in existing_config['mcpServers'].items():
-            if server_name == "milvus-obsidian" and server_config.get("args", []) == ["-m", "milvus_mcp.server"]:
+            # Check for old incorrect configs
+            if (server_name in ["milvus-obsidian", "obsidian-milvus", "obsidian-assistant"] and 
+                (server_config.get("args", []) == ["-m", "milvus_mcp.server"] or
+                 "milvus_mcp.server" in str(server_config.get("args", [])))):
                 problematic_servers.append(server_name)
         
         if problematic_servers:
-            print_colored("🔧 Found incorrect existing Milvus config:", Colors.WARNING)
+            print_colored("🔧 Found old/incorrect Milvus configs, removing them:", Colors.WARNING)
             for server in problematic_servers:
-                print_colored(f"   - {server}: python -m milvus_mcp.server (incorrect module path)", Colors.WARNING)
-            
-            choice = input_colored("🗑️ Remove these configs and replace with new correct config? (y/n): ")
-            if choice.lower() == 'y':
-                for server in problematic_servers:
-                    del existing_config['mcpServers'][server]
-                    print_colored(f"🗑️ Removed: {server}", Colors.OKGREEN)
+                print_colored(f"   🗑️ Removing: {server}", Colors.WARNING)
+                del existing_config['mcpServers'][server]
         
-        # Correct Milvus MCP server config
-        milvus_server_name = "obsidian-milvus"
+        # Use the exact server name from your config
+        milvus_server_name = "obsidian-assistant"
         
-        # Escape Windows paths for JSON use
-        escaped_mcp_path = str(self.mcp_server_path).replace('\\', '\\\\')
-        escaped_project_path = str(self.project_dir).replace('\\', '\\\\')
+        # Create the exact config from your request - using raw string paths
+        mcp_server_path_str = str(self.mcp_server_path)
+        project_path_str = str(self.project_dir)
         
         milvus_config = {
             "command": "python",
-            "args": [escaped_mcp_path],
+            "args": [
+                mcp_server_path_str  # Raw path without extra escaping
+            ],
             "env": {
-                "PYTHONPATH": escaped_project_path,
-                "MILVUS_HOST": "localhost",
-                "MILVUS_PORT": "19530",
-                "LOG_LEVEL": "INFO"
+                "PYTHONPATH": project_path_str  # Raw path without extra escaping
             }
         }
         
-        # Provide config options
-        if milvus_server_name in existing_config['mcpServers']:
-            print_colored(f"⚠️ '{milvus_server_name}' server already exists.", Colors.WARNING)
-            choice = input_colored("🔄 Update existing config? (y/n): ")
-            if choice.lower() != 'y':
-                print_colored("⏭️ Skipping Milvus server config.", Colors.WARNING)
-                self.test_results["claude_desktop_config"] = True
-                return True
-            print_colored(f"🔄 Updating '{milvus_server_name}' server config", Colors.OKGREEN)
-        else:
-            print_colored(f"➕ Adding '{milvus_server_name}' server", Colors.OKGREEN)
+        # Show what we're adding
+        print_colored(f"➕ Adding '{milvus_server_name}' server with config:", Colors.OKGREEN)
+        print_colored(f"   Command: {milvus_config['command']}", Colors.ENDC)
+        print_colored(f"   Script: {milvus_config['args'][0]}", Colors.ENDC)
+        print_colored(f"   Environment: PYTHONPATH = {milvus_config['env']['PYTHONPATH']}", Colors.ENDC)
         
         existing_config['mcpServers'][milvus_server_name] = milvus_config
         
@@ -847,33 +832,88 @@ class MilvusTest:
             with open(config_file, 'w', encoding='utf-8') as f:
                 json.dump(existing_config, f, indent=2, ensure_ascii=False)
             
-            print_colored(f"✅ Claude Desktop configuration complete!", Colors.OKGREEN)
+            print_colored(f"✅ Claude Desktop configuration saved successfully!", Colors.OKGREEN)
             print_colored(f"📋 Total MCP servers: {len(existing_config['mcpServers'])}", Colors.OKGREEN)
             
-            # Final server list
-            print_colored("\n📋 All configured MCP servers:", Colors.OKBLUE)
-            for server_name in existing_config['mcpServers'].keys():
-                marker = " [newly added/updated]" if server_name == milvus_server_name else ""
-                print_colored(f"   • {server_name}{marker}", Colors.ENDC)
+            # Display the exact config that was written
+            print_colored(f"\n📋 Final configuration for '{milvus_server_name}':", Colors.OKBLUE)
+            config_json = json.dumps({milvus_server_name: milvus_config}, indent=2)
+            print_colored(config_json, Colors.ENDC)
             
-            # Display config details
-            print_colored(f"\n🔧 '{milvus_server_name}' server config:", Colors.OKBLUE)
-            print_colored(f"   Command: python", Colors.ENDC)
-            print_colored(f"   Script: {self.mcp_server_path}", Colors.ENDC)
-            print_colored(f"   Project path: {self.project_dir}", Colors.ENDC)
-            print_colored(f"   Milvus host: localhost:19530", Colors.ENDC)
+            # Verify the config was written correctly
+            print_colored(f"\n🔍 Verifying configuration file...", Colors.OKBLUE)
+            with open(config_file, 'r', encoding='utf-8') as f:
+                verification_config = json.load(f)
             
-            print_colored("\n🎉 Restart Claude Desktop to apply changes!", Colors.OKGREEN)
+            if milvus_server_name in verification_config.get('mcpServers', {}):
+                saved_config = verification_config['mcpServers'][milvus_server_name]
+                if (saved_config.get('command') == 'python' and 
+                    len(saved_config.get('args', [])) > 0 and
+                    'mcp_server.py' in saved_config['args'][0]):
+                    print_colored("✅ Configuration verified successfully!", Colors.OKGREEN)
+                    
+                    # Show the exact matching config format requested
+                    print_colored(f"\n🎯 EXACT CONFIG INSTALLED:", Colors.OKGREEN)
+                    exact_config = {
+                        "mcpServers": {
+                            "obsidian-assistant": {
+                                "command": "python",
+                                "args": [
+                                    mcp_server_path_str
+                                ],
+                                "env": {
+                                    "PYTHONPATH": project_path_str
+                                }
+                            }
+                        }
+                    }
+                    print_colored(json.dumps(exact_config, indent=2), Colors.ENDC)
+                    
+                else:
+                    print_colored("⚠️ Configuration saved but may not be correct", Colors.WARNING)
+            else:
+                print_colored("❌ Configuration verification failed", Colors.FAIL)
+                return False
+            
+            # Final instructions
+            print_colored("\n" + "="*60, Colors.OKGREEN)
+            print_colored("🎉 SETUP COMPLETE! 🎉", Colors.OKGREEN)
+            print_colored("="*60, Colors.OKGREEN)
+            print_colored("📋 Next steps:", Colors.OKBLUE)
+            print_colored("1. 🔄 Restart Claude Desktop application", Colors.ENDC)
+            print_colored("2. 🔧 Make sure Milvus server is running", Colors.ENDC)
+            print_colored("3. 💬 In Claude Desktop, you can now use:", Colors.ENDC)
+            print_colored("   • search_documents()", Colors.ENDC)
+            print_colored("   • get_document_content()", Colors.ENDC)
+            print_colored("   • intelligent_search()", Colors.ENDC)
+            print_colored("   • advanced_filter_search()", Colors.ENDC)
+            print_colored("   • And many more Obsidian search tools!", Colors.ENDC)
+            print_colored("="*60, Colors.OKGREEN)
             
             self.test_results["claude_desktop_config"] = True
             return True
             
         except Exception as e:
             print_colored(f"❌ Config save error: {e}", Colors.FAIL)
-            print_colored("💡 Solution:", Colors.OKBLUE)
-            print_colored("1. Check if Claude Desktop is not running", Colors.ENDC)
-            print_colored("2. Check if you have write permissions to config directory", Colors.ENDC)
-            print_colored("3. Check if sufficient disk space is available", Colors.ENDC)
+            print_colored("💡 Solutions to try:", Colors.OKBLUE)
+            print_colored("1. Close Claude Desktop if it's running", Colors.ENDC)
+            print_colored("2. Run this script as administrator (Windows)", Colors.ENDC)
+            print_colored("3. Check if you have write permissions", Colors.ENDC)
+            print_colored("4. Check available disk space", Colors.ENDC)
+            
+            # Try to create a local config file as fallback
+            try:
+                local_config_file = self.project_dir / 'claude_desktop_config.json'
+                with open(local_config_file, 'w', encoding='utf-8') as f:
+                    json.dump(existing_config, f, indent=2, ensure_ascii=False)
+                
+                print_colored(f"\n💾 Fallback: Config saved to project directory:", Colors.WARNING)
+                print_colored(f"   {local_config_file}", Colors.WARNING)
+                print_colored(f"📋 Manually copy this file to:", Colors.OKBLUE)
+                print_colored(f"   {config_file}", Colors.OKBLUE)
+                
+            except Exception as e2:
+                print_colored(f"❌ Fallback save also failed: {e2}", Colors.FAIL)
             
             self.test_results["claude_desktop_config"] = False
             return False
