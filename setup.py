@@ -1161,6 +1161,7 @@ def perform_complete_physical_reset():
     data_dirs_to_remove = [
         data_base_path,
         project_dir / "MilvusData",
+        project_dir / "volumes",  # 컨테이너 데이터 폴더 추가
         project_dir / "embedding_cache",
         project_dir / "__pycache__",
     ]

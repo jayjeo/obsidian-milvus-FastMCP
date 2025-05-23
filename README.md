@@ -44,11 +44,6 @@
 - **Container-based Deployment**: Reliable Podman-based Milvus deployment
 
 
-### 4. Start MCP Server
-From the menu, select `1. Start MCP Server`
-
-**That's it!** No complex environment setup required. 🎉
-
 ## 📋 Requirements
 
 - **Python 3.8+**
@@ -64,23 +59,26 @@ From the menu, select `1. Start MCP Server`
    cd obsidian-milvus-fastmcp
    ```
 
-2. **Install dependencies**
+2. **Configure paths**
+   - Edit `config.py` and set your Obsidian vault path
+   - Edit mamba path and conda path to install required packages
+     - Run `detect-paths.bat` to find paths automatically
+
+3. **Install dependencies**
    ```bash
-   pip install -r requirements.txt
+   `one-click-install.bat` (with administrator privileges)
+   or 
+   pip install -r requirements.txt (if above does not work)
    ```
 
-3. **Install Podman**
+4. **Install Podman**
    - Windows: Download from [Podman.io](https://podman.io/getting-started/installation)
    - Mac: `brew install podman`
    - Linux: Check your distribution's package manager
 
-4. **Configure paths**
-   - Edit `config.py` and set your Obsidian vault path
-   - Run `python config.py` to verify
-
 5. **Interactive Setup & Testing**
    ```bash
-   python setup.py
+   run-setup.bat
    ```
    
    This interactive script will guide you through:
@@ -92,13 +90,13 @@ From the menu, select `1. Start MCP Server`
 
 6. **Document Processing & Embedding**
    ```bash
-   python main.py
+   run-main.bat
    # Select option 2 or 3 to start embedding your documents
    ```
 
 7. **Launch MCP Server**
    ```bash
-   python main.py
+   run-main.bat
    # Select option 1 and keep this running
    ```
 
