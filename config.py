@@ -208,3 +208,29 @@ MEMORY_CHECK_INTERVAL = 30
 DISABLE_PROGRESS_MONITORING = False  # 진행률은 유지
 MAX_WORKERS = 1
 EMBEDDING_CACHE_SIZE = 10000
+
+# 🎯 고급 Milvus 최적화 설정
+ADVANCED_SEARCH_ENABLED = True  # 고급 검색 기능 활성화
+KNOWLEDGE_GRAPH_ENABLED = True  # 지식 그래프 기능 활성화
+MULTI_QUERY_FUSION_ENABLED = True  # 다중 쿼리 융합 활성화
+PERFORMANCE_MONITORING_ENABLED = True  # 성능 모니터링 활성화
+HNSW_AUTO_OPTIMIZATION = True  # HNSW 자동 최적화
+
+# 검색 성능 최적화
+SEARCH_CACHE_SIZE = 1000  # 검색 결과 캐시 크기
+SEARCH_TIMEOUT = 30  # 검색 타임아웃 (초)
+MAX_SEARCH_RESULTS = 1000  # 최대 검색 결과 수
+
+# 메타데이터 필터링 설정
+ENABLE_COMPLEX_FILTERING = True  # 복잡한 필터링 활성화
+FILTER_CACHE_SIZE = 500  # 필터 캐시 크기
+
+# RAG 최적화 설정
+RAG_CONTEXT_WINDOW = 4096  # RAG 컨텍스트 윈도우 크기
+RAG_CHUNK_OVERLAP_RATIO = 0.1  # RAG 청크 오버랩 비율
+RAG_SIMILARITY_THRESHOLD = 0.7  # RAG 유사도 임계값
+
+# 지식 그래프 설정
+KG_MAX_DEPTH = 3  # 지식 그래프 최대 깊이
+KG_MAX_CONNECTIONS = 100  # 최대 연결 수
+KG_SIMILARITY_THRESHOLD = 0.8  # 지식 그래프 유사도 임계값
