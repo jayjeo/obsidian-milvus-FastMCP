@@ -102,13 +102,15 @@ echo Creating Milvus network...
 podman network exists milvus 2>nul || podman network create milvus
 echo [OK] Network ready
 
-REM Create named volumes for persistent storage
+REM Create local directories for persistent storage
 echo.
-echo Setting up persistent storage volumes...
-podman volume exists milvus-etcd-data 2>nul || podman volume create milvus-etcd-data
-podman volume exists milvus-minio-data 2>nul || podman volume create milvus-minio-data  
-podman volume exists milvus-db-data 2>nul || podman volume create milvus-db-data
-echo [OK] Storage volumes ready
+echo Setting up persistent storage directories...
+if not exist "volumes" mkdir "volumes"
+if not exist "volumes\etcd" mkdir "volumes\etcd"
+if not exist "MilvusData" mkdir "MilvusData"
+if not exist "MilvusData\minio" mkdir "MilvusData\minio"
+if not exist "MilvusData\milvus" mkdir "MilvusData\milvus"
+echo [OK] Storage directories ready
 
 echo.
 echo ================================================================
@@ -117,7 +119,7 @@ echo ================================================================
 
 echo [1/3] Starting etcd (metadata store)...
 podman run -d --name milvus-etcd --network milvus ^
-  -v milvus-etcd-data:/etcd ^
+  -v "%CD%\volumes\etcd:/etcd" ^
   -e ETCD_AUTO_COMPACTION_MODE=revision ^
   -e ETCD_AUTO_COMPACTION_RETENTION=1000 ^
   -e ETCD_QUOTA_BACKEND_BYTES=4294967296 ^
@@ -134,7 +136,7 @@ echo [OK] etcd started
 
 echo [2/3] Starting MinIO (object storage)...
 podman run -d --name milvus-minio --network milvus ^
-  -v milvus-minio-data:/minio_data ^
+  -v "%CD%\MilvusData\minio:/minio_data" ^
   -e MINIO_ACCESS_KEY=minioadmin ^
   -e MINIO_SECRET_KEY=minioadmin ^
   --user 0:0 ^
@@ -153,7 +155,7 @@ timeout /t 15 /nobreak >nul
 
 echo [3/3] Starting Milvus (vector database)...
 podman run -d --name milvus-standalone --network milvus ^
-  -v milvus-db-data:/var/lib/milvus ^
+  -v "%CD%\MilvusData\milvus:/var/lib/milvus" ^
   -p 19530:19530 ^
   -p 9091:9091 ^
   -e ETCD_ENDPOINTS=milvus-etcd:2379 ^
@@ -182,8 +184,9 @@ echo Container Status:
 podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 echo.
-echo Storage Volumes:
-podman volume ls | findstr milvus
+echo Storage Directories:
+echo   - Container data: %CD%\volumes
+echo   - Embedding data: %CD%\MilvusData
 
 echo.
 echo ================================================================
@@ -197,7 +200,8 @@ echo   - Web Interface: http://localhost:9091
 echo.
 echo Data Storage:
 echo   - All data is persistent and will survive restarts
-echo   - Data is stored in Podman volumes
+echo   - Container data: %CD%\volumes
+echo   - Embedding data: %CD%\MilvusData
 echo.
 
 pause
