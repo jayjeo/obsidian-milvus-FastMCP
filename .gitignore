@@ -46,6 +46,10 @@ wheels/
 # User-specific configuration
 config_local.py
 obsidian-vault/
+run-main-hardcoded.bat
+enhanced_auto_start.log
+enhanced_auto_start.vbs
+auto_start_detailed.log
 
 # Personal data directories
 volumes/

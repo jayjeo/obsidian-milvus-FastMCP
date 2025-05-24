@@ -90,6 +90,22 @@
    4. **MCP Server Validation** - Checks server files
    5. **Claude Desktop Integration** - Configures Claude Desktop automatically
 
+##### 🎯 Claude Desktop Integration
+
+Add this to your Claude Desktop configuration. But this should be already done by run-setup.bat (Option 5).
+
+   ```json
+   {
+   "mcpServers": {
+      "obsidian-assistant": {
+         "command": "python",
+         "args": ["path/to/mcp_server.py"],
+         "env": {}
+      }
+   }
+   }
+   ```
+
 6. **Document Processing & Embedding**
    ```bash
    run-main.bat
@@ -102,14 +118,30 @@
    # Select option 1 and keep this running
    ```
 
+8. **Automotic Launch for MCP Server**
+   ```bash
+   setup_auto_start.bat
+   ```
+
+   - This will create a task that will launch the MCP server when you start your computer.
+   - You don't need to run `mcp_server.py` every time you start your computer.
+
 ## 🎮 Usage
 
 ##### Once setup is complete:
-- **Keep MCP Server Running**: `python main.py` (option 1)
 - **Open Claude Desktop**: Your Obsidian vault is now searchable
 - **Start Searching**: Use natural language queries in Claude Desktop
 - **Advanced Features**: Access all search modes and filtering options through Claude
 
+##### Additional Tips:
+- **Filesystems MCP** will give you a feature to generate markdown files in your Obsidian vault.
+  - [https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem)
+- **Use the Project feature in Claude Desktop** 
+  - This makes our MCP feature more efficient
+  - For example, my instructions are in the project are as follows:
+    - Only provide information based on the Obsidian Assistant MCP. For general searches, always use the auto_search_mode_decision function. Report how many .md or .pdf files were searched and provide a list of searched files along with a comprehensive summary of the content. Only save .md files to Obsidian when explicitly requested, with the storage location being G:\jayjeo. When saving, format note lists in Obsidian-clickable format and create a list of referenced .md and .pdf files at the top of the note in Obsidian-clickable format.
+    - If you write down this instruction as your comfortable language, the result of Claude desktop will follow your language. For instance, I use Korean. 
+ 
 ##### Backup & Restore Milvus Data (Embedding Data)
 
 - **Backup**: Run `backup-all-data.bat`
@@ -200,25 +232,7 @@ cp .env.example .env
 ### Search quality issues
 → Try different search strategies or adjust similarity thresholds
 
-## 🎯 Claude Desktop Integration
 
-After starting the MCP server, add this to your Claude Desktop configuration:
-
-```json
-{
-  "mcpServers": {
-    "obsidian-assistant": {
-      "command": "python",
-      "args": ["path/to/mcp_server.py"],
-      "env": {}
-    }
-  }
-}
-```
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
 

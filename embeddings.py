@@ -170,6 +170,10 @@ class SystemMonitor:
                 "gpu_percent": 0,
                 "gpu_available": False
             }
+    
+    def get_memory_status(self):
+        """메모리 상태 반환 (get_system_status의 별칭)"""
+        return self.get_system_status()
 
 class EmbeddingModel:
     _instance = None
@@ -986,8 +990,8 @@ class EmbeddingModel:
             logging.info("GPU memory cache cleared")
             
         # 메모리 사용량 로깅
-        memory_status = self.memory_monitor.get_memory_status()
-        logging.info(f"Current memory usage: {memory_status['percent']}% ({memory_status['available'] / (1024**2):.1f} MB available)")
+        memory_status = self.memory_monitor.get_system_status()
+        logging.info(f"Current memory usage: {memory_status['memory_percent']}% ({memory_status['memory_available'] / (1024**2):.1f} MB available)")
         
         return True
             
