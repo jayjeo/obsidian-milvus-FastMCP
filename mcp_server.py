@@ -22,12 +22,20 @@ import os
 import sys
 import json
 import traceback
+import logging
 import time
 import asyncio
 import math
 from typing import List, Dict, Any, Optional, Tuple, Generator
 from datetime import datetime
 
+# Configure basic logging
+logging.basicConfig(
+    level=logging.ERROR,  # Use ERROR level by default
+    format='%(message)s'
+)
+
+# Import other modules
 from mcp.server.fastmcp import FastMCP
 import config
 from milvus_manager import MilvusManager
@@ -38,8 +46,24 @@ from enhanced_search_engine import EnhancedSearchEngine
 from hnsw_optimizer import HNSWOptimizer
 from advanced_rag import AdvancedRAGEngine
 
-import logging
+# Set up logging level from config
+log_level_str = getattr(config, 'LOG_LEVEL', 'ERROR')
+log_level = getattr(logging, log_level_str, logging.ERROR)
+logging.getLogger().setLevel(log_level)
+
+# Get logger for this module
 logger = logging.getLogger('OptimizedMCP')
+logger.setLevel(log_level)
+
+# Helper function to safely print messages
+def safe_print(message, level="info"):
+    """Print a message safely using the logger"""
+    if level.lower() == "error":
+        logger.error(message)
+    elif level.lower() == "warning":
+        logger.warning(message)
+    else:
+        logger.info(message)
 
 mcp = FastMCP(config.FASTMCP_SERVER_NAME)
 
@@ -55,7 +79,7 @@ def initialize_components():
     global milvus_manager, search_engine, enhanced_search, hnsw_optimizer, rag_engine
     
     try:
-        print("🚀 Starting Enhanced Obsidian-Milvus Fast MCP Server...")
+        logger.info("🚀 Starting Enhanced Obsidian-Milvus Fast MCP Server...")
         
         milvus_manager = MilvusManager()
         search_engine = SearchEngine(milvus_manager)
@@ -65,15 +89,15 @@ def initialize_components():
         
         try:
             optimization_params = hnsw_optimizer.auto_tune_parameters()
-            print(f"Auto-tuning completed: {optimization_params}")
+            logger.info(f"Auto-tuning completed: {optimization_params}")
         except Exception as e:
-            print(f"Auto-tuning warning: {e}")
+            logger.warning(f"Auto-tuning warning: {e}")
         
-        print("✅ All components initialized!")
+        logger.info("✅ All components initialized!")
         return True
         
     except Exception as e:
-        print(f"❌ Component initialization failed: {e}")
+        logger.error(f"❌ Component initialization failed: {e}")
         return False
 
 # ==================== 새로운 고급 검색 도구들 ====================
@@ -1722,6 +1746,7 @@ def main():
         if config.FASTMCP_TRANSPORT == "stdio":
             print("📡 MCP server starting using STDIO transport...")
             mcp.run(transport="stdio")
+            # This line will not be reached during normal operation
         elif config.FASTMCP_TRANSPORT == "sse":
             print(f"📡 MCP server starting using SSE transport... (http://{config.FASTMCP_HOST}:{config.FASTMCP_PORT})")
             mcp.run(transport="sse", host=config.FASTMCP_HOST, port=config.FASTMCP_PORT)
