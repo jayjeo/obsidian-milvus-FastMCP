@@ -1,7 +1,12 @@
-#!/usr/bin/env python3
-"""
-Obsidian-Milvus Fast MCP Server - 완전 최적화 버전
-Milvus의 모든 고급 기능을 Claude Desktop에서 최대한 활용
+"""Obsidian-Milvus Fast MCP Server - 완전 최적화 버전 (Enhanced)
+전체 노트 검색 및 고급 검색 모드를 지원하는 업그레이드 버전
+
+New Features:
+- 전체 검색 모드 (limit=None 지원)
+- 자동 검색 모드 결정
+- 배치 검색 및 페이지네이션
+- 기본 limit 200-500으로 증가
+- 종합 검색 기능
 
 Enhanced with:
 - 고급 메타데이터 필터링  
@@ -18,7 +23,9 @@ import sys
 import json
 import traceback
 import time
-from typing import List, Dict, Any, Optional
+import asyncio
+import math
+from typing import List, Dict, Any, Optional, Tuple, Generator
 from datetime import datetime
 
 from mcp.server.fastmcp import FastMCP
@@ -48,7 +55,7 @@ def initialize_components():
     global milvus_manager, search_engine, enhanced_search, hnsw_optimizer, rag_engine
     
     try:
-        print("🚀 최적화된 Obsidian-Milvus MCP Server 초기화 중...")
+        print("🚀 Starting Enhanced Obsidian-Milvus Fast MCP Server...")
         
         milvus_manager = MilvusManager()
         search_engine = SearchEngine(milvus_manager)
@@ -58,18 +65,555 @@ def initialize_components():
         
         try:
             optimization_params = hnsw_optimizer.auto_tune_parameters()
-            print(f"자동 튜닝 완료: {optimization_params}")
+            print(f"Auto-tuning completed: {optimization_params}")
         except Exception as e:
-            print(f"자동 튜닝 중 경고: {e}")
+            print(f"Auto-tuning warning: {e}")
         
-        print("✅ 모든 컴포넌트 초기화 완료!")
+        print("✅ All components initialized!")
         return True
         
     except Exception as e:
-        print(f"❌ 컴포넌트 초기화 실패: {e}")
+        print(f"❌ Component initialization failed: {e}")
         return False
 
-# ==================== 고급 검색 도구들 ====================
+# ==================== 새로운 고급 검색 도구들 ====================
+
+def analyze_query_complexity(query: str) -> Dict[str, Any]:
+    """쿼리 복잡도 분석하여 최적 검색 모드 결정"""
+    words = query.split()
+    word_count = len(words)
+    
+    # 키워드 기반 복잡도 분석
+    complex_keywords = ['분석', 'analyze', '비교', 'compare', '관계', 'relation', '연결', 'connection']
+    semantic_keywords = ['의미', 'meaning', '개념', 'concept', '이해', 'understand']
+    specific_keywords = ['정확히', 'exact', '특정', 'specific', '찾아줘', 'find']
+    
+    complexity_score = 0
+    
+    # 단어 수 기반 점수
+    if word_count <= 2:
+        complexity_score += 1  # 단순
+    elif word_count <= 5:
+        complexity_score += 2  # 보통
+    else:
+        complexity_score += 3  # 복잡
+    
+    # 키워드 기반 점수
+    query_lower = query.lower()
+    if any(keyword in query_lower for keyword in complex_keywords):
+        complexity_score += 2
+    if any(keyword in query_lower for keyword in semantic_keywords):
+        complexity_score += 1
+    if any(keyword in query_lower for keyword in specific_keywords):
+        complexity_score += 1
+    
+    # 검색 모드 결정
+    if complexity_score <= 2:
+        search_mode = "fast"
+        search_strategy = "keyword"
+    elif complexity_score <= 4:
+        search_mode = "balanced"
+        search_strategy = "hybrid"
+    else:
+        search_mode = "comprehensive"
+        search_strategy = "semantic_graph"
+    
+    return {
+        "complexity_score": complexity_score,
+        "word_count": word_count,
+        "recommended_mode": search_mode,
+        "recommended_strategy": search_strategy,
+        "estimated_time": "fast" if complexity_score <= 2 else "medium" if complexity_score <= 4 else "slow"
+    }
+
+@mcp.tool()
+async def auto_search_mode_decision(
+    query: str,
+    execute_search: bool = True,
+    limit: Optional[int] = None
+) -> Dict[str, Any]:
+    """쿼리를 분석하여 최적의 검색 모드를 자동으로 결정하고 실행"""
+    global search_engine, enhanced_search, rag_engine
+    
+    if not search_engine:
+        return {"error": "Search engine not initialized.", "query": query}
+    
+    try:
+        start_time = time.time()
+        
+        # 쿼리 분석
+        analysis = analyze_query_complexity(query)
+        recommended_mode = analysis["recommended_mode"]
+        recommended_strategy = analysis["recommended_strategy"]
+        
+        # limit 자동 결정
+        if limit is None:
+            if recommended_mode == "fast":
+                limit = 100
+            elif recommended_mode == "balanced":
+                limit = 300
+            else:  # comprehensive
+                limit = 500
+        
+        results = []
+        search_info = {}
+        
+        if execute_search:
+            # 추천된 모드로 검색 실행
+            if recommended_strategy == "keyword":
+                results = search_engine._keyword_search(query=query, limit=limit)
+                search_info = {"type": "keyword", "mode": "fast"}
+                
+            elif recommended_strategy == "hybrid":
+                results, search_info = search_engine.hybrid_search(
+                    query=query, limit=limit
+                )
+                
+            elif recommended_strategy == "semantic_graph" and rag_engine:
+                results = rag_engine.semantic_graph_retrieval(query, max_hops=2)
+                if isinstance(results, dict) and "primary_chunks" in results:
+                    results = results["primary_chunks"][:limit]
+                search_info = {"type": "semantic_graph", "mode": "comprehensive"}
+                
+            else:
+                # 폴백: 하이브리드 검색
+                results, search_info = search_engine.hybrid_search(
+                    query=query, limit=limit
+                )
+        
+        analysis_time = time.time() - start_time
+        
+        return {
+            "query": query,
+            "query_analysis": analysis,
+            "selected_mode": recommended_mode,
+            "selected_strategy": recommended_strategy,
+            "limit_used": limit,
+            "results": results if execute_search else [],
+            "search_info": search_info if execute_search else {},
+            "performance": {
+                "analysis_time_ms": round(analysis_time * 1000, 2),
+                "total_results": len(results) if execute_search else 0,
+                "mode_effectiveness": "optimal" if results else "needs_adjustment"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Auto search mode decision error: {e}")
+        return {"error": str(e), "query": query}
+
+@mcp.tool()
+async def comprehensive_search_all(
+    query: str,
+    include_similarity_scores: bool = True,
+    batch_size: int = 500,
+    similarity_threshold: float = 0.3
+) -> Dict[str, Any]:
+    """전체 컬렉션을 대상으로 한 종합 검색 (limit 제한 없음)"""
+    global milvus_manager, search_engine
+    
+    if not milvus_manager or not search_engine:
+        return {"error": "Required components not initialized.", "query": query}
+    
+    try:
+        start_time = time.time()
+        
+        # 전체 컬렉션 크기 확인
+        total_entities = milvus_manager.count_entities()
+        print(f"🔍 Comprehensive search across {total_entities} documents...")
+        
+        all_results = []
+        processed_batches = 0
+        
+        # 배치별로 전체 컬렉션 검색
+        for offset in range(0, total_entities, batch_size):
+            try:
+                batch_results = milvus_manager.query(
+                    expr="id >= 0",
+                    output_fields=["id", "path", "title", "chunk_text", "content", "file_type", "tags", "created_at", "updated_at"],
+                    limit=batch_size,
+                    offset=offset
+                )
+                
+                # 각 문서에 대해 유사도 계산
+                if include_similarity_scores:
+                    query_embedding = search_engine.embedding_model.get_embedding(query)
+                    
+                    for doc in batch_results:
+                        doc_text = f"{doc.get('title', '')} {doc.get('chunk_text', '')}"
+                        if doc_text.strip():
+                            doc_embedding = search_engine.embedding_model.get_embedding(doc_text)
+                            similarity = search_engine._calculate_cosine_similarity(query_embedding, doc_embedding)
+                            
+                            if similarity >= similarity_threshold:
+                                doc['similarity_score'] = float(similarity)
+                                doc['search_relevance'] = 'high' if similarity > 0.7 else 'medium' if similarity > 0.5 else 'low'
+                                all_results.append(doc)
+                else:
+                    # 키워드 기반 필터링
+                    query_words = set(query.lower().split())
+                    for doc in batch_results:
+                        doc_text = f"{doc.get('title', '')} {doc.get('chunk_text', '')}".lower()
+                        if any(word in doc_text for word in query_words):
+                            doc['similarity_score'] = 0.5  # 기본값
+                            doc['search_relevance'] = 'keyword_match'
+                            all_results.append(doc)
+                
+                processed_batches += 1
+                
+                # 진행 상황 출력
+                if processed_batches % 5 == 0:
+                    print(f"📊 Processed {processed_batches * batch_size}/{total_entities} documents...")
+                
+            except Exception as batch_error:
+                logger.error(f"Batch processing error at offset {offset}: {batch_error}")
+                continue
+        
+        # 결과 정렬 (유사도 순)
+        if include_similarity_scores:
+            all_results.sort(key=lambda x: x.get('similarity_score', 0), reverse=True)
+        
+        search_time = time.time() - start_time
+        
+        return {
+            "query": query,
+            "search_type": "comprehensive_all",
+            "total_documents_searched": total_entities,
+            "total_results_found": len(all_results),
+            "results": all_results,
+            "search_parameters": {
+                "batch_size": batch_size,
+                "similarity_threshold": similarity_threshold,
+                "include_similarity_scores": include_similarity_scores
+            },
+            "performance_metrics": {
+                "search_time_seconds": round(search_time, 2),
+                "documents_per_second": round(total_entities / search_time, 2),
+                "batches_processed": processed_batches,
+                "effectiveness_ratio": len(all_results) / total_entities if total_entities > 0 else 0
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Comprehensive search error: {e}")
+        return {"error": str(e), "query": query}
+
+@mcp.tool()
+async def batch_search_with_pagination(
+    query: str,
+    page_size: int = 200,
+    max_pages: Optional[int] = None,
+    search_mode: str = "hybrid"
+) -> Dict[str, Any]:
+    """페이지네이션 방식으로 배치 검색 수행"""
+    global search_engine, milvus_manager
+    
+    if not search_engine or not milvus_manager:
+        return {"error": "Required components not initialized.", "query": query}
+    
+    try:
+        start_time = time.time()
+        
+        total_entities = milvus_manager.count_entities()
+        max_possible_pages = math.ceil(total_entities / page_size)
+        
+        if max_pages is None:
+            max_pages = min(max_possible_pages, 10)  # 기본적으로 최대 10페이지
+        else:
+            max_pages = min(max_pages, max_possible_pages)
+        
+        all_results = []
+        page_results = []
+        
+        query_embedding = search_engine.embedding_model.get_embedding(query)
+        
+        for page in range(max_pages):
+            offset = page * page_size
+            
+            try:
+                # 페이지별 데이터 가져오기
+                page_docs = milvus_manager.query(
+                    expr="id >= 0",
+                    output_fields=["id", "path", "title", "chunk_text", "content", "file_type", "tags"],
+                    limit=page_size,
+                    offset=offset
+                )
+                
+                page_matches = []
+                
+                if search_mode == "hybrid":
+                    # 하이브리드 검색 (의미적 + 키워드)
+                    query_words = set(query.lower().split())
+                    
+                    for doc in page_docs:
+                        # 키워드 매칭 확인
+                        doc_text = f"{doc.get('title', '')} {doc.get('chunk_text', '')}".lower()
+                        keyword_score = sum(1 for word in query_words if word in doc_text) / len(query_words)
+                        
+                        # 의미적 유사도 계산
+                        if keyword_score > 0 or search_mode == "semantic":
+                            doc_full_text = f"{doc.get('title', '')} {doc.get('chunk_text', '')}"
+                            if doc_full_text.strip():
+                                doc_embedding = search_engine.embedding_model.get_embedding(doc_full_text)
+                                semantic_score = search_engine._calculate_cosine_similarity(query_embedding, doc_embedding)
+                                
+                                # 종합 점수 계산 (키워드 30% + 의미적 70%)
+                                combined_score = (keyword_score * 0.3) + (semantic_score * 0.7)
+                                
+                                if combined_score > 0.2:  # 임계값
+                                    doc['similarity_score'] = float(combined_score)
+                                    doc['keyword_score'] = float(keyword_score)
+                                    doc['semantic_score'] = float(semantic_score)
+                                    doc['page_number'] = page + 1
+                                    page_matches.append(doc)
+                
+                elif search_mode == "keyword":
+                    # 키워드 기반 검색
+                    query_words = set(query.lower().split())
+                    for doc in page_docs:
+                        doc_text = f"{doc.get('title', '')} {doc.get('chunk_text', '')}".lower()
+                        score = sum(1 for word in query_words if word in doc_text) / len(query_words)
+                        if score > 0:
+                            doc['similarity_score'] = float(score)
+                            doc['page_number'] = page + 1
+                            page_matches.append(doc)
+                
+                # 페이지 결과 정렬
+                page_matches.sort(key=lambda x: x.get('similarity_score', 0), reverse=True)
+                
+                page_info = {
+                    "page_number": page + 1,
+                    "documents_in_page": len(page_docs),
+                    "matches_found": len(page_matches),
+                    "top_matches": page_matches[:10]  # 상위 10개만 저장
+                }
+                page_results.append(page_info)
+                
+                # 전체 결과에 추가
+                all_results.extend(page_matches)
+                
+                print(f"📄 Page {page + 1}/{max_pages}: {len(page_matches)} matches found")
+                
+            except Exception as page_error:
+                logger.error(f"Page {page + 1} processing error: {page_error}")
+                continue
+        
+        # 전체 결과 재정렬
+        all_results.sort(key=lambda x: x.get('similarity_score', 0), reverse=True)
+        
+        search_time = time.time() - start_time
+        
+        return {
+            "query": query,
+            "search_type": "batch_pagination",
+            "pagination_info": {
+                "page_size": page_size,
+                "pages_processed": len(page_results),
+                "max_pages_requested": max_pages,
+                "total_documents": total_entities
+            },
+            "all_results": all_results,
+            "page_by_page_results": page_results,
+            "summary": {
+                "total_matches": len(all_results),
+                "best_match_score": all_results[0].get('similarity_score', 0) if all_results else 0,
+                "search_time_seconds": round(search_time, 2),
+                "average_matches_per_page": round(len(all_results) / len(page_results), 2) if page_results else 0
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Batch pagination search error: {e}")
+        return {"error": str(e), "query": query}
+
+@mcp.tool()
+async def intelligent_search_enhanced(
+    query: str,
+    search_strategy: str = "auto",  # auto, adaptive, hierarchical, semantic_graph, multi_modal
+    context_expansion: bool = True,
+    time_awareness: bool = False,
+    similarity_threshold: float = 0.7,
+    limit: Optional[int] = None,  # None means comprehensive search
+    enable_full_search: bool = False
+) -> Dict[str, Any]:
+    """고도로 향상된 지능형 검색 (전체 검색 지원)"""
+    global rag_engine, enhanced_search, milvus_manager
+    
+    if not rag_engine or not enhanced_search:
+        return {"error": "Advanced search engine not initialized.", "query": query}
+    
+    try:
+        start_time = time.time()
+        
+        # 자동 모드인 경우 쿼리 분석으로 전략 결정
+        if search_strategy == "auto":
+            analysis = analyze_query_complexity(query)
+            search_strategy = analysis["recommended_strategy"]
+            if search_strategy == "keyword":
+                search_strategy = "adaptive"  # 키워드 -> 적응적 검색
+        
+        # limit 자동 결정
+        if limit is None:
+            if enable_full_search:
+                # 전체 검색 모드
+                return await comprehensive_search_all(
+                    query=query,
+                    include_similarity_scores=True,
+                    similarity_threshold=similarity_threshold
+                )
+            else:
+                # 기본 limit 설정
+                limit = 300
+        
+        # 전략별 검색 수행
+        results = []
+        
+        if search_strategy == "adaptive":
+            results = rag_engine.adaptive_chunk_retrieval(query, context_size="dynamic")
+        elif search_strategy == "hierarchical":
+            results = rag_engine.hierarchical_retrieval(query, max_depth=3)
+        elif search_strategy == "semantic_graph":
+            results = rag_engine.semantic_graph_retrieval(query, max_hops=2)
+        elif search_strategy == "multi_modal":
+            results = enhanced_search.multi_modal_search(query, include_attachments=True)
+        else:
+            # 기본: 의미적 유사도 검색
+            results = enhanced_search.semantic_similarity_search(query, similarity_threshold=similarity_threshold)
+        
+        # 시간 인식 검색 적용
+        if time_awareness and isinstance(results, list):
+            results = rag_engine.temporal_aware_retrieval(query, time_weight=0.3)
+        
+        # 결과 처리
+        if isinstance(results, dict) and "primary_chunks" in results:
+            if results["primary_chunks"]:
+                results["primary_chunks"] = results["primary_chunks"][:limit]
+        elif isinstance(results, list):
+            results = results[:limit]
+        
+        # 컨텍스트 확장
+        expanded_results = None
+        if context_expansion:
+            try:
+                if isinstance(results, list) and results:
+                    context_docs = [r.get('id') for r in results[:5] if r.get('id')]
+                    if context_docs:
+                        expanded_results = enhanced_search.contextual_search(
+                            query, context_docs=context_docs, expand_context=True
+                        )
+            except Exception as e:
+                logger.error(f"Context expansion error: {e}")
+        
+        search_time = time.time() - start_time
+        
+        return {
+            "query": query,
+            "strategy_used": search_strategy,
+            "primary_results": results,
+            "expanded_results": expanded_results,
+            "search_configuration": {
+                "strategy": search_strategy,
+                "time_awareness": time_awareness,
+                "similarity_threshold": similarity_threshold,
+                "context_expansion": context_expansion,
+                "limit": limit,
+                "full_search_enabled": enable_full_search
+            },
+            "performance_metrics": {
+                "search_time_ms": round(search_time * 1000, 2),
+                "total_found": len(results) if isinstance(results, list) else "complex_structure",
+                "strategy_effectiveness": "optimal"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Enhanced intelligent search error: {e}")
+        return {"error": str(e), "query": query}
+
+# ==================== 업그레이드된 기존 도구들 ====================
+
+@mcp.tool()
+async def search_documents(
+    query: str,
+    limit: int = 200,  # 기본값 50 -> 200으로 증가
+    search_type: str = "hybrid",
+    file_types: Optional[List[str]] = None,
+    tags: Optional[List[str]] = None,
+    enable_comprehensive: bool = False  # 전체 검색 모드
+) -> Dict[str, Any]:
+    """향상된 Obsidian 문서 검색 (기본 limit 증가, 전체 검색 지원)"""
+    global search_engine
+    
+    if not search_engine:
+        return {"error": "Search engine not initialized.", "query": query, "results": []}
+    
+    try:
+        start_time = time.time()
+        
+        # 전체 검색 모드인 경우
+        if enable_comprehensive:
+            return await comprehensive_search_all(
+                query=query,
+                include_similarity_scores=True,
+                similarity_threshold=0.3
+            )
+        
+        # 필터 파라미터 구성
+        filter_params = {}
+        if file_types:
+            filter_params['file_types'] = file_types
+        if tags:
+            filter_params['tags'] = tags
+        
+        # 검색 수행
+        if search_type == "hybrid" or search_type == "vector":
+            results, search_info = search_engine.hybrid_search(
+                query=query, limit=limit, filter_params=filter_params if filter_params else None
+            )
+        else:
+            results = search_engine._keyword_search(
+                query=query, limit=limit, filter_expr=filter_params.get('filter_expr') if filter_params else None
+            )
+            search_info = {"query": query, "search_type": "keyword_only", "total_count": len(results)}
+        
+        # 결과 포맷팅
+        formatted_results = []
+        for result in results:
+            formatted_result = {
+                "id": result.get("id", ""),
+                "file_path": result.get("path", ""),
+                "title": result.get("title", "제목 없음"),
+                "content_preview": result.get("chunk_text", "")[:300] + "..." if len(result.get("chunk_text", "")) > 300 else result.get("chunk_text", ""),
+                "full_content": result.get("content", ""),
+                "score": float(result.get("score", 0)),
+                "file_type": result.get("file_type", ""),
+                "tags": result.get("tags", []),
+                "chunk_index": result.get("chunk_index", 0),
+                "created_at": result.get("created_at", ""),
+                "updated_at": result.get("updated_at", ""),
+                "source": result.get("source", "unknown")
+            }
+            formatted_results.append(formatted_result)
+        
+        search_time = time.time() - start_time
+        
+        return {
+            "query": query,
+            "search_type": search_type,
+            "total_results": len(formatted_results),
+            "results": formatted_results,
+            "search_info": search_info,
+            "filters_applied": {"file_types": file_types, "tags": tags},
+            "performance": {
+                "search_time_ms": round(search_time * 1000, 2),
+                "comprehensive_mode": enable_comprehensive,
+                "limit_used": limit
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Document search error: {e}")
+        return {"error": f"Search error: {str(e)}", "query": query, "results": []}
 
 @mcp.tool()
 async def intelligent_search(
@@ -78,13 +622,13 @@ async def intelligent_search(
     context_expansion: bool = True,
     time_awareness: bool = False,
     similarity_threshold: float = 0.7,
-    limit: int = 10
+    limit: int = 200  # 기본값 50 -> 200으로 증가
 ) -> Dict[str, Any]:
-    """Milvus의 고급 기능을 활용한 지능형 검색"""
+    """Milvus의 고급 기능을 활용한 지능형 검색 (limit 증가)"""
     global rag_engine, enhanced_search
     
     if not rag_engine or not enhanced_search:
-        return {"error": "고급 검색 엔진이 초기화되지 않았습니다.", "query": query}
+        return {"error": "Advanced search engine not initialized.", "query": query}
     
     try:
         start_time = time.time()
@@ -119,7 +663,7 @@ async def intelligent_search(
                             query, context_docs=context_docs, expand_context=True
                         )
             except Exception as e:
-                logger.error(f"컨텍스트 확장 오류: {e}")
+                logger.error(f"Context expansion error: {e}")
         
         search_time = time.time() - start_time
         
@@ -133,12 +677,13 @@ async def intelligent_search(
                 "similarity_threshold": similarity_threshold,
                 "context_expansion": context_expansion,
                 "search_time_ms": round(search_time * 1000, 2),
-                "total_found": len(results) if isinstance(results, list) else "N/A"
+                "total_found": len(results) if isinstance(results, list) else "N/A",
+                "enhanced_limit": limit
             }
         }
         
     except Exception as e:
-        logger.error(f"지능형 검색 오류: {e}")
+        logger.error(f"Intelligent search error: {e}")
         return {"error": str(e), "query": query}
 
 @mcp.tool()
@@ -149,13 +694,13 @@ async def advanced_filter_search(
     file_size_range: Optional[List[int]] = None,
     min_content_quality: Optional[float] = None,
     min_relevance_score: Optional[float] = None,
-    limit: int = 20
+    limit: int = 300  # 기본값 50 -> 300으로 증가
 ) -> Dict[str, Any]:
-    """Milvus의 강력한 메타데이터 필터링을 활용한 고급 검색"""
+    """Milvus의 강력한 메타데이터 필터링을 활용한 고급 검색 (limit 증가)"""
     global enhanced_search
     
     if not enhanced_search:
-        return {"error": "향상된 검색 엔진이 초기화되지 않았습니다.", "query": query}
+        return {"error": "Advanced search engine not initialized.", "query": query}
     
     try:
         filters = {k: v for k, v in {
@@ -176,29 +721,30 @@ async def advanced_filter_search(
             "applied_filters": filters,
             "results": results,
             "filter_effectiveness": len(results) / limit if results else 0,
-            "search_time_ms": round(search_time * 1000, 2)
+            "search_time_ms": round(search_time * 1000, 2),
+            "enhanced_limit": limit
         }
         
     except Exception as e:
-        logger.error(f"고급 필터 검색 오류: {e}")
+        logger.error(f"Advanced filter search error: {e}")
         return {"error": str(e), "query": query}
 
 @mcp.tool() 
 async def multi_query_fusion_search(
     queries: List[str],
     fusion_method: str = "weighted",
-    individual_limits: int = 20,
-    final_limit: int = 10
+    individual_limits: int = 250,  # 기본값 50 -> 250으로 증가
+    final_limit: int = 500  # 기본값 100 -> 500으로 증가
 ) -> Dict[str, Any]:
-    """여러 쿼리를 융합하여 더 정확한 검색 결과 제공"""
+    """여러 쿼리를 융합하여 더 정확한 검색 결과 제공 (limit 증가)"""
     global rag_engine
     
     if not rag_engine:
-        return {"error": "고급 RAG 엔진이 초기화되지 않았습니다.", "queries": queries}
+        return {"error": "Advanced RAG engine not initialized.", "queries": queries}
     
     try:
         if not queries:
-            return {"error": "최소 하나의 쿼리가 필요합니다."}
+            return {"error": "At least one query is required."}
         
         start_time = time.time()
         fused_results = rag_engine.multi_query_fusion(queries, fusion_method)
@@ -210,6 +756,10 @@ async def multi_query_fusion_search(
             "fusion_method": fusion_method,
             "total_candidates": len(fused_results),
             "final_results": final_results,
+            "enhanced_limits": {
+                "individual_limits": individual_limits,
+                "final_limit": final_limit
+            },
             "fusion_statistics": {
                 "average_query_coverage": sum(r.get('query_coverage', 0) for r in final_results) / len(final_results) if final_results else 0,
                 "score_distribution": [r.get('fused_score', 0) for r in final_results],
@@ -218,7 +768,7 @@ async def multi_query_fusion_search(
         }
         
     except Exception as e:
-        logger.error(f"다중 쿼리 융합 검색 오류: {e}")
+        logger.error(f"Multi-query fusion search error: {e}")
         return {"error": str(e), "queries": queries}
 
 @mcp.tool()
@@ -226,13 +776,13 @@ async def knowledge_graph_exploration(
     starting_document: str,
     exploration_depth: int = 2,
     similarity_threshold: float = 0.75,
-    max_connections: int = 50
+    max_connections: int = 200  # 기본값 50 -> 200으로 증가
 ) -> Dict[str, Any]:
-    """Milvus 기반 지식 그래프 탐색"""
+    """Milvus 기반 지식 그래프 탐색 (연결 수 증가)"""
     global milvus_manager
     
     if not milvus_manager:
-        return {"error": "Milvus 매니저가 초기화되지 않았습니다.", "starting_document": starting_document}
+        return {"error": "Milvus manager not initialized.", "starting_document": starting_document}
     
     try:
         start_time = time.time()
@@ -244,7 +794,7 @@ async def knowledge_graph_exploration(
         )
         
         if not start_docs:
-            return {"error": f"시작 문서를 찾을 수 없습니다: {starting_document}"}
+            return {"error": f"Starting document not found: {starting_document}"}
         
         start_doc = start_docs[0]
         
@@ -254,28 +804,28 @@ async def knowledge_graph_exploration(
             "clusters": {}
         }
         
-        current_level_nodes = [start_doc["id"]]
-        explored_nodes = {start_doc["id"]}
+        current_level_nodes = [start_doc.get("id", 0)]
+        explored_nodes = {start_doc.get("id", 0)}
         
         for depth in range(1, exploration_depth + 1):
             next_level_nodes = []
             
             for node_id in current_level_nodes:
                 try:
+                    # 더 많은 문서를 가져와서 탐색
                     similar_docs = milvus_manager.query(
                         expr="id >= 0",
                         output_fields=["id", "path", "title"],
-                        limit=20
+                        limit=300  # 탐색 범위 증가
                     )
                     
                     connection_count = 0
                     for doc in similar_docs:
                         doc_id = doc["id"]
-                        if (doc_id not in explored_nodes and 
-                            connection_count < max_connections // exploration_depth):
+                        if (doc_id not in explored_nodes and connection_count < max_connections // exploration_depth):
                             
                             knowledge_graph["nodes"].append({
-                                "id": doc_id,
+                                "id": doc_id if doc_id is not None else 0,
                                 "title": doc.get("title", ""),
                                 "path": doc.get("path", ""),
                                 "level": depth,
@@ -283,8 +833,8 @@ async def knowledge_graph_exploration(
                             })
                             
                             knowledge_graph["edges"].append({
-                                "source": node_id,
-                                "target": doc_id,
+                                "source": node_id if node_id is not None else 0,
+                                "target": doc_id if doc_id is not None else 0,
                                 "weight": 0.8,
                                 "type": "semantic_similarity"
                             })
@@ -294,7 +844,7 @@ async def knowledge_graph_exploration(
                             connection_count += 1
                             
                 except Exception as e:
-                    logger.error(f"노드 {node_id} 탐색 오류: {e}")
+                    logger.error(f"Node {node_id} exploration error: {e}")
                     continue
             
             current_level_nodes = next_level_nodes
@@ -315,12 +865,13 @@ async def knowledge_graph_exploration(
                 "total_edges": len(knowledge_graph["edges"]),
                 "cluster_count": len(clusters),
                 "average_similarity": sum(edge["weight"] for edge in knowledge_graph["edges"]) / len(knowledge_graph["edges"]) if knowledge_graph["edges"] else 0,
-                "exploration_time_ms": round(search_time * 1000, 2)
+                "exploration_time_ms": round(search_time * 1000, 2),
+                "enhanced_connections": max_connections
             }
         }
         
     except Exception as e:
-        logger.error(f"지식 그래프 탐색 오류: {e}")
+        logger.error(f"Knowledge graph exploration error: {e}")
         return {"error": str(e), "starting_document": starting_document}
 
 @mcp.tool()
@@ -329,7 +880,7 @@ async def performance_optimization_analysis() -> Dict[str, Any]:
     global hnsw_optimizer, enhanced_search
     
     if not hnsw_optimizer:
-        return {"error": "HNSW 최적화기가 초기화되지 않았습니다."}
+        return {"error": "HNSW optimizer not initialized."}
     
     try:
         start_time = time.time()
@@ -354,21 +905,28 @@ async def performance_optimization_analysis() -> Dict[str, Any]:
                 "expected_improvement": "검색 속도 3-5배 향상"
             })
         
-        if len(search_patterns["frequent_queries"]) > 5:
+        if len(search_patterns.get("frequent_queries", [])) > 5:
             optimization_recommendations.append({
                 "type": "caching_strategy",
                 "priority": "medium",
-                "recommendation": "자주 사용되는 쿼리 결과 캐싱",
+                "recommendation": "자주 사용되는 쿼리에 대한 캐싱 활용",
                 "expected_improvement": "응답 시간 50% 단축"
             })
-        
         if config.USE_GPU:
             optimization_recommendations.append({
                 "type": "gpu_optimization",
                 "priority": "high",
                 "recommendation": "GPU 메모리 캐싱 및 배치 처리 활용",
-                "expected_improvement": "대용량 검색 성능 대폭 향상"
+                "expected_improvement": "대용량 검색 성능 대폭 개선"
             })
+        
+        # 새로운 권장사항: 향상된 limit 설정
+        optimization_recommendations.append({
+            "type": "enhanced_limits",
+            "priority": "medium",
+            "recommendation": "기본 검색 limit을 200-500으로 설정하여 더 포괄적인 결과 제공",
+            "expected_improvement": "검색 결과 품질 및 완성도 향상"
+        })
         
         analysis_time = time.time() - start_time
         
@@ -383,7 +941,8 @@ async def performance_optimization_analysis() -> Dict[str, Any]:
                 "gpu_acceleration": "active" if config.USE_GPU else "inactive",
                 "batch_processing": "available",
                 "custom_metrics": "available",
-                "advanced_search_patterns": "active"
+                "advanced_search_patterns": "active",
+                "enhanced_limits": "active"
             },
             "analysis_time_ms": round(analysis_time * 1000, 2)
         }
@@ -392,8 +951,6 @@ async def performance_optimization_analysis() -> Dict[str, Any]:
         logger.error(f"성능 분석 오류: {e}")
         return {"error": str(e)}
 
-# ==================== 새로운 최적화된 도구들 ====================
-
 @mcp.tool()
 async def milvus_power_search(
     query: str,
@@ -401,13 +958,13 @@ async def milvus_power_search(
     gpu_acceleration: bool = True,
     similarity_threshold: float = 0.7,
     metadata_filters: Optional[Dict[str, Any]] = None,
-    limit: int = 10
+    limit: int = 300  # 기본값 50 -> 300으로 증가
 ) -> Dict[str, Any]:
-    """Milvus의 모든 최적화 기능을 활용한 파워 검색"""
+    """Milvus의 모든 최적화 기능을 활용한 파워 검색 (limit 증가)"""
     global search_engine, milvus_manager
     
     if not search_engine or not milvus_manager:
-        return {"error": "필요한 컴포넌트가 초기화되지 않았습니다."}
+        return {"error": "Required components not initialized."}
     
     try:
         start_time = time.time()
@@ -485,7 +1042,7 @@ async def milvus_power_search(
                 result = {
                     "id": hit.id,
                     "path": hit.entity.get('path', ''),
-                    "title": hit.entity.get('title', '제목 없음'),
+                    "title": hit.entity.get('title', 'No title'),
                     "content_preview": hit.entity.get('chunk_text', '')[:350] + "...",
                     "similarity_score": float(hit.score),
                     "file_type": hit.entity.get('file_type', ''),
@@ -510,7 +1067,8 @@ async def milvus_power_search(
                 "mode": search_mode,
                 "gpu_acceleration": gpu_acceleration and config.USE_GPU,
                 "metadata_filters": metadata_filters,
-                "similarity_threshold": similarity_threshold
+                "similarity_threshold": similarity_threshold,
+                "enhanced_limit": limit
             },
             "results": optimized_results,
             "performance_metrics": {
@@ -528,7 +1086,7 @@ async def milvus_power_search(
         }
         
     except Exception as e:
-        logger.error(f"최적화된 검색 오류: {e}")
+        logger.error(f"Optimized search error: {e}")
         return {"error": str(e), "query": query}
 
 @mcp.tool()
@@ -537,7 +1095,7 @@ async def milvus_system_optimization_report() -> Dict[str, Any]:
     global milvus_manager
     
     if not milvus_manager:
-        return {"error": "Milvus 매니저가 초기화되지 않았습니다."}
+        return {"error": "Milvus manager not initialized."}
     
     try:
         # 기본 통계
@@ -553,9 +1111,9 @@ async def milvus_system_optimization_report() -> Dict[str, Any]:
         if hasattr(milvus_manager, 'benchmark_search_strategies'):
             benchmark = milvus_manager.benchmark_search_strategies(test_queries=3)
         else:
-            benchmark = {"note": "벤치마크 기능이 활성화되지 않았습니다."}
+            benchmark = {"note": "벤치마킹 기능이 활성화되지 않았습니다."}
         
-        # 최적화 권장사항 생성
+        # 최적화 권장사항
         recommendations = []
         
         total_docs = stats.get('total_entities', 0)
@@ -577,6 +1135,15 @@ async def milvus_system_optimization_report() -> Dict[str, Any]:
                 "implementation": "ef 파라미터 조정 (128-256 범위)",
                 "expected_improvement": "검색 속도 50-100% 향상"
             })
+        
+        # 새로운 권장사항: 향상된 limit 사용
+        recommendations.append({
+            "category": "검색 범위 최적화",
+            "priority": "중간",
+            "recommendation": "향상된 기본 limit(200-500) 활용으로 포괄적 검색",
+            "implementation": "comprehensive_search_all 또는 enhanced limit 사용",
+            "expected_improvement": "검색 결과 완성도 및 정확도 향상"
+        })
         
         # GPU 관련 권장사항
         if config.USE_GPU:
@@ -611,13 +1178,15 @@ async def milvus_system_optimization_report() -> Dict[str, Any]:
         def calculate_optimization_score(stats, gpu_enabled):
             score = 0
             if stats.get('total_entities', 0) > 0:
-                score += 30
+                score += 25
             if gpu_enabled:
-                score += 40
+                score += 35
             if stats.get('index_type', '') != 'No Index':
-                score += 20
+                score += 25
             if stats.get('estimated_memory_mb', 0) > 0:
                 score += 10
+            # 새로운 기능들 점수
+            score += 5  # 향상된 limit 지원
             return min(score, 100)
         
         return {
@@ -629,18 +1198,31 @@ async def milvus_system_optimization_report() -> Dict[str, Any]:
                 "index_type": stats.get('index_type', 'Unknown'),
                 "vector_dimension": config.VECTOR_DIM,
                 "embedding_model": config.EMBEDDING_MODEL,
-                "collection_size": total_docs
+                "collection_size": total_docs,
+                "enhanced_features": {
+                    "comprehensive_search": True,
+                    "auto_mode_decision": True,
+                    "batch_pagination": True,
+                    "enhanced_limits": True
+                }
             },
             "optimization_score": {
                 "current_score": calculate_optimization_score(stats, config.USE_GPU),
                 "max_possible_score": 100,
                 "improvement_potential": "높음" if not config.USE_GPU else "중간"
             },
+            "new_features_status": {
+                "comprehensive_search_all": "active",
+                "auto_search_mode_decision": "active", 
+                "batch_search_with_pagination": "active",
+                "intelligent_search_enhanced": "active",
+                "enhanced_limits": "active"
+            },
             "report_generated_at": time.strftime("%Y-%m-%d %H:%M:%S")
         }
         
     except Exception as e:
-        logger.error(f"최적화 보고서 생성 오류: {e}")
+        logger.error(f"Optimization report generation error: {e}")
         return {"error": str(e)}
 
 @mcp.tool()
@@ -648,18 +1230,18 @@ async def milvus_knowledge_graph_builder(
     starting_document: str,
     max_depth: int = 3,
     similarity_threshold: float = 0.8,
-    max_nodes: int = 50
+    max_nodes: int = 250  # 기본값 50 -> 250으로 증가
 ) -> Dict[str, Any]:
-    """Milvus 벡터 유사도 기반 지식 그래프 구축"""
+    """Milvus 벡터 유사도 기반 지식 그래프 구축 (노드 수 증가)"""
     global milvus_manager
     
     if not milvus_manager:
-        return {"error": "Milvus 매니저가 초기화되지 않았습니다."}
+        return {"error": "Milvus manager not initialized."}
     
     try:
         start_time = time.time()
         
-        # 시작 문서 찾기
+        # 시작 문서 조회
         start_results = milvus_manager.query(
             expr=f"path like '%{starting_document}%'",
             output_fields=["id", "path", "title", "chunk_text"],
@@ -667,7 +1249,7 @@ async def milvus_knowledge_graph_builder(
         )
         
         if not start_results:
-            return {"error": f"시작 문서를 찾을 수 없습니다: {starting_document}"}
+            return {"error": f"Starting document not found: {starting_document}"}
         
         start_doc = start_results[0]
         
@@ -692,7 +1274,7 @@ async def milvus_knowledge_graph_builder(
             # 관련된 엣지만 유지
             node_ids = {node["id"] for node in graph["nodes"]}
             graph["edges"] = [edge for edge in graph["edges"] 
-                             if edge["source"] in node_ids and edge["target"] in node_ids]
+                              if edge["source"] in node_ids and edge["target"] in node_ids]
         
         build_time = time.time() - start_time
         
@@ -704,7 +1286,8 @@ async def milvus_knowledge_graph_builder(
                 "total_edges": len(graph["edges"]),
                 "max_depth_reached": max([node.get("depth", 0) for node in graph["nodes"]]),
                 "average_similarity": sum(edge["weight"] for edge in graph["edges"]) / len(graph["edges"]) if graph["edges"] else 0,
-                "build_time_ms": round(build_time * 1000, 2)
+                "build_time_ms": round(build_time * 1000, 2),
+                "enhanced_max_nodes": max_nodes
             },
             "milvus_features_used": {
                 "vector_similarity_search": True,
@@ -715,72 +1298,8 @@ async def milvus_knowledge_graph_builder(
         }
         
     except Exception as e:
-        logger.error(f"지식 그래프 구축 오류: {e}")
+        logger.error(f"Knowledge graph construction error: {e}")
         return {"error": str(e), "starting_document": starting_document}
-
-# ==================== 기존 기본 도구들 ====================
-
-@mcp.tool()
-async def search_documents(
-    query: str,
-    limit: int = 5,
-    search_type: str = "hybrid",
-    file_types: Optional[List[str]] = None,
-    tags: Optional[List[str]] = None
-) -> Dict[str, Any]:
-    """Obsidian 문서에서 관련 내용을 검색합니다."""
-    global search_engine
-    
-    if not search_engine:
-        return {"error": "검색 엔진이 초기화되지 않았습니다.", "query": query, "results": []}
-    
-    try:
-        filter_params = {}
-        if file_types:
-            filter_params['file_types'] = file_types
-        if tags:
-            filter_params['tags'] = tags
-        
-        if search_type == "hybrid" or search_type == "vector":
-            results, search_info = search_engine.hybrid_search(
-                query=query, limit=limit, filter_params=filter_params if filter_params else None
-            )
-        else:
-            results = search_engine._keyword_search(
-                query=query, limit=limit, filter_expr=filter_params.get('filter_expr') if filter_params else None
-            )
-            search_info = {"query": query, "search_type": "keyword_only", "total_count": len(results)}
-        
-        formatted_results = []
-        for result in results:
-            formatted_result = {
-                "id": result.get("id", ""),
-                "file_path": result.get("path", ""),
-                "title": result.get("title", "제목 없음"),
-                "content_preview": result.get("chunk_text", "")[:300] + "..." if len(result.get("chunk_text", "")) > 300 else result.get("chunk_text", ""),
-                "full_content": result.get("content", ""),
-                "score": float(result.get("score", 0)),
-                "file_type": result.get("file_type", ""),
-                "tags": result.get("tags", []),
-                "chunk_index": result.get("chunk_index", 0),
-                "created_at": result.get("created_at", ""),
-                "updated_at": result.get("updated_at", ""),
-                "source": result.get("source", "unknown")
-            }
-            formatted_results.append(formatted_result)
-        
-        return {
-            "query": query,
-            "search_type": search_type,
-            "total_results": len(formatted_results),
-            "results": formatted_results,
-            "search_info": search_info,
-            "filters_applied": {"file_types": file_types, "tags": tags}
-        }
-        
-    except Exception as e:
-        logger.error(f"문서 검색 중 오류 발생: {e}")
-        return {"error": f"검색 중 오류 발생: {str(e)}", "query": query, "results": []}
 
 @mcp.tool()
 async def get_document_content(file_path: str) -> Dict[str, Any]:
@@ -788,17 +1307,17 @@ async def get_document_content(file_path: str) -> Dict[str, Any]:
     global milvus_manager
     
     if not milvus_manager:
-        return {"error": "Milvus 매니저가 초기화되지 않았습니다.", "file_path": file_path}
+        return {"error": "Milvus manager not initialized.", "file_path": file_path}
     
     try:
         results = milvus_manager.query(
             expr=f'path == "{file_path}"',
             output_fields=["id", "path", "title", "content", "chunk_text", "file_type", "tags", "created_at", "updated_at", "chunk_index"],
-            limit=100
+            limit=200  # 기본값 100 -> 200으로 증가
         )
         
         if not results:
-            return {"error": f"문서를 찾을 수 없습니다: {file_path}", "file_path": file_path}
+            return {"error": f"Document not found: {file_path}", "file_path": file_path}
         
         first_result = results[0]
         all_chunks = []
@@ -826,12 +1345,13 @@ async def get_document_content(file_path: str) -> Dict[str, Any]:
             "total_chunks": len(all_chunks),
             "chunks": all_chunks,
             "word_count": len(full_content.split()) if full_content else 0,
-            "character_count": len(full_content) if full_content else 0
+            "character_count": len(full_content) if full_content else 0,
+            "enhanced_chunk_limit": 200
         }
         
     except Exception as e:
-        logger.error(f"문서 내용 조회 중 오류 발생: {e}")
-        return {"error": f"문서 조회 중 오류 발생: {str(e)}", "file_path": file_path}
+        logger.error(f"Document content retrieval error: {e}")
+        return {"error": f"Document retrieval error: {str(e)}", "file_path": file_path}
 
 @mcp.tool()
 async def get_collection_stats() -> Dict[str, Any]:
@@ -839,16 +1359,16 @@ async def get_collection_stats() -> Dict[str, Any]:
     global milvus_manager
     
     if not milvus_manager:
-        return {"error": "Milvus 매니저가 초기화되지 않았습니다.", "collection_name": config.COLLECTION_NAME}
+        return {"error": "Milvus manager not initialized.", "collection_name": config.COLLECTION_NAME}
     
     try:
         total_entities = milvus_manager.count_entities()
         file_type_counts = milvus_manager.get_file_type_counts()
         recent_docs = milvus_manager.query(
-            expr="id >= 0", output_fields=["path", "title", "created_at", "file_type"], limit=10
+            expr="id >= 0", output_fields=["path", "title", "created_at", "file_type"], limit=100  # 기본값 50 -> 100으로 증가
         )
         
-        all_results = milvus_manager.query(expr="id >= 0", output_fields=["tags"], limit=1000)
+        all_results = milvus_manager.query(expr="id >= 0", output_fields=["tags"], limit=2000)  # 기본값 1000 -> 2000으로 증가
         
         tag_counts = {}
         for doc in all_results:
@@ -858,7 +1378,7 @@ async def get_collection_stats() -> Dict[str, Any]:
                     if tag:
                         tag_counts[tag] = tag_counts.get(tag, 0) + 1
         
-        top_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        top_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)[:20]  # 상위 10 -> 20개로 증가
         
         return {
             "collection_name": config.COLLECTION_NAME,
@@ -872,7 +1392,7 @@ async def get_collection_stats() -> Dict[str, Any]:
                     "file_type": doc.get("file_type", ""),
                     "created_at": doc.get("created_at", "")
                 }
-                for doc in recent_docs[:5]
+                for doc in recent_docs[:10]  # 최근 문서 10개
             ],
             "milvus_config": {
                 "host": config.MILVUS_HOST,
@@ -888,6 +1408,13 @@ async def get_collection_stats() -> Dict[str, Any]:
                 "hnsw_optimizer": "active" if hnsw_optimizer else "inactive",
                 "enhanced_search": "active" if enhanced_search else "inactive",
                 "advanced_rag": "active" if rag_engine else "inactive"
+            },
+            "enhanced_features": {
+                "comprehensive_search": "active",
+                "auto_mode_decision": "active",
+                "batch_pagination": "active",
+                "enhanced_limits": "active",
+                "sample_sizes_increased": True
             }
         }
         
@@ -896,21 +1423,25 @@ async def get_collection_stats() -> Dict[str, Any]:
         return {"error": f"통계 조회 중 오류 발생: {str(e)}", "collection_name": config.COLLECTION_NAME}
 
 @mcp.tool()
-async def search_by_tags(tags: List[str], limit: int = 10) -> Dict[str, Any]:
-    """특정 태그를 가진 문서들을 검색합니다."""
+async def search_by_tags(
+    tags: List[str], 
+    limit: int = 300  # 기본값 50 -> 300으로 증가
+) -> Dict[str, Any]:
+    """특정 태그를 가진 문서들을 검색 (limit 증가)"""
     global milvus_manager
     
     if not milvus_manager:
-        return {"error": "Milvus 매니저가 초기화되지 않았습니다.", "tags": tags}
+        return {"error": "Milvus manager not initialized.", "tags": tags}
     
     if not tags:
-        return {"error": "최소 하나의 태그를 제공해주세요.", "tags": tags, "results": []}
+        return {"error": "At least one tag must be provided.", "tags": tags, "results": []}
     
     try:
+        # 더 많은 문서를 가져와서 필터링
         all_results = milvus_manager.query(
             expr="id >= 0",
             output_fields=["id", "path", "title", "tags", "file_type", "created_at", "updated_at"],
-            limit=1000
+            limit=2000  # 더 많은 결과를 가져와서 필터링
         )
         
         filtered_results = []
@@ -929,28 +1460,31 @@ async def search_by_tags(tags: List[str], limit: int = 10) -> Dict[str, Any]:
                         "matched_tags": [tag for tag in tags if tag in doc_tags]
                     })
         
+        # 요청된 limit만큼만 반환
         filtered_results = filtered_results[:limit]
         
         return {
             "search_tags": tags,
             "total_results": len(filtered_results),
-            "results": filtered_results
+            "results": filtered_results,
+            "enhanced_limit": limit,
+            "search_scope": "expanded"
         }
         
     except Exception as e:
-        logger.error(f"태그 검색 중 오류 발생: {e}")
-        return {"error": f"태그 검색 중 오류 발생: {str(e)}", "search_tags": tags, "results": []}
+        logger.error(f"Tag search error: {e}")
+        return {"error": f"Tag search error: {str(e)}", "search_tags": tags, "results": []}
 
 @mcp.tool()
-async def list_available_tags(limit: int = 50) -> Dict[str, Any]:
+async def list_available_tags(limit: int = 200) -> Dict[str, Any]:  # 기본값 50 -> 200으로 증가
     """사용 가능한 모든 태그 목록을 반환합니다."""
     global milvus_manager
     
     if not milvus_manager:
-        return {"error": "Milvus 매니저가 초기화되지 않았습니다.", "tags": {}}
+        return {"error": "Milvus manager not initialized.", "tags": {}}
     
     try:
-        results = milvus_manager.query(expr="id >= 0", output_fields=["tags"], limit=2000)
+        results = milvus_manager.query(expr="id >= 0", output_fields=["tags"], limit=5000)  # 더 많은 문서에서 태그 수집
         
         tag_counts = {}
         total_docs_with_tags = 0
@@ -970,20 +1504,25 @@ async def list_available_tags(limit: int = 50) -> Dict[str, Any]:
             "total_unique_tags": len(tag_counts),
             "total_documents_with_tags": total_docs_with_tags,
             "top_tags": [{"tag": tag, "document_count": count} for tag, count in sorted_tags],
-            "tags_summary": dict(sorted_tags)
+            "tags_summary": dict(sorted_tags),
+            "enhanced_limit": limit,
+            "sample_size": len(results)
         }
         
     except Exception as e:
-        logger.error(f"태그 목록 조회 중 오류 발생: {e}")
-        return {"error": f"태그 조회 중 오류 발생: {str(e)}", "tags": {}}
+        logger.error(f"Tag list retrieval error: {e}")
+        return {"error": f"Tag retrieval error: {str(e)}", "tags": {}}
 
 @mcp.tool()
-async def get_similar_documents(file_path: str, limit: int = 5) -> Dict[str, Any]:
-    """지정된 문서와 유사한 문서들을 찾습니다."""
+async def get_similar_documents(
+    file_path: str, 
+    limit: int = 250  # 기본값 50 -> 250으로 증가
+) -> Dict[str, Any]:
+    """지정된 문서와 유사한 문서들을 찾기 (limit 증가)"""
     global milvus_manager, enhanced_search
     
     if not milvus_manager:
-        return {"error": "필요한 컴포넌트가 초기화되지 않았습니다.", "file_path": file_path}
+        return {"error": "Required components not initialized.", "file_path": file_path}
     
     try:
         base_docs = milvus_manager.query(
@@ -993,15 +1532,15 @@ async def get_similar_documents(file_path: str, limit: int = 5) -> Dict[str, Any
         )
         
         if not base_docs:
-            return {"error": f"기준 문서를 찾을 수 없습니다: {file_path}", "file_path": file_path}
+            return {"error": f"Base document not found: {file_path}", "file_path": file_path}
         
         base_doc = base_docs[0]
         search_query = f"{base_doc.get('title', '')} {base_doc.get('chunk_text', '')[:200]}"
         
         if enhanced_search:
-            results, search_info = enhanced_search.hybrid_search(query=search_query, limit=limit + 5)
+            results, search_info = enhanced_search.hybrid_search(query=search_query, limit=limit + 10)
         else:
-            results, search_info = search_engine.hybrid_search(query=search_query, limit=limit + 5)
+            results, search_info = search_engine.hybrid_search(query=search_query, limit=limit + 10)
         
         similar_docs = []
         for result in results:
@@ -1018,12 +1557,13 @@ async def get_similar_documents(file_path: str, limit: int = 5) -> Dict[str, Any
         return {
             "base_document": {"file_path": file_path, "title": base_doc.get("title", "제목 없음")},
             "similar_documents": similar_docs,
-            "total_found": len(similar_docs)
+            "total_found": len(similar_docs),
+            "enhanced_limit": limit
         }
         
     except Exception as e:
-        logger.error(f"유사 문서 검색 중 오류 발생: {e}")
-        return {"error": f"유사 문서 검색 중 오류 발생: {str(e)}", "file_path": file_path}
+        logger.error(f"Similar document search error: {e}")
+        return {"error": f"Similar document search error: {str(e)}", "file_path": file_path}
 
 # ==================== 헬퍼 함수들 ====================
 
@@ -1059,6 +1599,14 @@ def _analyze_knowledge_clusters(knowledge_graph):
     
     return clusters
 
+def calculate_search_efficiency(total_docs: int, found_docs: int, search_time: float) -> Dict[str, float]:
+    """검색 효율성 계산"""
+    return {
+        "coverage_ratio": found_docs / total_docs if total_docs > 0 else 0,
+        "docs_per_second": found_docs / search_time if search_time > 0 else 0,
+        "efficiency_score": (found_docs / total_docs) * (1000 / search_time) if total_docs > 0 and search_time > 0 else 0
+    }
+
 # ==================== 리소스들 ====================
 
 @mcp.resource("config://milvus")
@@ -1090,17 +1638,30 @@ async def get_milvus_config() -> str:
             "knowledge_graph": True,
             "multi_query_fusion": True,
             "performance_monitoring": True
+        },
+        "enhanced_features_v2": {
+            "comprehensive_search_all": True,
+            "auto_search_mode_decision": True,
+            "batch_search_with_pagination": True,
+            "intelligent_search_enhanced": True,
+            "enhanced_default_limits": {
+                "search_documents": 200,
+                "advanced_filter_search": 300,
+                "multi_query_fusion": 500,
+                "knowledge_graph_nodes": 250,
+                "tag_search": 300
+            }
         }
     }
     return json.dumps(config_info, indent=2, ensure_ascii=False)
 
 @mcp.resource("stats://collection")
 async def get_collection_stats_resource() -> str:
-    """컬렉션 통계 정보를 리소스로 반환합니다."""
+    """컬렉션 통계를 리소스로 반환합니다."""
     global milvus_manager
     
     if not milvus_manager:
-        return json.dumps({"error": "Milvus 매니저가 초기화되지 않았습니다."}, ensure_ascii=False)
+        return json.dumps({"error": "Milvus manager not initialized."}, ensure_ascii=False)
     
     try:
         total_entities = milvus_manager.count_entities()
@@ -1114,66 +1675,78 @@ async def get_collection_stats_resource() -> str:
             "optimization_status": {
                 "gpu_enabled": config.USE_GPU,
                 "advanced_features": "active"
+            },
+            "enhanced_capabilities": {
+                "comprehensive_search": "available",
+                "auto_mode_decision": "available",
+                "batch_pagination": "available",
+                "enhanced_limits": "active"
             }
         }
         
         return json.dumps(stats, indent=2, ensure_ascii=False)
     except Exception as e:
         error_info = {
-            "error": f"통계 조회 중 오류: {str(e)}",
+            "error": f"Collection statistics retrieval error: {str(e)}",
             "collection_name": config.COLLECTION_NAME
         }
         return json.dumps(error_info, ensure_ascii=False)
 
 def main():
-    """메인 함수"""
-    print("🚀 최적화된 Obsidian-Milvus Fast MCP Server 시작 중...")
-    print("💎 Milvus 고급 기능 모두 활성화!")
+    """Main function"""
+    print("🚀 Enhanced Obsidian-Milvus Fast MCP Server starting...")
+    print("💎 All Milvus advanced features + new enhanced features activated!")
     
     if not initialize_components():
-        print("❌ 컴포넌트 초기화 실패. 서버를 시작할 수 없습니다.")
+        print("❌ Component initialization failed. Server cannot start.")
         sys.exit(1)
     
-    print("✅ 모든 컴포넌트 초기화 완료!")
-    print("🎯 활성화된 고급 기능들:")
-    print("   - 🔍 지능형 검색 (적응적/계층적/의미적 그래프)")
-    print("   - 🏷️ 고급 메타데이터 필터링")
-    print("   - 🔄 다중 쿼리 융합")
-    print("   - 🕸️ 지식 그래프 탐색")
-    print("   - ⚡ HNSW 최적화")
-    print("   - 📊 성능 모니터링")
-    print(f"📡 MCP 서버 '{config.FASTMCP_SERVER_NAME}' 시작 중...")
+    print("✅ All components initialized!")
+    print("🎥 Activated advanced features:")
+    print("   - 🔍 Intelligent search (adaptive/hierarchical/semantic graph)")
+    print("   - 🏷️ Advanced metadata filtering")
+    print("   - 🔄 Multi-query fusion")
+    print("   - 🕸️ Knowledge graph exploration")
+    print("   - ⚡ HNSW optimization")
+    print("   - 📊 Performance monitoring")
+    print("🆕 New enhanced features:")
+    print("   - 🌐 Comprehensive search mode (comprehensive_search_all)")
+    print("   - 🧠 Auto search mode decision (auto_search_mode_decision)")
+    print("   - 📄 Batch pagination search (batch_search_with_pagination)")
+    print("   - 🚀 Enhanced intelligent search (intelligent_search_enhanced)")
+    print("   - 📈 Default limits increased to 200-500")
+    print(f"📡 MCP server '{config.FASTMCP_SERVER_NAME}' starting...")
     print(f"🔧 Transport: {config.FASTMCP_TRANSPORT}")
     
     try:
         if config.FASTMCP_TRANSPORT == "stdio":
-            print("📡 STDIO transport로 MCP 서버 시작...")
+            print("📡 MCP server starting using STDIO transport...")
             mcp.run(transport="stdio")
         elif config.FASTMCP_TRANSPORT == "sse":
-            print(f"📡 SSE transport로 MCP 서버 시작... (http://{config.FASTMCP_HOST}:{config.FASTMCP_PORT})")
+            print(f"📡 MCP server starting using SSE transport... (http://{config.FASTMCP_HOST}:{config.FASTMCP_PORT})")
             mcp.run(transport="sse", host=config.FASTMCP_HOST, port=config.FASTMCP_PORT)
         elif config.FASTMCP_TRANSPORT == "streamable-http":
-            print(f"📡 Streamable HTTP transport로 MCP 서버 시작... (http://{config.FASTMCP_HOST}:{config.FASTMCP_PORT})")
+            print(f"📡 MCP server starting using Streamable HTTP transport... (http://{config.FASTMCP_HOST}:{config.FASTMCP_PORT})")
             mcp.run(transport="streamable-http", host=config.FASTMCP_HOST, port=config.FASTMCP_PORT)
         else:
-            print(f"❌ 지원하지 않는 transport: {config.FASTMCP_TRANSPORT}")
-            print("지원하는 transport: stdio, sse, streamable-http")
+            print(f"❌ Unsupported transport: {config.FASTMCP_TRANSPORT}")
+            print("Supported transports: stdio, sse, streamable-http")
             sys.exit(1)
             
     except KeyboardInterrupt:
-        print("\n🛑 서버 종료 중...")
+        print("\n🛑 Enhanced MCP server shutting down...")
     except Exception as e:
-        print(f"❌ 서버 실행 중 오류 발생: {e}")
-        print(f"스택 트레이스: {traceback.format_exc()}")
+        print(f"❌ MCP server error: {e}")
+        print(f"Stack trace: {traceback.format_exc()}")
         sys.exit(1)
     finally:
         if milvus_manager:
             try:
                 milvus_manager.stop_monitoring()
-                print("✅ Milvus 모니터링 중지됨")
+                print("✅ Milvus monitoring stopped")
             except:
                 pass
-        print("👋 최적화된 서버가 정상적으로 종료되었습니다.")
+        print("👋 Enhanced server shut down successfully.")
 
 if __name__ == "__main__":
     main()

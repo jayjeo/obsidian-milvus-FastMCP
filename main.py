@@ -312,6 +312,66 @@ def perform_incremental_embedding(processor):
         if hasattr(processor, 'embedding_in_progress'):
             processor.embedding_in_progress = False
 
+def perform_cleanup_deleted_files(processor):
+    """삭제된 파일의 embedding 정리"""
+    from colorama import Fore, Style
+    
+    print(f"\n{Fore.MAGENTA}{Style.BRIGHT}Starting cleanup of deleted files...{Style.RESET_ALL}")
+    print("This will detect files that have been deleted from your vault")
+    print("but still exist in the Milvus embedding database.\n")
+    
+    try:
+        # 삭제된 파일 탐지
+        deleted_files = processor.detect_deleted_files()
+        
+        if not deleted_files:
+            print(f"\n{Fore.GREEN}{Style.BRIGHT}✅ No deleted files found. Your database is clean!{Style.RESET_ALL}")
+            return
+        
+        # 삭제될 파일 목록 표시
+        print(f"\n{Fore.YELLOW}Found {len(deleted_files)} deleted files:{Style.RESET_ALL}")
+        
+        # 처음 10개 파일만 표시
+        display_count = min(10, len(deleted_files))
+        for i, file_path in enumerate(deleted_files[:display_count]):
+            print(f"{Fore.YELLOW}  {i+1:2d}. {file_path}{Style.RESET_ALL}")
+        
+        if len(deleted_files) > display_count:
+            print(f"{Fore.YELLOW}  ... and {len(deleted_files) - display_count} more files{Style.RESET_ALL}")
+        
+        # 사용자 확인
+        print(f"\n{Fore.RED}{Style.BRIGHT}⚠️  WARNING: This will permanently remove embedding data for these files!{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}If you have backups of these files and want to restore them later,")
+        print(f"you will need to run embedding again.{Style.RESET_ALL}")
+        
+        confirm = input(f"\n{Fore.YELLOW}Do you want to proceed with cleanup? (y/N): {Style.RESET_ALL}")
+        
+        if confirm.lower() in ['y', 'yes']:
+            print(f"\n{Fore.CYAN}Starting cleanup process...{Style.RESET_ALL}")
+            
+            # 삭제 실행
+            success_count = processor.cleanup_deleted_embeddings(deleted_files)
+            
+            if success_count > 0:
+                print(f"\n{Fore.GREEN}{Style.BRIGHT}🎉 Cleanup completed successfully!{Style.RESET_ALL}")
+                print(f"{Fore.GREEN}✅ Removed embeddings for {success_count} deleted files{Style.RESET_ALL}")
+                
+                if success_count < len(deleted_files):
+                    failed_count = len(deleted_files) - success_count
+                    print(f"{Fore.YELLOW}⚠️  {failed_count} files could not be removed (may require manual cleanup){Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.RED}{Style.BRIGHT}❌ Cleanup failed. No files were removed.{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Please check the error messages above.{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.CYAN}Cleanup cancelled by user.{Style.RESET_ALL}")
+            
+    except Exception as e:
+        print(f"\n{Fore.RED}{Style.BRIGHT}Error during cleanup process: {e}{Style.RESET_ALL}")
+        import traceback
+        print(f"\n{Fore.RED}Stack trace:\n{traceback.format_exc()}{Style.RESET_ALL}")
+    finally:
+        print(f"\n{Fore.CYAN}Cleanup process finished.{Style.RESET_ALL}")
+
 def start_mcp_server():
     """MCP 서버 시작"""
     from colorama import Fore, Style
@@ -327,9 +387,9 @@ def show_menu():
     """Display the command-line menu with colorful options"""
     from colorama import Fore, Style, Back
     
-    print("\n" + "="*60)
+    print("\n" + "="*70)
     print(f"{Style.BRIGHT}{Fore.CYAN}Obsidian-Milvus-Claude Desktop Command Menu{Style.RESET_ALL}")
-    print("="*60)
+    print("="*70)
     
     # Option 1: Start MCP Server (Green background for main option)
     print(f"{Fore.WHITE}{Back.GREEN}{Style.BRIGHT} 1 {Style.RESET_ALL} {Fore.GREEN}{Style.BRIGHT}Start MCP Server{Style.RESET_ALL} (for Claude Desktop)")
@@ -340,11 +400,14 @@ def show_menu():
     # Option 3: Incremental Embedding (Yellow background for moderate caution)
     print(f"{Fore.BLACK}{Back.YELLOW}{Style.BRIGHT} 3 {Style.RESET_ALL} {Fore.YELLOW}{Style.BRIGHT}Incremental Embedding{Style.RESET_ALL} (only new/modified files)")
     
-    # Option 4: Exit (Blue for neutral option)
-    print(f"{Fore.WHITE}{Back.BLUE}{Style.BRIGHT} 4 {Style.RESET_ALL} {Fore.BLUE}{Style.BRIGHT}Exit{Style.RESET_ALL}")
+    # Option 4: Cleanup Deleted Files (Magenta background for maintenance)
+    print(f"{Fore.WHITE}{Back.MAGENTA}{Style.BRIGHT} 4 {Style.RESET_ALL} {Fore.MAGENTA}{Style.BRIGHT}Cleanup Deleted Files{Style.RESET_ALL} (remove orphaned embeddings)")
     
-    print("="*60)
-    choice = input(f"{Fore.CYAN}Enter your choice (1-4): {Style.RESET_ALL}")
+    # Option 5: Exit (Blue for neutral option)
+    print(f"{Fore.WHITE}{Back.BLUE}{Style.BRIGHT} 5 {Style.RESET_ALL} {Fore.BLUE}{Style.BRIGHT}Exit{Style.RESET_ALL}")
+    
+    print("="*70)
+    choice = input(f"{Fore.CYAN}Enter your choice (1-5): {Style.RESET_ALL}")
     return choice
 
 def main():
@@ -372,6 +435,8 @@ def main():
         elif choice == '3':
             perform_incremental_embedding(processor)
         elif choice == '4':
+            perform_cleanup_deleted_files(processor)
+        elif choice == '5':
             print("Exiting program...")
             sys.exit(0)
         else:

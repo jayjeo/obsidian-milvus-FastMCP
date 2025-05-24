@@ -116,7 +116,7 @@
 - **Restore**: Run `restore-backup.bat` 
 - **Reset Container**: Run `safe-container-reset.bat` (This is safe for preserving Milvus data)  
 
-### ⚠️ **EMERGENCY RESET WARNING**
+### ⚠️ **EMERGENCY RESET**
 
 **If you encounter container conflicts or system issues**, you can use the emergency reset script:
 
@@ -182,47 +182,6 @@ cp .env.example .env
 # Edit .env with your settings
 ```
 
-## 📊 Performance Optimization
-
-- **GPU Acceleration**: Automatic detection and CUDA optimization
-- **Adaptive Batch Processing**: Dynamic batch size based on system resources
-- **Memory Management**: Intelligent resource allocation and monitoring
-- **Index Optimization**: Hardware-specific index selection and tuning
-- **Query Caching**: Smart caching for frequently accessed queries
-
-## 🧠 AI & Machine Learning Features
-
-- **Multi-language Embeddings**: State-of-the-art transformer models
-- **Semantic Understanding**: Context-aware meaning extraction
-- **Knowledge Graph Construction**: Automatic relationship discovery
-- **RAG Optimization**: Advanced retrieval-augmented generation
-- **Adaptive Learning**: Query pattern recognition and optimization
-
-## 📁 File Structure
-
-```
-obsidian-milvus-fastmcp/
-├── config.py                 # 🔧 Main configuration (edit this!)
-├── QUICKSTART.md             # ⚡ 30-second setup guide
-├── SIMPLE-SETUP.md           # 📖 Detailed setup instructions
-├── main.py                   # 🚀 Main program
-├── mcp_server.py            # 🔌 MCP server for Claude
-├── search_engine.py         # 🔍 Core hybrid search engine
-├── enhanced_search_engine.py # 🔍 Advanced search capabilities
-├── hnsw_optimizer.py        # ⚡ Performance optimization
-├── advanced_rag.py          # 🧠 Advanced RAG patterns
-├── setup.py                 # 🧪 Interactive setup & testing
-├── volumes/                 # 📁 Auto-created data storage
-└── ...                      # Other program files
-```
-
-## 🔧 Available Commands
-
-From the main menu:
-1. **Start MCP Server** - Connect to Claude Desktop with all advanced features
-2. **Full Embedding** - Complete reindexing with optimization
-3. **Incremental Embedding** - Smart update of changed files only
-4. **Exit** - Graceful shutdown with cleanup
 
 ## 🚨 Troubleshooting
 
@@ -272,20 +231,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **FastMCP**: Efficient MCP implementation framework
 - **Sentence Transformers**: State-of-the-art multilingual embedding models
 - **HNSW Algorithm**: Hierarchical Navigable Small World graphs for fast similarity search
-
----
-
-## 💡 Tips for Best Results
-
-1. **Organize your vault**: Well-structured notes with clear hierarchies yield better results
-2. **Use descriptive titles**: Enhances semantic search accuracy
-3. **Strategic tagging**: Implement consistent tagging for advanced filtering
-4. **Regular maintenance**: Run incremental embedding after adding new notes
-5. **GPU acceleration**: Significant performance boost for large vaults (5-10x faster)
-6. **Query optimization**: Use specific search strategies for different types of queries
-7. **Knowledge graph exploration**: Discover unexpected connections in your knowledge base
-
-**Happy knowledge exploring with advanced AI-powered search!** 🚀📚
 
 ---
 

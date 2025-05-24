@@ -1430,3 +1430,160 @@ class ObsidianProcessor:
                 self.embedding_model.clear_cache()
         
         return processed_count
+    
+    def detect_deleted_files(self):
+        """삭제된 파일 탐지 (메모리 효율적)"""
+        from colorama import Fore, Style
+        
+        print(f"{Fore.CYAN}Scanning Milvus database for file paths...{Style.RESET_ALL}")
+        
+        # 1. Milvus에서 모든 파일 경로 조회 (페이지네이션)
+        db_files = set()
+        offset = 0
+        max_limit = 16000
+        total_db_files = 0
+        
+        try:
+            while True:
+                results = self.milvus_manager.query(
+                    expr="id >= 0",
+                    output_fields=["path"],
+                    limit=max_limit,
+                    offset=offset
+                )
+                
+                if not results:
+                    break
+                    
+                for doc in results:
+                    path = doc.get("path")
+                    if path and path not in db_files:
+                        db_files.add(path)
+                        total_db_files += 1
+                
+                offset += max_limit
+                if len(results) < max_limit:
+                    break
+                    
+                # 진행상황 표시
+                if total_db_files % 1000 == 0 and total_db_files > 0:
+                    print(f"{Fore.CYAN}Found {total_db_files} files in database so far...{Style.RESET_ALL}")
+                
+                # 메모리 관리
+                gc.collect()
+                
+        except Exception as e:
+            print(f"{Fore.RED}Error querying Milvus database: {e}{Style.RESET_ALL}")
+            return []
+        
+        print(f"{Fore.GREEN}Found {len(db_files)} unique files in Milvus database{Style.RESET_ALL}")
+        
+        # 2. 현재 파일 시스템 스캔
+        print(f"{Fore.CYAN}Scanning file system...{Style.RESET_ALL}")
+        fs_files = set()
+        total_fs_files = 0
+        
+        try:
+            for root, _, files in os.walk(self.vault_path):
+                # 숨겨진 폴더 건너뛰기
+                if os.path.basename(root).startswith(('.', '_')):
+                    continue
+                    
+                for file in files:
+                    # 마크다운과 PDF만 처리
+                    if file.endswith(('.md', '.pdf')) and not file.startswith('.'):
+                        full_path = os.path.join(root, file)
+                        rel_path = os.path.relpath(full_path, self.vault_path)
+                        fs_files.add(rel_path)
+                        total_fs_files += 1
+                        
+                        # 진행상황 표시
+                        if total_fs_files % 1000 == 0:
+                            print(f"{Fore.CYAN}Scanned {total_fs_files} files in file system...{Style.RESET_ALL}")
+        
+        except Exception as e:
+            print(f"{Fore.RED}Error scanning file system: {e}{Style.RESET_ALL}")
+            return []
+        
+        print(f"{Fore.GREEN}Found {len(fs_files)} files in file system{Style.RESET_ALL}")
+        
+        # 3. 삭제된 파일 찾기
+        deleted_files = db_files - fs_files
+        
+        if deleted_files:
+            print(f"{Fore.YELLOW}Found {len(deleted_files)} deleted files{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.GREEN}No deleted files found{Style.RESET_ALL}")
+        
+        return list(deleted_files)
+    
+    def cleanup_deleted_embeddings(self, deleted_files):
+        """삭제된 파일들의 embedding 제거"""
+        from colorama import Fore, Style
+        
+        if not deleted_files:
+            print(f"{Fore.GREEN}No files to clean up{Style.RESET_ALL}")
+            return 0
+        
+        print(f"{Fore.CYAN}Starting cleanup of {len(deleted_files)} deleted files...{Style.RESET_ALL}")
+        
+        success_count = 0
+        error_count = 0
+        
+        try:
+            # 배치 삭제를 위해 pending_deletions에 추가
+            for file_path in deleted_files:
+                self.milvus_manager.mark_for_deletion(file_path)
+            
+            print(f"{Fore.CYAN}Executing batch deletion...{Style.RESET_ALL}")
+            
+            # 배치 삭제 실행
+            self.milvus_manager.execute_pending_deletions()
+            
+            # 삭제 결과 확인
+            print(f"{Fore.CYAN}Verifying deletion results...{Style.RESET_ALL}")
+            
+            # 삭제 후 검증
+            remaining_files = []
+            for file_path in deleted_files:
+                try:
+                    # 파일이 여전히 DB에 있는지 확인
+                    results = self.milvus_manager.query(
+                        expr=f"path == '{file_path}'",
+                        output_fields=["path"],
+                        limit=1
+                    )
+                    
+                    if results:
+                        remaining_files.append(file_path)
+                        error_count += 1
+                    else:
+                        success_count += 1
+                        
+                except Exception as e:
+                    print(f"{Fore.YELLOW}Warning: Could not verify deletion of {file_path}: {e}{Style.RESET_ALL}")
+                    error_count += 1
+            
+            # 결과 보고
+            print(f"\n{Fore.GREEN}Cleanup Results:{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}✅ Successfully removed: {success_count} files{Style.RESET_ALL}")
+            
+            if error_count > 0:
+                print(f"{Fore.YELLOW}⚠️ Failed to remove: {error_count} files{Style.RESET_ALL}")
+                if remaining_files:
+                    print(f"{Fore.YELLOW}Files that could not be deleted:{Style.RESET_ALL}")
+                    for file_path in remaining_files[:5]:  # 최대 5개만 표시
+                        print(f"{Fore.YELLOW}  - {file_path}{Style.RESET_ALL}")
+                    if len(remaining_files) > 5:
+                        print(f"{Fore.YELLOW}  ... and {len(remaining_files) - 5} more{Style.RESET_ALL}")
+            
+            # 메모리 정리
+            gc.collect()
+            
+            return success_count
+            
+        except Exception as e:
+            print(f"{Fore.RED}Error during cleanup: {e}{Style.RESET_ALL}")
+            import traceback
+            print(f"{Fore.RED}Stack trace: {traceback.format_exc()}{Style.RESET_ALL}")
+            return 0
