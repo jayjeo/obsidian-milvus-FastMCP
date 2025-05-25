@@ -783,15 +783,25 @@ class ObsidianProcessor:
             print(f"Error saving vectors to Milvus: {e}")
             return False
     
-    # DEPRECATED: This method is no longer used for performance reasons
-    # Embedding validation is now done during initial data loading
-    def _verify_file_has_valid_embeddings_DEPRECATED(self, file_path):
-        """DEPRECATED: Verify that a file has valid embedding data in the database.
-        
-        This method was causing performance issues because it was called for every
-        file during scanning. Now we pre-load all embedding validation data.
-        """
-        pass
+    def _verify_actual_embedding_exists(self, file_path):
+        """실제 임베딩 데이터가 존재하는지 빠르게 확인 (타임스탬프 비교 후에만 사용)"""
+        try:
+            rel_path = os.path.relpath(file_path, self.vault_path)
+            
+            # 해당 파일의 실제 벡터 데이터 존재 확인 (최소한의 쿼리)
+            results = self.milvus_manager.query(
+                expr=f"path == '{rel_path}'",
+                output_fields=["id"],  # 최소한의 필드만
+                limit=1  # 하나만 있어도 충분
+            )
+            
+            exists = len(results) > 0
+            print(f"{Fore.CYAN}[DEBUG] - Actual embedding check for {rel_path}: {'EXISTS' if exists else 'MISSING'}{Style.RESET_ALL}")
+            return exists
+            
+        except Exception as e:
+            print(f"{Fore.YELLOW}[WARNING] Error checking actual embedding for {file_path}: {e}{Style.RESET_ALL}")
+            return False  # 확인 실패시 재처리하도록
     
     def process_updated_files(self):
         """볼트의 새로운 파일 또는 수정된 파일만 처리 + 삭제된 파일 정리 (증분 임베딩) - ENHANCED VERSION"""
@@ -977,15 +987,25 @@ class ObsidianProcessor:
                                     print(f"{Fore.YELLOW}[WARNING] Invalid timestamp: {existing_mtime}, treating as new file{Style.RESET_ALL}")
                                     existing_mtime = 0
                                 
-                                # SIMPLE: 타임스탬프 비교만
+                                # TWO-STAGE VERIFICATION LOGIC
                                 if existing_mtime and file_mtime <= existing_mtime:
-                                    # 파일이 변경되지 않음 - SKIP
-                                    is_new_or_modified = False
-                                    skipped_count += 1
-                                    print(f"{Fore.CYAN}[DEBUG] - Result: UNCHANGED (skipping){Style.RESET_ALL}")
+                                    # Stage 1: Timestamp suggests file is unchanged
+                                    # Stage 2: Verify actual embedding data exists
+                                    print(f"{Fore.CYAN}[DEBUG] - Stage 1: Timestamp suggests unchanged, checking actual data...{Style.RESET_ALL}")
+                                    
+                                    actual_embedding_exists = self._verify_actual_embedding_exists(full_path)
+                                    
+                                    if actual_embedding_exists:
+                                        # Both timestamp and actual data confirm file is up to date
+                                        is_new_or_modified = False
+                                        skipped_count += 1
+                                        print(f"{Fore.CYAN}[DEBUG] - Stage 2: Actual embedding confirmed - SKIP{Style.RESET_ALL}")
+                                    else:
+                                        # Timestamp says unchanged but actual data missing
+                                        print(f"{Fore.YELLOW}[DEBUG] - Stage 2: Metadata exists but actual embedding missing - PROCESS{Style.RESET_ALL}")
                                 else:
-                                    # 파일이 수정되었음 - PROCESS
-                                    print(f"{Fore.YELLOW}[DEBUG] - Result: MODIFIED (will process){Style.RESET_ALL}")
+                                    # File was modified after last embedding - definitely process
+                                    print(f"{Fore.YELLOW}[DEBUG] - Stage 1: File modified since last embedding - PROCESS{Style.RESET_ALL}")
                         else:
                             print(f"{Fore.GREEN}[DEBUG] File: {rel_path} - NEW FILE (will process){Style.RESET_ALL}")
                         
@@ -1228,16 +1248,6 @@ class ObsidianProcessor:
         try:
             # 처리할 파일 목록 수집
             print(f"\n{Fore.CYAN}[DEBUG] Collecting files to process...{Style.RESET_ALL}")
-        except Exception as e:
-            error_msg = f"Error in process_all_files: {e}"
-            print(f"\n{Fore.RED}{error_msg}{Style.RESET_ALL}")
-            import traceback
-            print(f"\n{Fore.RED}Stack trace:\n{traceback.format_exc()}{Style.RESET_ALL}")
-            if hasattr(self, 'monitor') and hasattr(self.monitor, 'add_error_log'):
-                self.monitor.add_error_log(error_msg)
-            return 0
-        
-        try:
             
             # 기존 파일 정보 가져오기
             existing_files_info = {}
@@ -1313,7 +1323,7 @@ class ObsidianProcessor:
                                     content = f.read()
                                 
                                 # 파일 내용이 비정상적으로 긴 경우 또는 특수 문자가 많은 경우
-                                if content.count('$~$') > 10:
+                                if content.count('$~') > 10:
                                     print("File contains many math placeholders, cleaning...")
                                     # 파일 정리 및 저장
                                     content = re.sub(r'\$~\$\n+', '\n', content)
