@@ -100,10 +100,10 @@
      - Find podman path using `find_podman_path.bat`
 
 6. **Podman auto launch at startup**
-   - Follow instructions in [Podman auto launch.md](https://github.com/jayjeo/obsidian-milvus-FastMCP/blob/main/Podman auto launch.md)
+   - Follow instructions in [https://github.com/jayjeo/obsidian-milvus-FastMCP/blob/main/Podman auto launch.md](Podman auto launch.md)
 
 8. **Milvus Server auto launch at startup**
-   - Follow instructions in [Milvus auto launch.md](https://github.com/jayjeo/obsidian-milvus-FastMCP/blob/main/Milvus auto launch.md)
+   - Follow instructions in [https://github.com/jayjeo/obsidian-milvus-FastMCP/blob/main/Milvus auto launch.md](Milvus auto launch.md)
    - 
     - (1) manually run `run-main.bat`, and select option 1
       - You have to keep this CMD opened, which is inconvenient
