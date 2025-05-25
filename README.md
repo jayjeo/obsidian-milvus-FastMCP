@@ -8,43 +8,43 @@
 - [https://youtu.be/wPFiG9mC7e8?si=uF-TJrgG-guC33JG](https://youtu.be/wPFiG9mC7e8?si=uF-TJrgG-guC33JG)
 
 ### 🔍 **Core Search Capabilities**
-- <span style="color: green">**Hybrid Search Engine**</span> : Advanced vector similarity + keyword search fusion
-- <span style="color: green">**Intelligent Semantic Search**</span> : High-precision meaning-based document retrieval
-- <span style="color: green">**Adaptive Query Processing**</span> : Automatic parameter adjustment based on query complexity
-- <span style="color: green">**Multi-modal Search**</span> : Integrated text and attachment file search
-- <span style="color: green">**Contextual Expansion**</span> : Related document discovery and context-aware retrieval
+- 🟢 **Hybrid Search Engine** : Advanced vector similarity + keyword search fusion
+- 🟢 **Intelligent Semantic Search** : High-precision meaning-based document retrieval
+- 🟢 **Adaptive Query Processing** : Automatic parameter adjustment based on query complexity
+- 🟢 **Multi-modal Search** : Integrated text and attachment file search
+- 🟢 **Contextual Expansion** : Related document discovery and context-aware retrieval
 
 ### 🧠 **Advanced AI & RAG Features**
-- <span style="color: green">**Hierarchical Retrieval**</span> : Document → Section → Chunk progressive search
-- <span style="color: green">**Multi-query Fusion**</span> : Intelligent combination of multiple search queries with weighted averaging, maximum value, and reciprocal rank fusion
-- <span style="color: green">**Adaptive Chunk Retrieval**</span> : Dynamic chunk size adjustment based on query complexity
-- <span style="color: green">**Knowledge Graph Exploration**</span> : Vector similarity-based connection discovery with BFS traversal and graph centrality ranking
-- <span style="color: green">**Temporal-aware Search**</span> : Balance between relevance and recency with time-weighted scoring
+- 🟢 **Hierarchical Retrieval** : Document → Section → Chunk progressive search
+- 🟢 **Multi-query Fusion** : Intelligent combination of multiple search queries with weighted averaging, maximum value, and reciprocal rank fusion
+- 🟢 **Adaptive Chunk Retrieval** : Dynamic chunk size adjustment based on query complexity
+- 🟢 **Knowledge Graph Exploration** : Vector similarity-based connection discovery with BFS traversal and graph centrality ranking
+- 🟢 **Temporal-aware Search** : Balance between relevance and recency with time-weighted scoring
 
 ### 🏷️ **Advanced Metadata Filtering**
-- <span style="color: green">**Complex Tag Logic**</span> : AND/OR/NOT combinations for sophisticated tag-based filtering
-- <span style="color: green">**Time Range Filtering**</span> : Precise temporal document filtering
-- <span style="color: green">**File Type & Quality Filtering**</span> : Content quality assessment and file type categorization
-- <span style="color: green">**Multi-dimensional Filtering**</span> : Simultaneous application of multiple filter criteria
+- 🟢 **Complex Tag Logic** : AND/OR/NOT combinations for sophisticated tag-based filtering
+- 🟢 **Time Range Filtering** : Precise temporal document filtering
+- 🟢 **File Type & Quality Filtering** : Content quality assessment and file type categorization
+- 🟢 **Multi-dimensional Filtering** : Simultaneous application of multiple filter criteria
 
 ### ⚡ **Performance Optimization**
-- <span style="color: green">**GPU/CPU Auto-selection**</span> : Hardware-optimized index selection (GPU_IVF_FLAT, GPU_CAGRA, HNSW)
-- <span style="color: green">**HNSW Index Optimization**</span> : Dynamic parameter tuning (ef, nprobe) based on collection size
-- <span style="color: green">**Real-time Performance Monitoring**</span> : Live performance tracking and analysis
-- <span style="color: green">**Adaptive Search Parameters**</span> : Result quality-based parameter dynamic adjustment
-- <span style="color: green">**Batch Processing Optimization**</span> : Efficient large-scale search operations
+- 🟢 **GPU/CPU Auto-selection** : Hardware-optimized index selection (GPU_IVF_FLAT, GPU_CAGRA, HNSW)
+- 🟢 **HNSW Index Optimization** : Dynamic parameter tuning (ef, nprobe) based on collection size
+- 🟢 **Real-time Performance Monitoring** : Live performance tracking and analysis
+- 🟢 **Adaptive Search Parameters** : Result quality-based parameter dynamic adjustment
+- 🟢 **Batch Processing Optimization** : Efficient large-scale search operations
 
 ### 📊 **System Intelligence**
-- <span style="color: green">**Auto-tuning**</span> : Collection size-based automatic parameter optimization
-- <span style="color: green">**Performance Benchmarking**</span> : Multi-strategy search performance comparison
-- <span style="color: green">**Smart Recommendations**</span> : Automatic optimization suggestions based on usage patterns
-- <span style="color: green">**Resource Management**</span> : Intelligent memory and GPU utilization
+- 🟢 **Auto-tuning** : Collection size-based automatic parameter optimization
+- 🟢 **Performance Benchmarking** : Multi-strategy search performance comparison
+- 🟢 **Smart Recommendations** : Automatic optimization suggestions based on usage patterns
+- 🟢 **Resource Management** : Intelligent memory and GPU utilization
 
 ### 🌐 **Integration & Connectivity**
-- <span style="color: green">**Claude Desktop Integration**</span> : Seamless connection via FastMCP protocol
-- <span style="color: green">**Real-time File Monitoring**</span> : Automatic change detection and incremental reindexing
-- <span style="color: green">**Multilingual Support**</span> : Advanced embedding models for global language support
-- <span style="color: green">**Container-based Deployment**</span> : Reliable Podman-based Milvus deployment
+- 🟢 **Claude Desktop Integration** : Seamless connection via FastMCP protocol
+- 🟢 **Real-time File Monitoring** : Automatic change detection and incremental reindexing
+- 🟢 **Multilingual Support** : Advanced embedding models for global language support
+- 🟢 **Container-based Deployment** : Reliable Podman-based Milvus deployment
 
 
 ## 📋 Requirements
@@ -134,40 +134,40 @@
 
 
 ## Backup & Restore Milvus Data (Embedding Data)
-- <span style="color: green">**Backup**</span> : Run `backup-all-data.bat`
-- <span style="color: green">**Restore**</span> : Run `restore-backup.bat` 
+- 🟢 **Backup** : Run `backup-all-data.bat`
+- 🟢 **Restore** : Run `restore-backup.bat` 
 
 
 ## MCP Search Tools that you can see at Claude Desktop
 ##### Basic Search
-- <span style="color: green">**search_documents**</span> : Enhanced Obsidian document search
-- <span style="color: green">**get_document_content**</span> : Retrieve complete content of specific document
-- <span style="color: green">**get_similar_documents**</span> : Find similar documents
+- 🟢 **search_documents** : Enhanced Obsidian document search
+- 🟢 **get_document_content** : Retrieve complete content of specific document
+- 🟢 **get_similar_documents** : Find similar documents
 
 ##### Intelligent Search
-- <span style="color: green">**auto_search_mode_decision**</span> : Automatic search mode determination
-- <span style="color: green">**intelligent_search**</span> : Advanced intelligent search
-- <span style="color: green">**intelligent_search_enhanced**</span> : Enhanced intelligent search
-- <span style="color: green">**comprehensive_search_all**</span> : Comprehensive search across entire collection
+- 🟢 **auto_search_mode_decision** : Automatic search mode determination
+- 🟢 **intelligent_search** : Advanced intelligent search
+- 🟢 **intelligent_search_enhanced** : Enhanced intelligent search
+- 🟢 **comprehensive_search_all** : Comprehensive search across entire collection
 
 ##### Advanced Search
-- <span style="color: green">**batch_search_with_pagination**</span> : Batch search with pagination
-- <span style="color: green">**advanced_filter_search**</span> : Advanced metadata filter search
-- <span style="color: green">**multi_query_fusion_search**</span> : Multi-query fusion search
-- <span style="color: green">**milvus_power_search**</span> : Milvus optimized power search
+- 🟢 **batch_search_with_pagination** : Batch search with pagination
+- 🟢 **advanced_filter_search** : Advanced metadata filter search
+- 🟢 **multi_query_fusion_search** : Multi-query fusion search
+- 🟢 **milvus_power_search** : Milvus optimized power search
 
 ##### Knowledge Graph
-- <span style="color: green">**knowledge_graph_exploration**</span> : Knowledge graph exploration
-- <span style="color: green">**milvus_knowledge_graph_builder**</span> : Milvus-based knowledge graph construction
+- 🟢 **knowledge_graph_exploration** : Knowledge graph exploration
+- 🟢 **milvus_knowledge_graph_builder** : Milvus-based knowledge graph construction
 
 ##### Tag Search
-- <span style="color: green">**search_by_tags**</span> : Search documents by tags
-- <span style="color: green">**list_available_tags**</span> : List available tags
+- 🟢 **search_by_tags** : Search documents by tags
+- 🟢 **list_available_tags** : List available tags
 
 ##### System Management
-- <span style="color: green">**get_collection_stats**</span> : Collection statistics information
-- <span style="color: green">**performance_optimization_analysis**</span> : Performance optimization analysis
-- <span style="color: green">**milvus_system_optimization_report**</span> : Comprehensive system optimization report
+- 🟢 **get_collection_stats** : Collection statistics information
+- 🟢 **performance_optimization_analysis** : Performance optimization analysis
+- 🟢 **milvus_system_optimization_report** : Comprehensive system optimization report
 
 ## Use Project feature in Claude Desktop for better search results
 - For example, I use a project called "obsidian" to search my Obsidian vault. 
@@ -187,7 +187,7 @@
   - [https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem)
 
 
-## <span style="color: red">**EMERGENCY RESET**</span>
+## 🔴 **EMERGENCY RESET**
 
 **If you encounter container conflicts or system issues**, you can use the emergency reset script:
 
@@ -195,13 +195,13 @@
 complete-reset.bat  # Windows
 ```
 
-<span style="color: red">**CRITICAL WARNING**</span>: This script will:
+🔴 **CRITICAL WARNING**: This script will:
 - **Kill ALL Podman containers** (not just Milvus)
 - **Remove ALL Podman containers, pods, volumes, and networks**
 - **Delete local MilvusData and volumes directories**
 - **Permanently destroy all container data system-wide**
 
-<span style="color: red">**Use ONLY if**</span>
+🔴 **Use ONLY if**
 - You have container name conflicts
 - Milvus services fail to start properly
 - You need a complete clean state
@@ -285,12 +285,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 🙏 Acknowledgments
 
-- <span style="color: blue">**Milvus**</span>: High-performance vector database with advanced indexing
-- <span style="color: blue">**Claude**</span>: Advanced AI assistant with MCP protocol support
-- <span style="color: blue">**FastMCP**</span>: Efficient MCP implementation framework
-- <span style="color: blue">**Sentence Transformers**</span>: State-of-the-art multilingual embedding models
-- <span style="color: blue">**HNSW Algorithm**</span>: Hierarchical Navigable Small World graphs for fast similarity search
+- 🔵 **Milvus**: High-performance vector database with advanced indexing
+- 🔵 **Claude**: Advanced AI assistant with MCP protocol support
+- 🔵 **FastMCP**: Efficient MCP implementation framework
+- 🔵 **Sentence Transformers**: State-of-the-art multilingual embedding models
+- 🔵 **HNSW Algorithm**: Hierarchical Navigable Small World graphs for fast similarity search
 
 ---
  
-<span style="color: green">**Author**</span>: Jay Jeong, Ph.D. in Economics, Research Fellow at KCTDI, [acubens555@gmail.com](mailto:acubens555@gmail.com) 
+🟢 **Author**: Jay Jeong, Ph.D. in Economics, Research Fellow at KCTDI, [acubens555@gmail.com](mailto:acubens555@gmail.com) 
