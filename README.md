@@ -99,12 +99,18 @@
    - Edit `config.py` and set your podman path
      - Find podman path using `find_podman_path.bat`
 
-6. **Podman auto launch at startup**
+6. **Initialize Podman Container AND Milvus Server**
+   ```
+   complete-podman-reset.bat
+   ```
+   
+
+7. **Podman auto launch at startup**
    - Follow instructions in [Podman auto launch.md](https://share.note.sx/r6kx06pj#78CIGnxLJYkJG+ZrQKYQhU35gtl+nKa47ZllwEyfUE0)
    - When Windows starts, nothing will pop up unless there is an error
      - If you want to figure out the error, see `podman_startup.log`
 
-7. **Milvus Server auto launch at startup**
+8. **Milvus Server auto launch at startup**
    - Follow instructions in [Milvus auto launch.md](https://share.note.sx/y9vrzgj6#zr1aL4s1WFBK/A4WvqvkP6ETVMC4sKcAwbqAt4NyZhk)
    - When Windows starts, nothing will pop up unless there is an error
      - If you want to figure out the error, see `auto_startup_mcp.log` and `vbs_startup.log`
@@ -113,7 +119,7 @@
      - `run-main.bat`, and select option 1
      - You have to keep this CMD opened. Otherwise, the server will be terminated
 
-8.  **Interactive Setup & Testing**
+9.  **Interactive Setup & Testing**
    ```bash
    run-setup.bat
    ```
