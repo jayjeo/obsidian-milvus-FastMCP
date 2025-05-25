@@ -103,14 +103,12 @@
    - Follow instructions in [Podman auto launch.md](https://share.note.sx/r6kx06pj#78CIGnxLJYkJG+ZrQKYQhU35gtl+nKa47ZllwEyfUE0)
 
 8. **Milvus Server auto launch at startup**
-   - Follow instructions in [Milvus auto launch.md](https://github.com/jayjeo/obsidian-milvus-FastMCP/blob/main/Milvus auto launch.md)
-   - 
-    - (1) manually run `run-main.bat`, and select option 1
-      - You have to keep this CMD opened, which is inconvenient
-    - (2) run `install_main_option1_startup.bat`: This will set up automatic startup at Windows boot
-      - You don't have to manually run `run-main.bat`
-      - You don't have to keep CMD opened
-      -    - 
+   - Follow instructions in [Milvus auto launch.md](https://share.note.sx/y9vrzgj6#zr1aL4s1WFBK/A4WvqvkP6ETVMC4sKcAwbqAt4NyZhk)
+   - When Windows starts, a CMD will pop up, but you may close it
+   - There is an alternative way of manual run, which is inconvenient
+     - `run-main.bat`, and select option 1
+     - You have to keep this CMD opened. Otherwise, the server will be terminated
+
 9. **Interactive Setup & Testing**
    ```bash
    run-setup.bat
