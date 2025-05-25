@@ -121,13 +121,6 @@
    - (8) **Safe Server Restart** (Preserve All Data. Use this if MCP server has launching issues)
    - (9) **Emergency: Complete Data Reset** (DELETE All Data)
 
-
-
-
-## 🚨 GPU not detected issue even though my GPU exists and supports CUDA
-- Make sure set `USE_GPU = True` in `config.py` to use GPU mode
-- Pytorch has two different versions. One is for CPU and the other is for GPU. Make sure you have the correct version installed. If you arn't sure, run `pytorch_gpu_installer.bat` to install the correct version.
-
 ## 🎮 Daily Use
 
 ##### Once setup is complete:
@@ -135,6 +128,12 @@
 - **Open Claude Desktop**: Your Obsidian vault is now searchable
 - **Start Searching**: Use natural language queries in Claude Desktop
 - **Advanced Features**: Access all search modes and filtering options through Claude
+
+
+## 🚨 GPU not detected issue even though my GPU exists and supports CUDA
+- Make sure set `USE_GPU = True` in `config.py` to use GPU mode
+- Pytorch has two different versions. One is for CPU and the other is for GPU. Make sure you have the correct version installed. If you arn't sure, run `pytorch_gpu_installer.bat` to install the correct version.
+
 
 ## Backup & Restore Milvus Data (Embedding Data)
 - **Backup**: Run `backup-all-data.bat`
