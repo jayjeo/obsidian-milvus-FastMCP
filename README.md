@@ -101,10 +101,14 @@
 
 6. **Podman auto launch at startup**
    - Follow instructions in [Podman auto launch.md](https://share.note.sx/r6kx06pj#78CIGnxLJYkJG+ZrQKYQhU35gtl+nKa47ZllwEyfUE0)
+   - When Windows starts, nothing will pop up unless there is an error
+     - If you want to figure out the error, see `podman_startup.log`
 
 7. **Milvus Server auto launch at startup**
    - Follow instructions in [Milvus auto launch.md](https://share.note.sx/y9vrzgj6#zr1aL4s1WFBK/A4WvqvkP6ETVMC4sKcAwbqAt4NyZhk)
-   - When Windows starts, a CMD will pop up, and you have to keep this CMD opened. Otherwise, the server will be terminated
+   - When Windows starts, nothing will pop up unless there is an error
+     - If you want to figure out the error, see `auto_startup_mcp.log` and `vbs_startup.log`
+     - Launching the server takes approximately 5~7 minites depending on your PC performance. Wait for it to finish before you start Claude Desktop
    - A manual execution alternative is available, though this method proves operationally cumbersome
      - `run-main.bat`, and select option 1
      - You have to keep this CMD opened. Otherwise, the server will be terminated
