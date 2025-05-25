@@ -4,6 +4,9 @@
 
 ## ✨ Features
 
+### 📝 **Video Showcase**
+- [https://youtu.be/wPFiG9mC7e8?si=uF-TJrgG-guC33JG](https://youtu.be/wPFiG9mC7e8?si=uF-TJrgG-guC33JG)
+
 ### 🔍 **Core Search Capabilities**
 - **Hybrid Search Engine**: Advanced vector similarity + keyword search fusion
 - **Intelligent Semantic Search**: High-precision meaning-based document retrieval
@@ -63,7 +66,7 @@
    - Install conda([anaconda](https://www.anaconda.com/download))
    - Do the following:
     ```bash
-    Open Anaconda Prompt
+    Open Anaconda Prompt with administrator privileges
     cd to your directory
     conda install -c conda-forge -y python pip
     conda run -n base pip install pymilvus mcp fastmcp sentence-transformers torch
