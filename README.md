@@ -159,8 +159,6 @@
   - When saving, create the note list in a clickable format for obsidian
   - Create a list of referenced md and pdf files in clickable obsidian format at the top of the note
 
-![alt text](project example.png)
-
 ## ⚠️ **EMERGENCY RESET**
 
 **If you encounter container conflicts or system issues**, you can use the emergency reset script:
