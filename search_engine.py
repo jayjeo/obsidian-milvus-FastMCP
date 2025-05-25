@@ -44,8 +44,9 @@ class SearchEngine:
             vector_results = self._vector_search(query, limit * 2, filter_params)
             
             # 2. 키워드 검색 수행
-            keyword_results = self._keyword_search(query, limit, filter_params)
-            
+            # 필터 표현식 구성
+            filter_expr = self._build_filter_expr(filter_params) if filter_params else None
+            keyword_results = self._keyword_search(query, limit, filter_expr)
             # 3. 결과 융합
             fused_results = self._fuse_search_results(vector_results, keyword_results, query)
             

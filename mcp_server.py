@@ -69,8 +69,8 @@ mcp = FastMCP(config.FASTMCP_SERVER_NAME)
 
 # 전역 변수들
 milvus_manager = None
-search_engine = None
 enhanced_search = None
+search_engine = None
 hnsw_optimizer = None
 rag_engine = None
 
@@ -1605,14 +1605,29 @@ async def get_similar_documents(
         base_doc = base_docs[0]
         search_query = f"{base_doc.get('title', '')} {base_doc.get('chunk_text', '')[:200]}"
         
-        if enhanced_search:
-            results, search_info = enhanced_search.hybrid_search(query=search_query, limit=limit + 10)
-        else:
-            results, search_info = search_engine.hybrid_search(query=search_query, limit=limit + 10)
+        # Try using enhanced_search first, then fall back to search_engine if needed
+        try:
+            if enhanced_search is not None:
+                results, search_info = enhanced_search.hybrid_search(query=search_query, limit=limit + 10)
+            else:
+                # Fallback to search_engine if enhanced_search is not available
+                logger.warning("Enhanced search engine is not available, falling back to standard search engine")
+                if search_engine is not None:
+                    results, search_info = search_engine.hybrid_search(query=search_query, limit=limit + 10)
+                else:
+                    logger.error("Both enhanced_search and search_engine are not available")
+                    return {"error": "Search engines not available", "file_path": file_path}
+        except Exception as search_error:
+            logger.warning(f"Error using enhanced search: {search_error}, falling back to standard search engine")
+            if search_engine is not None:
+                results, search_info = search_engine.hybrid_search(query=search_query, limit=limit + 10)
+            else:
+                logger.error("Standard search engine is not available as fallback")
+                return {"error": f"Search error: {search_error}", "file_path": file_path}
             
         results = results or []
         
-        similar_docs = []
+        similar_docs: List[Dict[str, Any]] = []
         for result in results:
             if result and result.get("path") != file_path and len(similar_docs) < limit:
                 chunk_text = result.get("chunk_text", "") or ""
