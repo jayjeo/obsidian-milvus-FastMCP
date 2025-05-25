@@ -79,7 +79,7 @@ def initialize_components():
     global milvus_manager, search_engine, enhanced_search, hnsw_optimizer, rag_engine
     
     try:
-        logger.info("🚀 Starting Enhanced Obsidian-Milvus Fast MCP Server...")
+        logger.info("Starting Enhanced Obsidian-Milvus Fast MCP Server...")
         
         milvus_manager = MilvusManager()
         search_engine = SearchEngine(milvus_manager)
@@ -93,7 +93,7 @@ def initialize_components():
         except Exception as e:
             logger.warning(f"Auto-tuning warning: {e}")
         
-        logger.info("✅ All components initialized!")
+        logger.info("All components initialized!")
         return True
         
     except Exception as e:
@@ -1780,60 +1780,60 @@ async def get_collection_stats_resource() -> str:
 
 def main():
     """Main function"""
-    print("🚀 Enhanced Obsidian-Milvus Fast MCP Server starting...")
-    print("💎 All Milvus advanced features + new enhanced features activated!")
+    safe_print("Enhanced Obsidian-Milvus Fast MCP Server starting...")
+    safe_print("All Milvus advanced features + new enhanced features activated!")
     
     if not initialize_components():
-        print("❌ Component initialization failed. Server cannot start.")
+        safe_print("Component initialization failed. Server cannot start.", "error")
         sys.exit(1)
     
-    print("✅ All components initialized!")
-    print("🎥 Activated advanced features:")
-    print("   - 🔍 Intelligent search (adaptive/hierarchical/semantic graph)")
-    print("   - 🏷️ Advanced metadata filtering")
-    print("   - 🔄 Multi-query fusion")
-    print("   - 🕸️ Knowledge graph exploration")
-    print("   - ⚡ HNSW optimization")
-    print("   - 📊 Performance monitoring")
-    print("🆕 New enhanced features:")
-    print("   - 🌐 Comprehensive search mode (comprehensive_search_all)")
-    print("   - 🧠 Auto search mode decision (auto_search_mode_decision)")
-    print("   - 📄 Batch pagination search (batch_search_with_pagination)")
-    print("   - 🚀 Enhanced intelligent search (intelligent_search_enhanced)")
-    print("   - 📈 Default limits increased to 200-500")
-    print(f"📡 MCP server '{config.FASTMCP_SERVER_NAME}' starting...")
-    print(f"🔧 Transport: {config.FASTMCP_TRANSPORT}")
+    safe_print("All components initialized!")
+    safe_print("Activated advanced features:")
+    safe_print("   - Intelligent search (adaptive/hierarchical/semantic graph)")
+    safe_print("   - Advanced metadata filtering")
+    safe_print("   - Multi-query fusion")
+    safe_print("   - Knowledge graph exploration")
+    safe_print("   - HNSW optimization")
+    safe_print("   - Performance monitoring")
+    safe_print("New enhanced features:")
+    safe_print("   - Comprehensive search mode (comprehensive_search_all)")
+    safe_print("   - Auto search mode decision (auto_search_mode_decision)")
+    safe_print("   - Batch pagination search (batch_search_with_pagination)")
+    safe_print("   - Enhanced intelligent search (intelligent_search_enhanced)")
+    safe_print("   - Default limits increased to 200-500")
+    safe_print(f"MCP server '{config.FASTMCP_SERVER_NAME}' starting...")
+    safe_print(f"Transport: {config.FASTMCP_TRANSPORT}")
     
     try:
         if config.FASTMCP_TRANSPORT == "stdio":
-            print("📡 MCP server starting using STDIO transport...")
+            safe_print("MCP server starting using STDIO transport...")
             mcp.run(transport="stdio")
             # This line will not be reached during normal operation
         elif config.FASTMCP_TRANSPORT == "sse":
-            print(f"📡 MCP server starting using SSE transport... (http://{config.FASTMCP_HOST}:{config.FASTMCP_PORT})")
+            safe_print(f"MCP server starting using SSE transport... (http://{config.FASTMCP_HOST}:{config.FASTMCP_PORT})")
             mcp.run(transport="sse", host=config.FASTMCP_HOST, port=config.FASTMCP_PORT)
         elif config.FASTMCP_TRANSPORT == "streamable-http":
-            print(f"📡 MCP server starting using Streamable HTTP transport... (http://{config.FASTMCP_HOST}:{config.FASTMCP_PORT})")
+            safe_print(f"MCP server starting using Streamable HTTP transport... (http://{config.FASTMCP_HOST}:{config.FASTMCP_PORT})")
             mcp.run(transport="streamable-http", host=config.FASTMCP_HOST, port=config.FASTMCP_PORT)
         else:
-            print(f"❌ Unsupported transport: {config.FASTMCP_TRANSPORT}")
-            print("Supported transports: stdio, sse, streamable-http")
+            safe_print(f"Unsupported transport: {config.FASTMCP_TRANSPORT}")
+            safe_print("Supported transports: stdio, sse, streamable-http")
             sys.exit(1)
             
     except KeyboardInterrupt:
-        print("\n🛑 Enhanced MCP server shutting down...")
+        safe_print("Enhanced MCP server shutting down...")
     except Exception as e:
-        print(f"❌ MCP server error: {e}")
-        print(f"Stack trace: {traceback.format_exc()}")
+        safe_print(f"MCP server error: {e}", "error")
+        safe_print(f"Stack trace: {traceback.format_exc()}", "error")
         sys.exit(1)
     finally:
         if milvus_manager:
             try:
                 milvus_manager.stop_monitoring()
-                print("✅ Milvus monitoring stopped")
+                safe_print("Milvus monitoring stopped")
             except:
                 pass
-        print("👋 Enhanced server shut down successfully.")
+        safe_print("Enhanced server shut down successfully.")
 
 if __name__ == "__main__":
     main()
