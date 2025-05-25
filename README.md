@@ -105,7 +105,7 @@
 7. **Milvus Server auto launch at startup**
    - Follow instructions in [Milvus auto launch.md](https://share.note.sx/y9vrzgj6#zr1aL4s1WFBK/A4WvqvkP6ETVMC4sKcAwbqAt4NyZhk)
    - When Windows starts, a CMD will pop up, but you may close it
-   - There is an alternative way of manual run, which is inconvenient
+   - A manual execution alternative is available, though this method proves operationally cumbersome
      - `run-main.bat`, and select option 1
      - You have to keep this CMD opened. Otherwise, the server will be terminated
 
