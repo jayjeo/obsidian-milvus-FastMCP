@@ -56,6 +56,10 @@ EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2" 
 VECTOR_DIM = 768  # Vector dimension
 EMBEDDING_CACHE_SIZE = 100  # Cache size to reduce RAM usage
 
+# Model cache directory (relative to project directory)
+MODEL_CACHE_DIR = str(BASE_DIR / "model_cache")  # Local model cache directory
+MODEL_LOAD_TIMEOUT = 120  # Model loading timeout in seconds
+
 # LLM settings
 LLM_PROVIDER = "claude"  # LLM provider
 OLLAMA_BASE_URL = "http://localhost:11434"  # Ollama server URL (backward compatibility)
