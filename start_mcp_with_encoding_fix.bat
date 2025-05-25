@@ -22,25 +22,17 @@ REM Set Python environment variables to handle encoding
 set PYTHONIOENCODING=utf-8
 set PYTHONLEGACYWINDOWSSTDIO=utf-8
 
-echo ✅ Console encoding set to UTF-8
-echo ✅ Python environment variables configured
+echo Console encoding set to UTF-8
+echo Python environment variables configured
 echo.
 
 echo Step 2: Testing Python with encoding fix...
 echo --------------------------------------------------------
 
+setlocal enabledelayedexpansion
+
 REM Find working Python
 set WORKING_PYTHON=
-if exist "start_mcp_verified.bat" (
-    echo Found verified Python setup
-    for /f "tokens=*" %%i in ('findstr /i "python" start_mcp_verified.bat') do (
-        set line=%%i
-        for /f "tokens=2 delims=^"" %%j in ("%%i") do (
-            set WORKING_PYTHON=%%j
-            goto found_python
-        )
-    )
-)
 
 REM Fallback to testing common Python commands
 for %%p in (python python3 py) do (
@@ -49,12 +41,12 @@ for %%p in (python python3 py) do (
         for /f "tokens=*" %%i in ('%%p -c "import sys; print(sys.executable)"') do (
             set WORKING_PYTHON=%%i
         )
-        echo ✅ Found working Python: %%p
+        echo Found working Python: %%p
         goto found_python
     )
 )
 
-echo ❌ No working Python found
+echo No working Python found
 pause
 exit /b 1
 
@@ -82,9 +74,9 @@ echo Running encoding test...
 "%WORKING_PYTHON%" test_encoding.py
 
 if %errorlevel% equ 0 (
-    echo ✅ Encoding test passed
+    echo Encoding test passed
 ) else (
-    echo ❌ Encoding test failed
+    echo Encoding test failed
     echo Trying alternative encoding settings...
     
     REM Try with different encoding settings
@@ -108,9 +100,9 @@ echo MCP Server process completed.
 echo.
 
 if %errorlevel% equ 0 (
-    echo ✅ MCP Server completed successfully
+    echo MCP Server completed successfully
 ) else (
-    echo ❌ MCP Server exited with error code: %errorlevel%
+    echo MCP Server exited with error code: %errorlevel%
     echo.
     echo The encoding fix has been applied. If you still see Unicode errors:
     echo 1. Check if your Python installation supports UTF-8
