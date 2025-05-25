@@ -8,43 +8,43 @@
 - [https://youtu.be/wPFiG9mC7e8?si=uF-TJrgG-guC33JG](https://youtu.be/wPFiG9mC7e8?si=uF-TJrgG-guC33JG)
 
 ### 🔍 **Core Search Capabilities**
-- **Hybrid Search Engine**: Advanced vector similarity + keyword search fusion
-- **Intelligent Semantic Search**: High-precision meaning-based document retrieval
-- **Adaptive Query Processing**: Automatic parameter adjustment based on query complexity
-- **Multi-modal Search**: Integrated text and attachment file search
-- **Contextual Expansion**: Related document discovery and context-aware retrieval
+- ![Hybrid Search Engine](https://img.shields.io/badge/Feature-Green) : Advanced vector similarity + keyword search fusion
+- ![Intelligent Semantic Search](https://img.shields.io/badge/Feature-Green) : High-precision meaning-based document retrieval
+- ![Adaptive Query Processing](https://img.shields.io/badge/Feature-Green) : Automatic parameter adjustment based on query complexity
+- ![Multi-modal Search](https://img.shields.io/badge/Feature-Green) : Integrated text and attachment file search
+- ![Contextual Expansion](https://img.shields.io/badge/Feature-Green) : Related document discovery and context-aware retrieval
 
 ### 🧠 **Advanced AI & RAG Features**
-- **Hierarchical Retrieval**: Document → Section → Chunk progressive search
-- **Multi-query Fusion**: Intelligent combination of multiple search queries with weighted averaging, maximum value, and reciprocal rank fusion
-- **Adaptive Chunk Retrieval**: Dynamic chunk size adjustment based on query complexity
-- **Knowledge Graph Exploration**: Vector similarity-based connection discovery with BFS traversal and graph centrality ranking
-- **Temporal-aware Search**: Balance between relevance and recency with time-weighted scoring
+- ![Hierarchical Retrieval](https://img.shields.io/badge/Feature-Green) : Document → Section → Chunk progressive search
+- ![Multi-query Fusion](https://img.shields.io/badge/Feature-Green) : Intelligent combination of multiple search queries with weighted averaging, maximum value, and reciprocal rank fusion
+- ![Adaptive Chunk Retrieval](https://img.shields.io/badge/Feature-Green) : Dynamic chunk size adjustment based on query complexity
+- ![Knowledge Graph Exploration](https://img.shields.io/badge/Feature-Green) : Vector similarity-based connection discovery with BFS traversal and graph centrality ranking
+- ![Temporal-aware Search](https://img.shields.io/badge/Feature-Green) : Balance between relevance and recency with time-weighted scoring
 
 ### 🏷️ **Advanced Metadata Filtering**
-- **Complex Tag Logic**: AND/OR/NOT combinations for sophisticated tag-based filtering
-- **Time Range Filtering**: Precise temporal document filtering
-- **File Type & Quality Filtering**: Content quality assessment and file type categorization
-- **Multi-dimensional Filtering**: Simultaneous application of multiple filter criteria
+- ![Complex Tag Logic](https://img.shields.io/badge/Feature-Green) : AND/OR/NOT combinations for sophisticated tag-based filtering
+- ![Time Range Filtering](https://img.shields.io/badge/Feature-Green) : Precise temporal document filtering
+- ![File Type & Quality Filtering](https://img.shields.io/badge/Feature-Green) : Content quality assessment and file type categorization
+- ![Multi-dimensional Filtering](https://img.shields.io/badge/Feature-Green) : Simultaneous application of multiple filter criteria
 
 ### ⚡ **Performance Optimization**
-- **GPU/CPU Auto-selection**: Hardware-optimized index selection (GPU_IVF_FLAT, GPU_CAGRA, HNSW)
-- **HNSW Index Optimization**: Dynamic parameter tuning (ef, nprobe) based on collection size
-- **Real-time Performance Monitoring**: Live performance tracking and analysis
-- **Adaptive Search Parameters**: Result quality-based parameter dynamic adjustment
-- **Batch Processing Optimization**: Efficient large-scale search operations
+- ![GPU/CPU Auto-selection](https://img.shields.io/badge/Feature-Green) : Hardware-optimized index selection (GPU_IVF_FLAT, GPU_CAGRA, HNSW)
+- ![HNSW Index Optimization](https://img.shields.io/badge/Feature-Green) : Dynamic parameter tuning (ef, nprobe) based on collection size
+- ![Real-time Performance Monitoring](https://img.shields.io/badge/Feature-Green) : Live performance tracking and analysis
+- ![Adaptive Search Parameters](https://img.shields.io/badge/Feature-Green) : Result quality-based parameter dynamic adjustment
+- ![Batch Processing Optimization](https://img.shields.io/badge/Feature-Green) : Efficient large-scale search operations
 
 ### 📊 **System Intelligence**
-- **Auto-tuning**: Collection size-based automatic parameter optimization
-- **Performance Benchmarking**: Multi-strategy search performance comparison
-- **Smart Recommendations**: Automatic optimization suggestions based on usage patterns
-- **Resource Management**: Intelligent memory and GPU utilization
+- ![Auto-tuning](https://img.shields.io/badge/Feature-Green) : Collection size-based automatic parameter optimization
+- ![Performance Benchmarking](https://img.shields.io/badge/Feature-Green) : Multi-strategy search performance comparison
+- ![Smart Recommendations](https://img.shields.io/badge/Feature-Green) : Automatic optimization suggestions based on usage patterns
+- ![Resource Management](https://img.shields.io/badge/Feature-Green) : Intelligent memory and GPU utilization
 
 ### 🌐 **Integration & Connectivity**
-- **Claude Desktop Integration**: Seamless connection via FastMCP protocol
-- **Real-time File Monitoring**: Automatic change detection and incremental reindexing
-- **Multilingual Support**: Advanced embedding models for global language support
-- **Container-based Deployment**: Reliable Podman-based Milvus deployment
+- ![Claude Desktop Integration](https://img.shields.io/badge/Feature-Green) : Seamless connection via FastMCP protocol
+- ![Real-time File Monitoring](https://img.shields.io/badge/Feature-Green) : Automatic change detection and incremental reindexing
+- ![Multilingual Support](https://img.shields.io/badge/Feature-Green) : Advanced embedding models for global language support
+- ![Container-based Deployment](https://img.shields.io/badge/Feature-Green) : Reliable Podman-based Milvus deployment
 
 
 ## 📋 Requirements
@@ -127,8 +127,6 @@
 - **Start Embedding (Indexing) your Obsidian vault**: Run `run-main.bat` and select option 2 or 3 
 - **Open Claude Desktop**: Your Obsidian vault is now searchable
 - **Start Searching**: Use natural language queries in Claude Desktop
-- **Advanced Features**: Access all search modes and filtering options through Claude
-
 
 ## 🚨 GPU not detected issue even though my GPU exists and supports CUDA
 - Make sure set `USE_GPU = True` in `config.py` to use GPU mode
@@ -136,40 +134,40 @@
 
 
 ## Backup & Restore Milvus Data (Embedding Data)
-- **Backup**: Run `backup-all-data.bat`
-- **Restore**: Run `restore-backup.bat` 
+- ![Backup](https://img.shields.io/badge/Feature-Green) : Run `backup-all-data.bat`
+- ![Restore](https://img.shields.io/badge/Feature-Green) : Run `restore-backup.bat` 
 
 
 ## MCP Search Tools that you can see at Claude Desktop
 ##### Basic Search
-- **search_documents**: Enhanced Obsidian document search
-- **get_document_content**: Retrieve complete content of specific document
-- **get_similar_documents**: Find similar documents
+- ![search_documents](https://img.shields.io/badge/Feature-Green) : Enhanced Obsidian document search
+- ![get_document_content](https://img.shields.io/badge/Feature-Green) : Retrieve complete content of specific document
+- ![get_similar_documents](https://img.shields.io/badge/Feature-Green) : Find similar documents
 
 ##### Intelligent Search
-- **auto_search_mode_decision**: Automatic search mode determination
-- **intelligent_search**: Advanced intelligent search
-- **intelligent_search_enhanced**: Enhanced intelligent search
-- **comprehensive_search_all**: Comprehensive search across entire collection
+- ![auto_search_mode_decision](https://img.shields.io/badge/Feature-Green) : Automatic search mode determination
+- ![intelligent_search](https://img.shields.io/badge/Feature-Green) : Advanced intelligent search
+- ![intelligent_search_enhanced](https://img.shields.io/badge/Feature-Green) : Enhanced intelligent search
+- ![comprehensive_search_all](https://img.shields.io/badge/Feature-Green) : Comprehensive search across entire collection
 
 ##### Advanced Search
-- **batch_search_with_pagination**: Batch search with pagination
-- **advanced_filter_search**: Advanced metadata filter search
-- **multi_query_fusion_search**: Multi-query fusion search
-- **milvus_power_search**: Milvus optimized power search
+- ![batch_search_with_pagination](https://img.shields.io/badge/Feature-Green) : Batch search with pagination
+- ![advanced_filter_search](https://img.shields.io/badge/Feature-Green) : Advanced metadata filter search
+- ![multi_query_fusion_search](https://img.shields.io/badge/Feature-Green) : Multi-query fusion search
+- ![milvus_power_search](https://img.shields.io/badge/Feature-Green) : Milvus optimized power search
 
 ##### Knowledge Graph
-- **knowledge_graph_exploration**: Knowledge graph exploration
-- **milvus_knowledge_graph_builder**: Milvus-based knowledge graph construction
+- ![knowledge_graph_exploration](https://img.shields.io/badge/Feature-Green) : Knowledge graph exploration
+- ![milvus_knowledge_graph_builder](https://img.shields.io/badge/Feature-Green) : Milvus-based knowledge graph construction
 
 ##### Tag Search
-- **search_by_tags**: Search documents by tags
-- **list_available_tags**: List available tags
+- ![search_by_tags](https://img.shields.io/badge/Feature-Green) : Search documents by tags
+- ![list_available_tags](https://img.shields.io/badge/Feature-Green) : List available tags
 
 ##### System Management
-- **get_collection_stats**: Collection statistics information
-- **performance_optimization_analysis**: Performance optimization analysis
-- **milvus_system_optimization_report**: Comprehensive system optimization report
+- ![get_collection_stats](https://img.shields.io/badge/Feature-Green) : Collection statistics information
+- ![performance_optimization_analysis](https://img.shields.io/badge/Feature-Green) : Performance optimization analysis
+- ![milvus_system_optimization_report](https://img.shields.io/badge/Feature-Green) : Comprehensive system optimization report
 
 ## Use Project feature in Claude Desktop for better search results
 - For example, I use a project called "obsidian" to search my Obsidian vault. 
@@ -189,7 +187,7 @@
   - [https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem)
 
 
-## ⚠️ **EMERGENCY RESET**
+## ![EMERGENCY RESET](https://img.shields.io/badge/Error-red)
 
 **If you encounter container conflicts or system issues**, you can use the emergency reset script:
 
@@ -197,13 +195,13 @@
 complete-reset.bat  # Windows
 ```
 
-**⚠️ CRITICAL WARNING**: This script will:
+**![CRITICAL WARNING](https://img.shields.io/badge/Error-red): This script will:
 - **Kill ALL Podman containers** (not just Milvus)
 - **Remove ALL Podman containers, pods, volumes, and networks**
 - **Delete local MilvusData and volumes directories**
 - **Permanently destroy all container data system-wide**
 
-**Use ONLY if:**
+**![Use ONLY if](https://img.shields.io/badge/Error-red)**
 - You have container name conflicts
 - Milvus services fail to start properly
 - You need a complete clean state
@@ -287,12 +285,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 🙏 Acknowledgments
 
-- **Milvus**: High-performance vector database with advanced indexing
-- **Claude**: Advanced AI assistant with MCP protocol support
-- **FastMCP**: Efficient MCP implementation framework
-- **Sentence Transformers**: State-of-the-art multilingual embedding models
-- **HNSW Algorithm**: Hierarchical Navigable Small World graphs for fast similarity search
+- ![Milvus](https://img.shields.io/badge/Info-blue): High-performance vector database with advanced indexing
+- ![Claude](https://img.shields.io/badge/Info-blue): Advanced AI assistant with MCP protocol support
+- ![FastMCP](https://img.shields.io/badge/Info-blue): Efficient MCP implementation framework
+- ![Sentence Transformers](https://img.shields.io/badge/Info-blue): State-of-the-art multilingual embedding models
+- ![HNSW Algorithm](https://img.shields.io/badge/Info-blue): Hierarchical Navigable Small World graphs for fast similarity search
 
 ---
  
-**Author**: Jay Jeong, Ph.D. in Economics, Research Fellow at KCTDI, [acubens555@gmail.com](mailto:acubens555@gmail.com) 
+![Author](https://img.shields.io/badge/Success-green): Jay Jeong, Ph.D. in Economics, Research Fellow at KCTDI, [acubens555@gmail.com](mailto:acubens555@gmail.com) 
