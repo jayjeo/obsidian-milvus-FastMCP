@@ -22,8 +22,13 @@ REM Set Python environment variables to handle encoding
 set PYTHONIOENCODING=utf-8
 set PYTHONLEGACYWINDOWSSTDIO=utf-8
 
+REM Suppress Python warnings (including HuggingFace warnings)
+set PYTHONWARNINGS=ignore::FutureWarning
+set PYTHONWARNINGS=ignore::UserWarning
+
 echo Console encoding set to UTF-8
 echo Python environment variables configured
+echo Warning suppression enabled
 echo.
 
 echo Step 2: Testing Python with encoding fix...
@@ -63,6 +68,8 @@ echo.
 REM Create a test script to verify encoding
 echo import sys > test_encoding.py
 echo import os >> test_encoding.py
+echo import warnings >> test_encoding.py
+echo warnings.filterwarnings('ignore') >> test_encoding.py
 echo print('Python executable:', sys.executable) >> test_encoding.py
 echo print('Default encoding:', sys.getdefaultencoding()) >> test_encoding.py
 echo print('Console encoding:', sys.stdout.encoding) >> test_encoding.py
@@ -91,12 +98,10 @@ echo Step 4: Starting MCP server with encoding protection...
 echo --------------------------------------------------------
 
 echo Starting MCP server with Unicode/emoji protection...
-echo This will timeout after 30 seconds to prevent hanging...
+echo Warning suppression is enabled to hide non-critical messages.
+echo.
 
-REM Start MCP server with timeout
-timeout /t 30 /nobreak >nul & taskkill /f /im python.exe >nul 2>&1 &
-
-REM Start MCP server with proper encoding
+REM Start MCP server with proper encoding and warning suppression
 "%WORKING_PYTHON%" mcp_server.py
 
 echo.

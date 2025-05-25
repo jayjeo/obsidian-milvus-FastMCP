@@ -1,3 +1,6 @@
+# Import warning suppressor first to suppress all warnings
+import warning_suppressor
+
 from sentence_transformers import SentenceTransformer
 import config
 from functools import lru_cache
@@ -15,6 +18,13 @@ import concurrent.futures
 from threading import Event
 import logging
 import traceback
+import warnings
+
+# Additional warning suppression (redundant but ensures coverage)
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', module='huggingface_hub')
+warnings.filterwarnings('ignore', module='transformers')
 
 # Set up logging
 logging.basicConfig(level=getattr(logging, config.LOG_LEVEL if hasattr(config, 'LOG_LEVEL') else 'WARNING'),
@@ -258,37 +268,100 @@ class EmbeddingModel:
                 # Set environment variable for SentenceTransformer
                 os.environ['SENTENCE_TRANSFORMERS_HOME'] = model_cache_dir
             
-            # Model loading with timeout
+            # Model loading with better progress tracking
             model_load_timeout = getattr(config, 'MODEL_LOAD_TIMEOUT', 120)
             
-            def load_model_with_timeout():
-                """Load model with timeout protection"""
+            # Check if model already exists in cache
+            model_exists_in_cache = False
+            if model_cache_dir:
+                import hashlib
+                model_name_hash = hashlib.sha256(config.EMBEDDING_MODEL.encode()).hexdigest()[:8]
+                potential_model_path = os.path.join(model_cache_dir, model_name_hash)
+                if os.path.exists(potential_model_path):
+                    model_exists_in_cache = True
+                    print(f"Model found in cache at: {potential_model_path}")
+            
+            if not model_exists_in_cache:
+                print("Model not found in cache. It will be downloaded from HuggingFace Hub.")
+                print("This may take several minutes depending on your internet connection...")
+            
+            # Track loading progress
+            loading_complete = threading.Event()
+            loading_error = None
+            
+            def load_model_with_progress():
+                """Load model with progress tracking"""
+                nonlocal loading_error
                 try:
-                    print("Starting model download/loading...")
-                    model = SentenceTransformer(config.EMBEDDING_MODEL, device=device)
-                    print("Model loaded successfully!")
+                    print(f"\nLoading model: {config.EMBEDDING_MODEL}")
+                    if not model_exists_in_cache:
+                        print("Downloading model files...")
+                    
+                    # Suppress specific warnings during model loading
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        warnings.filterwarnings('ignore', category=FutureWarning, module='huggingface_hub')
+                        warnings.filterwarnings('ignore', message='.*resume_download.*')
+                        
+                        # Create model with trust_remote_code=True to avoid warnings
+                        model = SentenceTransformer(
+                            config.EMBEDDING_MODEL, 
+                            device=device,
+                            trust_remote_code=True
+                        )
+                    
+                    loading_complete.set()
+                    print("\nModel loaded successfully!")
                     return model
                 except Exception as e:
-                    print(f"Error loading model: {e}")
+                    loading_error = e
+                    loading_complete.set()
+                    print(f"\nError loading model: {e}")
+                    print(f"Error type: {type(e).__name__}")
+                    print(f"Error details: {str(e)}")
                     raise
             
-            # Use thread executor with timeout for model loading
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                try:
-                    print(f"Loading model with {model_load_timeout} second timeout...")
-                    future = executor.submit(load_model_with_timeout)
-                    cls._instance.model = future.result(timeout=model_load_timeout)
-                    print("Model loading completed successfully!")
-                    
-                except concurrent.futures.TimeoutError:
-                    print(f"Model loading timed out after {model_load_timeout} seconds")
-                    print("This might be due to slow internet connection or large model download")
-                    print("Please check your internet connection and try again")
+            # Start model loading in a separate thread
+            print(f"\nStarting model loading (timeout: {model_load_timeout} seconds)...")
+            loading_thread = threading.Thread(target=lambda: setattr(cls._instance, '_temp_model', load_model_with_progress()))
+            loading_thread.daemon = True
+            loading_thread.start()
+            
+            # Wait with progress indication
+            start_time = time.time()
+            progress_interval = 10  # Show progress every 10 seconds
+            last_progress_time = start_time
+            
+            while not loading_complete.wait(timeout=1):
+                elapsed = time.time() - start_time
+                
+                # Show progress every interval
+                if time.time() - last_progress_time >= progress_interval:
+                    if not model_exists_in_cache:
+                        print(f"Still downloading... ({int(elapsed)} seconds elapsed)")
+                    else:
+                        print(f"Still loading... ({int(elapsed)} seconds elapsed)")
+                    last_progress_time = time.time()
+                
+                # Check timeout
+                if elapsed >= model_load_timeout:
+                    print(f"\nModel loading timed out after {model_load_timeout} seconds!")
+                    print("\nPossible solutions:")
+                    print("1. Check your internet connection")
+                    print("2. Increase MODEL_LOAD_TIMEOUT in config.py")
+                    print("3. Try downloading the model manually")
+                    print("4. Use a smaller model")
                     raise RuntimeError(f"Model loading timeout ({model_load_timeout}s)")
-                    
-                except Exception as e:
-                    print(f"Failed to load embedding model: {e}")
-                    raise
+            
+            # Check if loading was successful
+            if loading_error:
+                raise loading_error
+            
+            # Get the loaded model
+            cls._instance.model = cls._instance._temp_model
+            delattr(cls._instance, '_temp_model')
+            
+            print(f"Total loading time: {time.time() - start_time:.1f} seconds")
             
             # Cache configuration
             cache_size = config.EMBEDDING_CACHE_SIZE

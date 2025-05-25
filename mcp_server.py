@@ -18,6 +18,9 @@ Enhanced with:
 - 성능 최적화 및 모니터링
 """
 
+# Import warning suppressor first
+import warning_suppressor
+
 import os
 import sys
 import json
