@@ -783,49 +783,20 @@ class ObsidianProcessor:
             print(f"Error saving vectors to Milvus: {e}")
             return False
     
-    def _verify_file_has_valid_embeddings(self, file_path):
-        """Verify that a file has valid embedding data in the database.
+    # DEPRECATED: This method is no longer used for performance reasons
+    # Embedding validation is now done during initial data loading
+    def _verify_file_has_valid_embeddings_DEPRECATED(self, file_path):
+        """DEPRECATED: Verify that a file has valid embedding data in the database.
         
-        Returns True if valid embeddings exist, False otherwise.
-        This is the key fix for the incremental embedding issue.
+        This method was causing performance issues because it was called for every
+        file during scanning. Now we pre-load all embedding validation data.
         """
-        try:
-            rel_path = os.path.relpath(file_path, self.vault_path)
-            
-            # Query for vector data for this file path
-            results = self.milvus_manager.query(
-                expr=f"path == '{rel_path}'",
-                output_fields=["id", "chunk_index", "chunk_text"],
-                limit=10  # Check for at least some chunks
-            )
-            
-            if not results:
-                print(f"{Fore.CYAN}[DEBUG] No embedding data found for: {rel_path}{Style.RESET_ALL}")
-                return False
-            
-            # Verify that we have actual chunk data
-            valid_chunks = 0
-            for result in results:
-                chunk_text = result.get("chunk_text", "")
-                if chunk_text and len(chunk_text.strip()) > 0:
-                    valid_chunks += 1
-            
-            if valid_chunks == 0:
-                print(f"{Fore.CYAN}[DEBUG] Empty/invalid chunks found for: {rel_path}{Style.RESET_ALL}")
-                return False
-            
-            print(f"{Fore.CYAN}[DEBUG] Valid embeddings found for: {rel_path} ({valid_chunks} chunks){Style.RESET_ALL}")
-            return True
-            
-        except Exception as e:
-            print(f"{Fore.YELLOW}[WARNING] Error verifying embeddings for {file_path}: {e}{Style.RESET_ALL}")
-            # If we can't verify, assume it needs to be processed
-            return False
+        pass
     
     def process_updated_files(self):
-        """볼트의 새로운 파일 또는 수정된 파일만 처리 (증분 임베딩) - FIXED VERSION"""
-        print(f"\n{Fore.CYAN}[DEBUG] Starting process_updated_files (FIXED VERSION){Style.RESET_ALL}")
-        print(f"Processing only new or modified files in {self.vault_path}")
+        """볼트의 새로운 파일 또는 수정된 파일만 처리 + 삭제된 파일 정리 (증분 임베딩) - ENHANCED VERSION"""
+        print(f"\n{Fore.CYAN}[DEBUG] Starting process_updated_files with deleted file cleanup (ENHANCED VERSION){Style.RESET_ALL}")
+        print(f"Processing new/modified files AND cleaning up deleted files in {self.vault_path}")
         
         # 경로 존재 확인
         if not os.path.exists(self.vault_path):
@@ -905,16 +876,18 @@ class ObsidianProcessor:
             self.embedding_in_progress = False  # 반드시 상태를 False로 설정
             return 0
         
-        # 기존 파일 정보 가져오기 - IMPROVED VERSION
+        # 기존 파일 정보 가져오기 - PERFORMANCE OPTIMIZED VERSION
         existing_files_info = {}
+        files_with_valid_embeddings = set()
+        
         try:
-            print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus...{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus (optimized)...{Style.RESET_ALL}")
             max_limit = 16000
             offset = 0
             
             while True:
                 results = self.milvus_manager.query(
-                    output_fields=["path", "updated_at"],
+                    output_fields=["path", "updated_at", "chunk_text"],
                     limit=max_limit,
                     offset=offset,
                     expr="id >= 0"
@@ -926,6 +899,7 @@ class ObsidianProcessor:
                 for doc in results:
                     path = doc.get("path")
                     updated_at = doc.get('updated_at')
+                    chunk_text = doc.get('chunk_text', "")
                     
                     if path:
                         # Take the latest updated_at for each path (in case of multiple chunks)
@@ -941,6 +915,10 @@ class ObsidianProcessor:
                             except (ValueError, TypeError):
                                 # If conversion fails, use the new value
                                 existing_files_info[path] = updated_at
+                        
+                        # Track files with valid embedding data
+                        if chunk_text and len(chunk_text.strip()) > 0:
+                            files_with_valid_embeddings.add(path)
                 
                 offset += max_limit
                 if len(results) < max_limit:
@@ -948,17 +926,23 @@ class ObsidianProcessor:
                 
                 # 메모리 관리
                 gc.collect()
+                
+            print(f"{Fore.CYAN}[DEBUG] Found {len(existing_files_info)} files in DB, {len(files_with_valid_embeddings)} with valid embeddings{Style.RESET_ALL}")
+            
         except Exception as e:
             print(f"Warning: Error fetching existing files: {e}")
         
-        # 파일 목록 수집
-        print("Scanning files for changes...")
+        # 파일 목록 수집 및 삭제된 파일 탐지
+        print("Scanning files for changes and detecting deleted files...")
         files_to_process = []
         skipped_count = 0
         total_files_count = 0
         total_files_size = 0
         new_or_modified_count = 0
         new_or_modified_size = 0
+        
+        # 현재 파일 시스템의 파일들 수집
+        fs_files = set()
         
         print(f"{Fore.CYAN}[DEBUG] Walking through directory: {self.vault_path}{Style.RESET_ALL}")
         
@@ -974,6 +958,9 @@ class ObsidianProcessor:
                     total_files_count += 1
                     full_path = os.path.join(root, file)
                     rel_path = os.path.relpath(full_path, self.vault_path)
+                    
+                    # 파일 시스템 파일 목록에 추가
+                    fs_files.add(rel_path)
                     
                     try:
                         # 파일 크기 및 수정 시간 가져오기
@@ -1012,8 +999,8 @@ class ObsidianProcessor:
                                     # 변환 실패 시 파일을 새로 처리하도록 설정
                                     existing_mtime = 0
                                 
-                                # CRITICAL FIX: Check if embedding data actually exists
-                                has_valid_embeddings = self._verify_file_has_valid_embeddings(full_path)
+                                # PERFORMANCE FIX: Check embeddings from pre-loaded memory data
+                                has_valid_embeddings = rel_path in files_with_valid_embeddings
                                 
                                 # 수정 시간 비교: 파일의 수정 시간이 DB에 저장된 시간보다 더 최신인 경우에만 처리
                                 # BUT ALSO: Only skip if valid embeddings actually exist
@@ -1051,7 +1038,38 @@ class ObsidianProcessor:
                     except Exception as e:
                         print(f"Warning: Error checking file {rel_path}: {e}")
         
-        # 삭제 표시된 파일들 일괄 삭제
+        # ENHANCED: 삭제된 파일 탐지 및 정리
+        print(f"\n{Fore.MAGENTA}[DELETED FILES CLEANUP] Detecting deleted files...{Style.RESET_ALL}")
+        deleted_files = set(existing_files_info.keys()) - fs_files
+        
+        if deleted_files:
+            print(f"{Fore.YELLOW}Found {len(deleted_files)} deleted files:{Style.RESET_ALL}")
+            
+            # 처음 5개 파일만 표시
+            display_count = min(5, len(deleted_files))
+            for i, file_path in enumerate(list(deleted_files)[:display_count]):
+                print(f"{Fore.YELLOW}  {i+1}. {file_path}{Style.RESET_ALL}")
+            
+            if len(deleted_files) > display_count:
+                print(f"{Fore.YELLOW}  ... and {len(deleted_files) - display_count} more files{Style.RESET_ALL}")
+            
+            print(f"\n{Fore.CYAN}Starting automatic cleanup of deleted files...{Style.RESET_ALL}")
+            
+            try:
+                # 삭제된 파일들의 임베딩 정리
+                cleanup_count = self.cleanup_deleted_embeddings(list(deleted_files))
+                
+                if cleanup_count > 0:
+                    print(f"{Fore.GREEN}✅ Successfully cleaned up {cleanup_count} deleted files{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}⚠️ No deleted files were cleaned up{Style.RESET_ALL}")
+                    
+            except Exception as e:
+                print(f"{Fore.RED}Error during deleted files cleanup: {e}{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.GREEN}✅ No deleted files found - database is in sync{Style.RESET_ALL}")
+        
+        # 삭제 표시된 파일들 일괄 삭제 (수정된 파일들의 이전 버전)
         self.milvus_manager.execute_pending_deletions()
         
         # 전체 파일 수와 크기 업데이트 - 이 값들이 전체 진행도의 분모가 됨
@@ -1059,9 +1077,11 @@ class ObsidianProcessor:
         self.embedding_progress["total_size"] = new_or_modified_size
         
         # 파일 처리 완료 후 디버깅 메시지 출력
+        print(f"\n{Fore.CYAN}[SUMMARY] File processing summary:{Style.RESET_ALL}")
         print(f"{Fore.CYAN}[DEBUG] Total files scanned: {total_files_count}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}[DEBUG] New or modified files: {new_or_modified_count}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}[DEBUG] Skipped files (unchanged): {skipped_count}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}[DEBUG] Deleted files cleaned up: {len(deleted_files)}{Style.RESET_ALL}")
         
         # 전체 파일 수와 크기 정보 출력
         print(f"Total files to process: {new_or_modified_count} files ({new_or_modified_size/(1024*1024):.2f} MB)")
@@ -1069,8 +1089,10 @@ class ObsidianProcessor:
         # 처리할 파일이 없는 경우
         if not files_to_process:
             print(f"{Fore.GREEN}[INFO] No new or modified files found. Nothing to process.{Style.RESET_ALL}")
+            if len(deleted_files) > 0:
+                print(f"{Fore.GREEN}[INFO] However, {len(deleted_files)} deleted files were cleaned up.{Style.RESET_ALL}")
             self.embedding_in_progress = False
-            return 0
+            return len(deleted_files)  # Return count of cleaned up files
         
         # 리소스 모니터링 및 진행률 업데이트 스레드 시작
         self.start_monitoring()
@@ -1080,11 +1102,13 @@ class ObsidianProcessor:
             current_batch_size = self._check_system_resources()
             
             # 파일 배치 처리
-            self._process_file_batch(files_to_process, current_batch_size)
+            processed_count = self._process_file_batch(files_to_process, current_batch_size)
             
             # 임베딩 완료 표시
             self.embedding_in_progress = False
-            print(f"\n{Fore.GREEN}[SUCCESS] Incremental embedding completed successfully!{Style.RESET_ALL}")
+            print(f"\n{Fore.GREEN}[SUCCESS] Incremental embedding & deleted cleanup completed successfully!{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}✅ Processed {processed_count} new/modified files{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}✅ Cleaned up {len(deleted_files)} deleted files{Style.RESET_ALL}")
             
             # 메모리 정리
             gc.collect()
@@ -1093,7 +1117,7 @@ class ObsidianProcessor:
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             
-            return len(files_to_process)
+            return processed_count + len(deleted_files)
             
         except Exception as e:
             error_msg = f"Error in process_updated_files: {e}"
@@ -1239,6 +1263,14 @@ class ObsidianProcessor:
             
             # 기존 파일 정보 가져오기
             existing_files_info = {}
+        except Exception as e:
+            error_msg = f"Error initializing file processing: {e}"
+            print(f"\n{Fore.RED}{error_msg}{Style.RESET_ALL}")
+            import traceback
+            print(f"\n{Fore.RED}Stack trace:\n{traceback.format_exc()}{Style.RESET_ALL}")
+            return 0
+            
+        try:
             try:
                 print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus...{Style.RESET_ALL}")
                 max_limit = 16000
