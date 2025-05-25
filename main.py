@@ -292,11 +292,11 @@ def perform_full_embedding(processor):
             processor.embedding_in_progress = False
 
 def perform_incremental_embedding(processor):
-    """Perform incremental embedding (only new/modified files)"""
+    """Perform incremental embedding with automatic cleanup of deleted files"""
     from colorama import Fore, Style
     
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}Starting incremental embedding process...{Style.RESET_ALL}")
-    print("This will process only new or modified files.")
+    print(f"\n{Fore.YELLOW}{Style.BRIGHT}Starting incremental embedding & deleted cleanup process...{Style.RESET_ALL}")
+    print("This will process new/modified files and automatically clean up deleted files.")
     print("Progress will be displayed in the terminal.\n")
     
     try:
@@ -397,8 +397,8 @@ def show_menu():
     # Option 2: Full Embedding (Red background for caution)
     print(f"{Fore.WHITE}{Back.RED}{Style.BRIGHT} 2 {Style.RESET_ALL} {Fore.RED}{Style.BRIGHT}Full Embedding{Style.RESET_ALL} (reindex all files)")
     
-    # Option 3: Incremental Embedding (Yellow background for moderate caution)
-    print(f"{Fore.BLACK}{Back.YELLOW}{Style.BRIGHT} 3 {Style.RESET_ALL} {Fore.YELLOW}{Style.BRIGHT}Incremental Embedding{Style.RESET_ALL} (only new/modified files)")
+    # Option 3: Incremental Embedding with Cleanup (Yellow background for moderate caution)
+    print(f"{Fore.BLACK}{Back.YELLOW}{Style.BRIGHT} 3 {Style.RESET_ALL} {Fore.YELLOW}{Style.BRIGHT}Incremental & Deleted Cleanup{Style.RESET_ALL} (process new/modified + remove deleted)")
     
     # Option 4: Cleanup Deleted Files (Magenta background for maintenance)
     print(f"{Fore.WHITE}{Back.MAGENTA}{Style.BRIGHT} 4 {Style.RESET_ALL} {Fore.MAGENTA}{Style.BRIGHT}Cleanup Deleted Files{Style.RESET_ALL} (remove orphaned embeddings)")
