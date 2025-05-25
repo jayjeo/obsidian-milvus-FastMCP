@@ -876,18 +876,18 @@ class ObsidianProcessor:
             self.embedding_in_progress = False  # 반드시 상태를 False로 설정
             return 0
         
-        # 기존 파일 정보 가져오기 - PERFORMANCE OPTIMIZED VERSION
+        # 기존 파일 정보 가져오기 - SIMPLEST VERSION (timestamp only)
         existing_files_info = {}
-        files_with_valid_embeddings = set()
         
         try:
-            print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus (optimized)...{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus (simple timestamp check)...{Style.RESET_ALL}")
             max_limit = 16000
             offset = 0
             
             while True:
+                # SIMPLE: Only get path and updated_at, no complex validation
                 results = self.milvus_manager.query(
-                    output_fields=["path", "updated_at", "chunk_text"],
+                    output_fields=["path", "updated_at"],
                     limit=max_limit,
                     offset=offset,
                     expr="id >= 0"
@@ -899,26 +899,10 @@ class ObsidianProcessor:
                 for doc in results:
                     path = doc.get("path")
                     updated_at = doc.get('updated_at')
-                    chunk_text = doc.get('chunk_text', "")
                     
-                    if path:
-                        # Take the latest updated_at for each path (in case of multiple chunks)
-                        if path not in existing_files_info:
-                            existing_files_info[path] = updated_at
-                        else:
-                            # Compare and keep the latest timestamp
-                            try:
-                                current_time = float(existing_files_info[path]) if existing_files_info[path] else 0
-                                new_time = float(updated_at) if updated_at else 0
-                                if new_time > current_time:
-                                    existing_files_info[path] = updated_at
-                            except (ValueError, TypeError):
-                                # If conversion fails, use the new value
-                                existing_files_info[path] = updated_at
-                        
-                        # Track files with valid embedding data
-                        if chunk_text and len(chunk_text.strip()) > 0:
-                            files_with_valid_embeddings.add(path)
+                    if path and path not in existing_files_info:
+                        # Keep only the first occurrence (simple approach)
+                        existing_files_info[path] = updated_at
                 
                 offset += max_limit
                 if len(results) < max_limit:
@@ -927,7 +911,7 @@ class ObsidianProcessor:
                 # 메모리 관리
                 gc.collect()
                 
-            print(f"{Fore.CYAN}[DEBUG] Found {len(existing_files_info)} files in DB, {len(files_with_valid_embeddings)} with valid embeddings{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}[DEBUG] Found {len(existing_files_info)} unique files in DB{Style.RESET_ALL}")
             
         except Exception as e:
             print(f"Warning: Error fetching existing files: {e}")
@@ -973,53 +957,37 @@ class ObsidianProcessor:
                         skip_reason = ""
                         
                         if rel_path in existing_files_info:
-                            # 기존 파일이 있는 경우 수정 시간 비교
+                            # 기존 파일이 있는 경우 수정 시간 비교만 수행
                             existing_mtime = existing_files_info.get(rel_path, 0)
                             
-                            # 상세 디버깅 정보 출력
-                            print(f"{Fore.CYAN}[DEBUG] File: {rel_path}{Style.RESET_ALL}")
-                            print(f"{Fore.CYAN}[DEBUG] - Existing mtime in DB: {existing_mtime}{Style.RESET_ALL}")
-                            print(f"{Fore.CYAN}[DEBUG] - Current file mtime: {file_mtime}{Style.RESET_ALL}")
-                            print(f"{Fore.CYAN}[DEBUG] - Existing mtime type: {type(existing_mtime)}{Style.RESET_ALL}")
-                            print(f"{Fore.CYAN}[DEBUG] - Current mtime type: {type(file_mtime)}{Style.RESET_ALL}")
+                            # 디버깅 정보 (간소화)
+                            print(f"{Fore.CYAN}[DEBUG] File: {rel_path} - File time: {file_mtime}, DB time: {existing_mtime}{Style.RESET_ALL}")
                             
                             # 전체 재처리 모드인지 확인
                             is_full_reindex = self.embedding_progress.get("is_full_reindex", False)
                             
-                            # 전체 재처리 모드인 경우 모든 파일 처리
                             if is_full_reindex:
-                                print(f"{Fore.CYAN}[DEBUG] - Result: FULL REINDEX MODE (will process) - File: {rel_path}{Style.RESET_ALL}")
+                                print(f"{Fore.CYAN}[DEBUG] - Result: FULL REINDEX MODE (will process){Style.RESET_ALL}")
                             else:
-                                # 증분 처리 모드에서는 수정 시간 비교 AND 임베딩 데이터 존재 확인
+                                # 타임스탬프 변환 시도
                                 try:
                                     if isinstance(existing_mtime, str):
                                         existing_mtime = float(existing_mtime)
                                 except (ValueError, TypeError):
-                                    print(f"{Fore.YELLOW}[WARNING] Could not convert existing_mtime to float: {existing_mtime}{Style.RESET_ALL}")
-                                    # 변환 실패 시 파일을 새로 처리하도록 설정
+                                    print(f"{Fore.YELLOW}[WARNING] Invalid timestamp: {existing_mtime}, treating as new file{Style.RESET_ALL}")
                                     existing_mtime = 0
                                 
-                                # PERFORMANCE FIX: Check embeddings from pre-loaded memory data
-                                has_valid_embeddings = rel_path in files_with_valid_embeddings
-                                
-                                # 수정 시간 비교: 파일의 수정 시간이 DB에 저장된 시간보다 더 최신인 경우에만 처리
-                                # BUT ALSO: Only skip if valid embeddings actually exist
-                                if existing_mtime and file_mtime <= existing_mtime and has_valid_embeddings:
-                                    # 파일이 변경되지 않음 AND 유효한 임베딩이 존재함
+                                # SIMPLE: 타임스탬프 비교만
+                                if existing_mtime and file_mtime <= existing_mtime:
+                                    # 파일이 변경되지 않음 - SKIP
                                     is_new_or_modified = False
                                     skipped_count += 1
-                                    skip_reason = f"UNCHANGED with valid embeddings"
-                                    print(f"{Fore.CYAN}[DEBUG] - Result: {skip_reason} (skipping) - File time: {file_mtime}, DB time: {existing_mtime}{Style.RESET_ALL}")
+                                    print(f"{Fore.CYAN}[DEBUG] - Result: UNCHANGED (skipping){Style.RESET_ALL}")
                                 else:
-                                    # 파일이 수정되었거나 임베딩이 유효하지 않음
-                                    if not has_valid_embeddings:
-                                        skip_reason = f"INVALID/MISSING embeddings (will reprocess)"
-                                        print(f"{Fore.YELLOW}[DEBUG] - Result: {skip_reason} - File time: {file_mtime}, DB time: {existing_mtime}{Style.RESET_ALL}")
-                                    else:
-                                        skip_reason = f"MODIFIED (will process)"
-                                        print(f"{Fore.CYAN}[DEBUG] - Result: {skip_reason} - File time: {file_mtime}, DB time: {existing_mtime}{Style.RESET_ALL}")
+                                    # 파일이 수정되었음 - PROCESS
+                                    print(f"{Fore.YELLOW}[DEBUG] - Result: MODIFIED (will process){Style.RESET_ALL}")
                         else:
-                            print(f"{Fore.CYAN}[DEBUG] File: {rel_path} - NEW FILE (not in database){Style.RESET_ALL}")
+                            print(f"{Fore.GREEN}[DEBUG] File: {rel_path} - NEW FILE (will process){Style.RESET_ALL}")
                         
                         if is_new_or_modified:
                             # 새 파일이거나 수정된 파일
@@ -1028,7 +996,7 @@ class ObsidianProcessor:
                             
                             # 수정된 경우 이전 데이터 삭제
                             if rel_path in existing_files_info:
-                                print(f"{Fore.YELLOW}File will be reprocessed: {rel_path} (Reason: {skip_reason}){Style.RESET_ALL}")
+                                print(f"{Fore.YELLOW}File will be reprocessed: {rel_path}{Style.RESET_ALL}")
                                 self.milvus_manager.mark_for_deletion(rel_path)
                             else:
                                 print(f"{Fore.GREEN}New file found: {rel_path}{Style.RESET_ALL}")
@@ -1260,17 +1228,19 @@ class ObsidianProcessor:
         try:
             # 처리할 파일 목록 수집
             print(f"\n{Fore.CYAN}[DEBUG] Collecting files to process...{Style.RESET_ALL}")
-            
-            # 기존 파일 정보 가져오기
-            existing_files_info = {}
         except Exception as e:
-            error_msg = f"Error initializing file processing: {e}"
+            error_msg = f"Error in process_all_files: {e}"
             print(f"\n{Fore.RED}{error_msg}{Style.RESET_ALL}")
             import traceback
             print(f"\n{Fore.RED}Stack trace:\n{traceback.format_exc()}{Style.RESET_ALL}")
+            if hasattr(self, 'monitor') and hasattr(self.monitor, 'add_error_log'):
+                self.monitor.add_error_log(error_msg)
             return 0
-            
+        
         try:
+            
+            # 기존 파일 정보 가져오기
+            existing_files_info = {}
             try:
                 print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus...{Style.RESET_ALL}")
                 max_limit = 16000
