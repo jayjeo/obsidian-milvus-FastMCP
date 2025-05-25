@@ -115,6 +115,52 @@
 - **Backup**: Run `backup-all-data.bat`
 - **Restore**: Run `restore-backup.bat` 
 
+
+## MCP Search Tools that you can see at Claude Desktop
+##### Basic Search
+- **search_documents**: Enhanced Obsidian document search
+- **get_document_content**: Retrieve complete content of specific document
+- **get_similar_documents**: Find similar documents
+
+##### Intelligent Search
+- **auto_search_mode_decision**: Automatic search mode determination
+- **intelligent_search**: Advanced intelligent search
+- **intelligent_search_enhanced**: Enhanced intelligent search
+- **comprehensive_search_all**: Comprehensive search across entire collection
+
+##### Advanced Search
+- **batch_search_with_pagination**: Batch search with pagination
+- **advanced_filter_search**: Advanced metadata filter search
+- **multi_query_fusion_search**: Multi-query fusion search
+- **milvus_power_search**: Milvus optimized power search
+
+##### Knowledge Graph
+- **knowledge_graph_exploration**: Knowledge graph exploration
+- **milvus_knowledge_graph_builder**: Milvus-based knowledge graph construction
+
+##### Tag Search
+- **search_by_tags**: Search documents by tags
+- **list_available_tags**: List available tags
+
+##### System Management
+- **get_collection_stats**: Collection statistics information
+- **performance_optimization_analysis**: Performance optimization analysis
+- **milvus_system_optimization_report**: Comprehensive system optimization report
+
+## Use Project feature in Claude Desktop for better search results
+- For example, I use a project called "obsidian" to search my Obsidian vault. 
+- My project instructions are as follows. 
+  - Use only information from the obsidian assistant MCP
+  - For general searches, always use the auto_search_mode_decision function
+  - Tell me how many md or pdf files were searched and provide the list
+  - Summarize the content comprehensively
+  - Only save md files to obsidian when specifically requested
+  - If saving, the location should be G:\jayjeo
+  - When saving, create the note list in a clickable format for obsidian
+  - Create a list of referenced md and pdf files in clickable obsidian format at the top of the note
+
+![alt text](project example.png)
+
 ## ⚠️ **EMERGENCY RESET**
 
 **If you encounter container conflicts or system issues**, you can use the emergency reset script:
