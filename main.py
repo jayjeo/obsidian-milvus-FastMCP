@@ -373,15 +373,29 @@ def perform_cleanup_deleted_files(processor):
         print(f"\n{Fore.CYAN}Cleanup process finished.{Style.RESET_ALL}")
 
 def start_mcp_server():
-    """MCP 서버 시작"""
+    """MCP Server startup only - exits after starting"""
     from colorama import Fore, Style
+    import subprocess
     
     print(f"\n{Fore.CYAN}{Style.BRIGHT}Starting MCP Server for Claude Desktop...{Style.RESET_ALL}")
     print(f"Server name: {config.FASTMCP_SERVER_NAME}")
     print(f"Transport: {config.FASTMCP_TRANSPORT}")
     
-    # MCP 서버 실행
-    os.system(f'python "{os.path.join(os.path.dirname(__file__), "mcp_server.py")}"')
+    # Start MCP server and exit the main program
+    try:
+        mcp_script_path = os.path.join(os.path.dirname(__file__), "mcp_server.py")
+        print(f"{Fore.GREEN}Starting MCP server: {mcp_script_path}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}The main program will now exit to allow MCP server to run independently.{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}This is the intended behavior - MCP server should run continuously.{Style.RESET_ALL}")
+        
+        # Execute MCP server directly and exit
+        os.execv(sys.executable, [sys.executable, mcp_script_path])
+        
+    except Exception as e:
+        print(f"{Fore.RED}Error starting MCP server: {e}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Falling back to system call...{Style.RESET_ALL}")
+        os.system(f'python "{mcp_script_path}"')
+        sys.exit(0)  # Exit after starting MCP server
 
 def show_menu():
     """Display the command-line menu with colorful options"""
@@ -429,7 +443,10 @@ def main():
         choice = show_menu()
         
         if choice == '1':
+            # Option 1: Start MCP Server - this will exit the program
             start_mcp_server()
+            # This line should never be reached due to os.execv in start_mcp_server
+            break
         elif choice == '2':
             perform_full_embedding(processor)
         elif choice == '3':

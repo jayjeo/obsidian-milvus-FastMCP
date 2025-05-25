@@ -93,6 +93,7 @@
      - Ubuntu 22.04 LTS
      - and so on
    - Restart after setting up WSL Linux system
+   - `pip install podman-compose` using CMD at your path
 
 5. **Configure paths**
    - Edit `config.py` and set your Obsidian vault path
