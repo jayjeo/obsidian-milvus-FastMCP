@@ -6,6 +6,9 @@ echo       Simple Podman Auto-Startup Setup
 echo ================================================================
 echo.
 
+REM Change to the script's directory
+cd /d "%~dp0"
+
 REM Check for admin rights
 net session >nul 2>&1
 if %errorlevel% neq 0 (

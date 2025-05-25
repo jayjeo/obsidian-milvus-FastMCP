@@ -5,6 +5,10 @@ echo ================================================================
 echo                    Podman Path Finder
 echo ================================================================
 echo.
+
+REM Change to the script's directory
+cd /d "%~dp0"
+
 echo Searching for podman.exe on your system...
 echo This may take a moment depending on your system configuration.
 echo.

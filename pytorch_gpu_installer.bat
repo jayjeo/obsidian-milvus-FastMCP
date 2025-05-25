@@ -11,6 +11,9 @@ echo 2. Detect your CUDA version
 echo 3. Reinstall GPU version if needed
 echo.
 
+REM Change to the script's directory first
+cd /d "%~dp0"
+
 REM Get current project directory
 set "PROJECT_DIR=%~dp0"
 set "PROJECT_DIR=%PROJECT_DIR:~0,-1%"

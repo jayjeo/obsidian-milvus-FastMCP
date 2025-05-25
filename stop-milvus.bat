@@ -3,6 +3,9 @@ echo ================================================================
 echo              Stopping Milvus Vector Database
 echo ================================================================
 
+REM Change to the script's directory
+cd /d "%~dp0"
+
 echo Stopping Milvus services...
 podman stop milvus-standalone milvus-minio milvus-etcd 2>nul
 
