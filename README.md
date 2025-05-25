@@ -74,16 +74,31 @@
     ```
 
 4. **Install Podman**
-   - Windows: Download from [Podman.io](https://podman.io/getting-started/installation)
-   - Download Desktop version, not CLI version, since Desktop version helps you set up the environment for WSL Linux system
-   - Run podman: If you cannot find the path, run `find_podman_path.bat`
+   - From CMD: winget install RedHat.Podman
+   - Open PowerShell as Administrator and run (Enable Virtual Machine)
+     ```
+     dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+     ```
+   - Open PowerShell as Administrator and run (Linux kernel update package)
+     ```
+     wsl.exe --install
+     ```
+   - Set WSL 2 as your default version
+     ```
+     wsl --set-default-version 2
+     ```
+   - Install your Linux distribution of choice
+     - Ubuntu 18.04 LTS
+     - Ubuntu 20.04 LTS
+     - Ubuntu 22.04 LTS
+     - and so on
    - Restart after setting up WSL Linux system
 
 5. **Configure paths**
    - Edit `config.py` and set your Obsidian vault path
-   - Edit conda path to install required packages
-     - Run `detect-paths.bat` to find paths automatically
-     - 
+   - Edit `config.py` and set your podman path
+     - Find podman path using `find_podman_path.bat`
+
 6. **Interactive Setup & Testing**
    ```bash
    run-setup.bat
