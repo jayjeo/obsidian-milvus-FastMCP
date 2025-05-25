@@ -91,6 +91,10 @@ echo Step 4: Starting MCP server with encoding protection...
 echo --------------------------------------------------------
 
 echo Starting MCP server with Unicode/emoji protection...
+echo This will timeout after 30 seconds to prevent hanging...
+
+REM Start MCP server with timeout
+timeout /t 30 /nobreak >nul & taskkill /f /im python.exe >nul 2>&1 &
 
 REM Start MCP server with proper encoding
 "%WORKING_PYTHON%" mcp_server.py

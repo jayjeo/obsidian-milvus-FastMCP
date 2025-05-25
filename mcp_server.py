@@ -88,8 +88,10 @@ def initialize_components():
         rag_engine = AdvancedRAGEngine(milvus_manager, enhanced_search)
         
         try:
-            optimization_params = hnsw_optimizer.auto_tune_parameters()
-            logger.info(f"Auto-tuning completed: {optimization_params}")
+            # Skip auto-tuning to prevent hanging
+            logger.info("Skipping auto-tuning to prevent system hang")
+            # optimization_params = hnsw_optimizer.auto_tune_parameters()
+            # logger.info(f"Auto-tuning completed: {optimization_params}")
         except Exception as e:
             logger.warning(f"Auto-tuning warning: {e}")
         
