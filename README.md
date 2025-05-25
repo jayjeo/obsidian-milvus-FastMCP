@@ -81,9 +81,9 @@
 5. **Interactive Setup & Testing**
    ```bash
    run-setup.bat
+
+   This interactive script will guide you through:
    ```
-   
-   - This interactive script will guide you through:
    
    0. **Podman auto launch at startup** - Sets up automatic Podman startup at Windows boot
    1. **Package Installation** - Installs required dependencies
