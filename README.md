@@ -106,8 +106,6 @@
    ```bash
    run-setup.bat
    ```
-
-   - (0) **Podman auto launch at startup** - Sets up automatic Podman startup at Windows boot
    - (1) **Package Installation** - Installs required dependencies
    - (2) **Milvus Setup** - Automatically deploys Milvus using Podman with persistent data storage
    - (3) **Collection Testing** - Verifies database operations
@@ -116,10 +114,13 @@
    - (8) **Safe Server Restart** (Preserve All Data. Use this if MCP server has launching issues)
    - (9) **Emergency: Complete Data Reset** (DELETE All Data)
 
-8. **Keep MCP Server Running**: 
+8. **Milvus Server auto launch at startup**: 
   - There are two ways for doing this. 
     - (1) manually run `run-main.bat`, and select option 1
-    - (2) run `setup_windows_startup.bat`: This will set up automatic startup at Windows boot, so you don't have to manually run `run-main.bat`
+      - You have to keep this CMD opened, which is inconvenient
+    - (2) run `install_main_option1_startup.bat`: This will set up automatic startup at Windows boot
+      - You don't have to manually run `run-main.bat`
+      - You don't have to keep CMD opened
 
 
 ## 🚨 GPU not detected issue even though my GPU exists and supports CUDA
