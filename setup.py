@@ -1227,6 +1227,302 @@ def perform_safe_server_restart():
     print_colored("💡 Your collections and embeddings are ready to use!", Colors.OKBLUE)
     print_colored("="*60, Colors.OKGREEN)
 
+def setup_podman_auto_startup():
+    """Setup automatic Podman startup using Windows Task Scheduler"""
+    print_header("🚀 Podman Auto-Startup Setup")
+    print_colored("This will configure Podman to start automatically when Windows boots.", Colors.OKBLUE)
+    print_colored("Features:", Colors.OKBLUE)
+    print_colored("✅ Automatically finds Podman installation", Colors.OKGREEN)
+    print_colored("✅ Creates VBS script for silent startup", Colors.OKGREEN)
+    print_colored("✅ Registers with Windows Task Scheduler", Colors.OKGREEN)
+    print_colored("✅ Starts Podman machine and Milvus containers", Colors.OKGREEN)
+    print_colored("✅ Runs silently in background", Colors.OKGREEN)
+    print_colored("✅ Creates startup logs for monitoring", Colors.OKGREEN)
+    print_colored("\n⚠️ This requires Administrator privileges for Task Scheduler access.", Colors.WARNING)
+    
+    confirm = input_colored("\nDo you want to proceed with auto-startup setup? (y/n): ", Colors.OKCYAN)
+    if confirm.lower() != 'y':
+        print_colored("Setup cancelled.", Colors.WARNING)
+        return
+    
+    # Get current project directory
+    project_dir = Path(__file__).parent.resolve()
+    
+    # Check if we're on Windows
+    if os.name != 'nt':
+        print_colored("❌ This feature is only available on Windows.", Colors.FAIL)
+        print_colored("💡 For other platforms, consider using systemd or launchd.", Colors.OKBLUE)
+        return
+    
+    print_colored("\n🔍 Finding Podman installation...", Colors.OKBLUE)
+    
+    # Find Podman path using config.py function
+    try:
+        import sys
+        sys.path.insert(0, str(project_dir))
+        import config
+        podman_path = config.find_podman_path()
+        
+        if not podman_path:
+            print_colored("❌ Podman not found on this system.", Colors.FAIL)
+            print_colored("💡 Please install Podman first:", Colors.OKBLUE)
+            print_colored("   1. Download from: https://podman.io/", Colors.ENDC)
+            print_colored("   2. Or install Podman Desktop", Colors.ENDC)
+            return
+        
+        print_colored(f"✅ Found Podman: {podman_path}", Colors.OKGREEN)
+        
+        # Test Podman
+        result = subprocess.run([podman_path, "--version"], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            print_colored(f"✅ Podman is working: {result.stdout.strip()}", Colors.OKGREEN)
+        else:
+            print_colored("❌ Podman found but not working properly.", Colors.FAIL)
+            return
+            
+    except Exception as e:
+        print_colored(f"❌ Error finding Podman: {e}", Colors.FAIL)
+        return
+    
+    print_colored("\n📄 Creating VBS startup script...", Colors.OKBLUE)
+    
+    # Create VBS script path
+    vbs_script_path = project_dir / "podman_auto_startup.vbs"
+    
+    # Get external storage path from config
+    try:
+        external_storage_path = config.get_external_storage_path()
+    except:
+        external_storage_path = str(project_dir / "MilvusData")
+    
+    # Create VBS script content with relative paths only
+    vbs_content = f'''' ================================================================
+' Podman Auto-Startup Script for Windows
+' This script starts Podman machine and Milvus containers
+' Uses relative paths from config.py for portability
+' ================================================================
+
+Dim fso, shell, projectDir
+Set fso = CreateObject("Scripting.FileSystemObject")
+Set shell = CreateObject("WScript.Shell")
+
+' Get project directory from script location
+projectDir = fso.GetParentFolderName(WScript.ScriptFullName)
+
+' Define paths using config.py variables
+Dim podmanPath, logFile, startupComplete, composeFile
+podmanPath = "{podman_path.replace(chr(92), chr(92)+chr(92))}"
+logFile = projectDir & "\\podman_startup.log"
+startupComplete = projectDir & "\\startup_complete.flag"
+composeFile = projectDir & "\\milvus-podman-compose.yml"
+
+' Function to write log entries
+Sub WriteLog(message)
+    Dim logFileHandle
+    Set logFileHandle = fso.OpenTextFile(logFile, 8, True)
+    logFileHandle.WriteLine Now & " - " & message
+    logFileHandle.Close
+End Sub
+
+' Function to run command silently
+Function RunCommand(cmd)
+    RunCommand = shell.Run(cmd, 0, True)
+End Function
+
+' Main startup process
+Sub Main()
+    WriteLog "=========================================="
+    WriteLog "Podman Auto-Startup Script Started"
+    WriteLog "Project Directory: " & projectDir
+    WriteLog "Podman Path: " & podmanPath
+    WriteLog "=========================================="
+    
+    ' Wait for system to be ready
+    WriteLog "Waiting 30 seconds for system initialization..."
+    WScript.Sleep 30000
+    
+    ' Check if Podman executable exists
+    If Not fso.FileExists(podmanPath) Then
+        WriteLog "ERROR: Podman not found at " & podmanPath
+        Exit Sub
+    End If
+    
+    ' Start Podman machine (Windows may need this)
+    WriteLog "Starting Podman machine..."
+    Dim result
+    result = RunCommand("\"" & podmanPath & "\" machine start")
+    If result = 0 Then
+        WriteLog "Podman machine started successfully"
+    Else
+        WriteLog "Podman machine start returned code: " & result & " (may already be running)"
+    End If
+    
+    ' Wait for Podman machine to be ready
+    WriteLog "Waiting 20 seconds for Podman machine to be ready..."
+    WScript.Sleep 20000
+    
+    ' Check if compose file exists and start containers
+    If fso.FileExists(composeFile) Then
+        WriteLog "Starting Milvus containers using compose file..."
+        
+        ' Change to project directory and start containers
+        shell.CurrentDirectory = projectDir
+        result = RunCommand("\"" & podmanPath & "\" compose -f \"" & composeFile & "\" up -d")
+        
+        If result = 0 Then
+            WriteLog "Milvus containers started successfully"
+        Else
+            WriteLog "Container startup returned code: " & result
+        End If
+        
+        ' Additional wait for containers to be ready
+        WriteLog "Waiting 30 seconds for containers to be ready..."
+        WScript.Sleep 30000
+        
+    Else
+        WriteLog "WARNING: Compose file not found: " & composeFile
+        WriteLog "Skipping container startup"
+    End If
+    
+    ' Create completion flag
+    Dim flagFile
+    Set flagFile = fso.CreateTextFile(startupComplete, True)
+    flagFile.WriteLine "Startup completed at: " & Now
+    flagFile.WriteLine "Podman Path: " & podmanPath
+    flagFile.WriteLine "Project Directory: " & projectDir
+    flagFile.Close
+    
+    WriteLog "=========================================="
+    WriteLog "Podman Auto-Startup Script Completed"
+    WriteLog "=========================================="
+End Sub
+
+' Start the main process
+Main()
+'''
+    
+    try:
+        with open(vbs_script_path, 'w', encoding='utf-8') as f:
+            f.write(vbs_content)
+        print_colored(f"✅ VBS script created: {vbs_script_path}", Colors.OKGREEN)
+    except Exception as e:
+        print_colored(f"❌ Failed to create VBS script: {e}", Colors.FAIL)
+        return
+    
+    print_colored("\n📋 Registering with Windows Task Scheduler...", Colors.OKBLUE)
+    
+    # Task configuration
+    task_name = "PodmanAutoStartup"
+    task_description = "Automatically start Podman and Milvus containers at Windows startup"
+    
+    # Create scheduled task using schtasks command
+    schtasks_cmd = [
+        "schtasks", "/create", 
+        "/tn", task_name,
+        "/tr", f'wscript.exe "{vbs_script_path}"',
+        "/sc", "onstart",
+        "/ru", "SYSTEM",
+        "/rl", "highest",
+        "/f",  # Force overwrite if exists
+        "/st", "00:00",
+        "/sd", "01/01/2024"
+    ]
+    
+    try:
+        result = subprocess.run(schtasks_cmd, capture_output=True, text=True, check=True)
+        print_colored(f"✅ Scheduled task '{task_name}' created successfully!", Colors.OKGREEN)
+        
+        # Verify task creation
+        verify_cmd = ["schtasks", "/query", "/tn", task_name]
+        verify_result = subprocess.run(verify_cmd, capture_output=True, text=True)
+        
+        if verify_result.returncode == 0:
+            print_colored("✅ Task verification passed", Colors.OKGREEN)
+        else:
+            print_colored("⚠️ Task created but verification failed", Colors.WARNING)
+            
+    except subprocess.CalledProcessError as e:
+        print_colored(f"❌ Failed to create scheduled task: {e}", Colors.FAIL)
+        print_colored("💡 This might be due to insufficient privileges.", Colors.WARNING)
+        print_colored("   Please run this script as Administrator.", Colors.WARNING)
+        
+        # Offer manual instructions
+        print_colored("\n📄 Manual Task Creation Instructions:", Colors.OKBLUE)
+        print_colored("1. Open Task Scheduler (taskschd.msc)", Colors.ENDC)
+        print_colored("2. Create Basic Task", Colors.ENDC)
+        print_colored(f"3. Name: {task_name}", Colors.ENDC)
+        print_colored("4. Trigger: When the computer starts", Colors.ENDC)
+        print_colored("5. Action: Start a program", Colors.ENDC)
+        print_colored("6. Program: wscript.exe", Colors.ENDC)
+        print_colored(f"7. Arguments: \"{vbs_script_path}\"", Colors.ENDC)
+        print_colored("8. Run with highest privileges", Colors.ENDC)
+        print_colored("9. Run whether user is logged on or not", Colors.ENDC)
+        return
+    
+    print_colored("\n🧪 Testing VBS script (optional)...", Colors.OKBLUE)
+    test_choice = input_colored("Do you want to test the VBS script now? (y/n): ", Colors.OKCYAN)
+    
+    if test_choice.lower() == 'y':
+        print_colored("\n🔄 Running test startup script...", Colors.OKBLUE)
+        print_colored("This will test the startup process once.", Colors.ENDC)
+        print_colored("Check the log file after completion.", Colors.ENDC)
+        
+        try:
+            # Run VBS script for testing
+            subprocess.run(["cscript", "//NoLogo", str(vbs_script_path)], 
+                         cwd=str(project_dir), timeout=300)
+            print_colored("✅ Test script completed", Colors.OKGREEN)
+            
+            # Show log content if exists
+            log_file = project_dir / "podman_startup.log"
+            if log_file.exists():
+                print_colored("\n📄 Startup log:", Colors.OKBLUE)
+                print_colored("-" * 50, Colors.OKBLUE)
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    print_colored(f.read(), Colors.ENDC)
+                print_colored("-" * 50, Colors.OKBLUE)
+            
+        except subprocess.TimeoutExpired:
+            print_colored("⚠️ Test script timed out (5 minutes)", Colors.WARNING)
+        except Exception as e:
+            print_colored(f"❌ Test script error: {e}", Colors.FAIL)
+    
+    # Final setup summary
+    print_colored("\n" + "="*60, Colors.OKGREEN)
+    print_colored("🎉 AUTO-STARTUP SETUP COMPLETE! 🎉", Colors.OKGREEN)
+    print_colored("="*60, Colors.OKGREEN)
+    print_colored("\n📊 Configuration Summary:", Colors.OKBLUE)
+    print_colored(f"   Podman Path: {podman_path}", Colors.ENDC)
+    print_colored(f"   VBS Script: {vbs_script_path}", Colors.ENDC)
+    print_colored(f"   Task Name: {task_name}", Colors.ENDC)
+    print_colored(f"   Project Dir: {project_dir}", Colors.ENDC)
+    
+    print_colored("\n🚀 What happens at Windows startup:", Colors.OKBLUE)
+    print_colored("   1. Windows starts the scheduled task", Colors.ENDC)
+    print_colored("   2. VBS script runs silently in background", Colors.ENDC)
+    print_colored("   3. Podman machine starts (if needed)", Colors.ENDC)
+    print_colored("   4. Milvus containers start automatically", Colors.ENDC)
+    print_colored("   5. Startup completion flag is created", Colors.ENDC)
+    
+    print_colored("\n📁 Log files for monitoring:", Colors.OKBLUE)
+    print_colored(f"   Startup log: {project_dir / 'podman_startup.log'}", Colors.ENDC)
+    print_colored(f"   Completion flag: {project_dir / 'startup_complete.flag'}", Colors.ENDC)
+    
+    print_colored("\n🔧 Task management commands:", Colors.OKBLUE)
+    print_colored(f"   Enable:  schtasks /change /tn \"{task_name}\" /enable", Colors.ENDC)
+    print_colored(f"   Disable: schtasks /change /tn \"{task_name}\" /disable", Colors.ENDC)
+    print_colored(f"   Delete:  schtasks /delete /tn \"{task_name}\" /f", Colors.ENDC)
+    print_colored(f"   Status:  schtasks /query /tn \"{task_name}\"", Colors.ENDC)
+    
+    print_colored("\n🎆 Next steps:", Colors.OKGREEN)
+    print_colored("   1. Restart your computer to test auto-startup", Colors.ENDC)
+    print_colored("   2. Check log files after restart", Colors.ENDC)
+    print_colored("   3. Verify Milvus is running: http://localhost:19530", Colors.ENDC)
+    print_colored("   4. Verify web interface: http://localhost:9091", Colors.ENDC)
+    
+    print_colored("\n🔒 Your Podman and Milvus will now start automatically!", Colors.OKGREEN)
+    print_colored("="*60, Colors.OKGREEN)
+
 def perform_emergency_data_reset():
     """Emergency complete data reset - Only for corrupted data situations"""
     print_header("⚠️ EMERGENCY: COMPLETE DATA RESET - DANGER! ⚠️")
@@ -1367,6 +1663,7 @@ def show_menu():
     """Display main menu"""
     print_header("Milvus MCP Interactive Test")
     print_colored("Select test to run:", Colors.OKBLUE)
+    print_colored("0. 🚀 Setup Podman Auto-Startup (Windows Scheduler)", Colors.OKCYAN)
     print_colored("1. Install and check required packages", Colors.ENDC)
     print_colored("2. Milvus connection test", Colors.ENDC)  
     print_colored("3. Collection creation and manipulation test", Colors.ENDC)
@@ -1376,7 +1673,7 @@ def show_menu():
     print_colored("7. Run all tests automatically", Colors.ENDC)
     print_colored("8. 🔄 Safe Server Restart (Preserve All Data)", Colors.OKGREEN)
     print_colored("9. ⚠️ Emergency: Complete Data Reset (DANGER!)", Colors.FAIL)
-    print_colored("0. Exit", Colors.ENDC)
+    print_colored("10. Exit", Colors.ENDC)
 
 def show_results(test_results):
     """Display test results"""
@@ -1466,14 +1763,13 @@ def main():
     while True:
         show_menu()
         
-        choice = input_colored("\nSelect (0-9): ")
+        choice = input_colored("\nSelect (0-10): ")
         
         try:
             choice = int(choice)
             
             if choice == 0:
-                print_colored("👋 Exiting program.", Colors.OKGREEN)
-                break
+                setup_podman_auto_startup()
             elif choice == 1:
                 tester.test_dependencies()
             elif choice == 2:
@@ -1492,8 +1788,11 @@ def main():
                 perform_safe_server_restart()
             elif choice == 9:
                 perform_emergency_data_reset()
+            elif choice == 10:
+                print_colored("👋 Exiting program.", Colors.OKGREEN)
+                break
             else:
-                print_colored("❌ Invalid selection. Please enter a number between 0-9.", Colors.FAIL)
+                print_colored("❌ Invalid selection. Please enter a number between 0-10.", Colors.FAIL)
         
         except ValueError:
             print_colored("❌ Please enter a number.", Colors.FAIL)

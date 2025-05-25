@@ -76,7 +76,7 @@
    - Windows: Download from [Podman.io](https://podman.io/getting-started/installation)
    - Mac: `brew install podman`
    - Linux: Check your distribution's package manager
-   **Run podman** : If you cannot find the path, run `find-podman-desktop.bat`
+   **Run podman** : If you cannot find the path, run `find_podman_path.bat`
 
 5. **Interactive Setup & Testing**
    ```bash
@@ -84,39 +84,39 @@
    ```
    
    This interactive script will guide you through:
+   0. **Podman auto launch at startup** - Sets up automatic Podman startup at Windows boot
    1. **Package Installation** - Installs required dependencies
-   2. **Milvus Setup** - Automatically deploys Milvus using Podman with persistent data storage [SAFE_MILVUS_README.md](SAFE_MILVUS_README.md)
+   2. **Milvus Setup** - Automatically deploys Milvus using Podman with persistent data storage
    3. **Collection Testing** - Verifies database operations
    4. **MCP Server Validation** - Checks server files
    5. **Claude Desktop Integration** - Configures Claude Desktop automatically
+   8. **Safe Server Restart** (Preserve All Data. Use this if MCP server has launching issues)
+   9. **Emergency: Complete Data Reset** (DELETE All Data)
 
-6. **Document Processing & Embedding**
-   ```bash
-   run-main.bat
-   # Select option 2 or 3 to start embedding your documents
-   ```
+6. **Keep MCP Server Running**: 
+  - There are two ways for doing this. 
+    - (1) manually run `run-main.bat`, and select option 1
+    - (2) run `setup_windows_startup.bat`: This will set up automatic startup at Windows boot, so you don't have to manually run `run-main.bat`
 
-7. **Launch MCP Server**
-   ```bash
-   run-main.bat
-   # Select option 1 and keep this running
-   ```
 
-## 🎮 Usage
+
+## 🚨 GPU not detected issue even though my GPU is installed and supports CUDA
+- Make sure set `USE_GPU = True` in `config.py` to use GPU mode
+- Pytorch has two different versions. One is for CPU and the other is for GPU. Make sure you have the correct version installed. If you arn't sure, run `pytorch_gpu_installer.bat` to install the correct version.
+
+## 🎮 Daily Use
 
 ##### Once setup is complete:
-- **Keep MCP Server Running**: `python main.py` (option 1)
+- **Start Embedding (Indexing) your Obsidian vault**: Run `run-main.bat` and select option 2 or 3 
 - **Open Claude Desktop**: Your Obsidian vault is now searchable
 - **Start Searching**: Use natural language queries in Claude Desktop
 - **Advanced Features**: Access all search modes and filtering options through Claude
 
-##### Backup & Restore Milvus Data (Embedding Data)
-
+## Backup & Restore Milvus Data (Embedding Data)
 - **Backup**: Run `backup-all-data.bat`
 - **Restore**: Run `restore-backup.bat` 
-- **Reset Container**: Run `safe-container-reset.bat` (This is safe for preserving Milvus data)  
 
-### ⚠️ **EMERGENCY RESET**
+## ⚠️ **EMERGENCY RESET**
 
 **If you encounter container conflicts or system issues**, you can use the emergency reset script:
 
@@ -136,73 +136,14 @@ complete-reset.bat  # Windows
 - You need a complete clean state
 - **You don't have other important Podman containers running**
 
-**Before running**: Make sure you don't have other Docker/Podman projects running that you want to preserve. This reset affects the **entire Podman system**, not just this project.
-
-**Alternative**: Use `emergency-reset.bat` for a more targeted cleanup that focuses primarily on Milvus containers while being safer for other containers.
+**Before running**: Make sure you don't have other Podman projects running that you want to preserve. This reset affects the **entire Podman system**, not just this project.
 
 
-## 🎯 Advanced Search Capabilities
-
-### **Available Search Modes**
-- **Intelligent Search**: Adaptive strategy selection with context expansion
-- **Power Search**: Maximum optimization with GPU acceleration
-- **Multi-query Fusion**: Combine multiple queries for enhanced accuracy
-- **Knowledge Graph Search**: Explore semantic connections between documents
-- **Hierarchical Search**: Progressive document exploration
-
-### **Filtering Options**
-- **Temporal Filtering**: Time range-based document selection
-- **Tag-based Filtering**: Complex boolean logic for tag combinations
-- **Content Quality Filtering**: Quality score-based document ranking
-- **File Type Filtering**: Specific format-based search restriction
-
-## 🎯 Path Configuration Examples
-
-### Windows
-```python
-OBSIDIAN_VAULT_PATH = "C:\\Users\\JohnDoe\\Documents\\My Obsidian Vault"
-```
-
-### macOS
-```python
-OBSIDIAN_VAULT_PATH = "/Users/johndoe/Documents/My Obsidian Vault"
-```
-
-### Linux
-```python
-OBSIDIAN_VAULT_PATH = "/home/johndoe/Documents/obsidian-vault"
-```
-
-## 🔍 Advanced Configuration
-
-For advanced users, you can use environment variables by creating a `.env` file:
-
-```bash
-cp .env.example .env
-# Edit .env with your settings
-```
-
-
-## 🚨 Troubleshooting
-
-### "Obsidian vault path does not exist"
-→ Check and correct the path in `config.py`
-
-### "Podman not found"
-→ Install Podman or set `PODMAN_PATH` in `config.py`
-
-### GPU not detected
-→ Set `USE_GPU = False` in `config.py` to use CPU mode
-
-### Performance issues
-→ Adjust `BATCH_SIZE` and `EMBEDDING_BATCH_SIZE` in `config.py`
-
-### Search quality issues
-→ Try different search strategies or adjust similarity thresholds
 
 ## 🎯 Claude Desktop Integration
 
-After starting the MCP server, add this to your Claude Desktop configuration:
+- Claude Desktop configuration for this program is as follows. 
+- However, this should be already set automatically by using `run-setup.bat` (option 5).
 
 ```json
 {

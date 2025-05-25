@@ -23,7 +23,6 @@ if not exist "%VBS_SCRIPT%" (
     exit /b 1
 )
 
-:start
 echo ================================================================
 echo                    SETUP OPTIONS
 echo ================================================================
@@ -56,13 +55,13 @@ REM Create shortcut using PowerShell
 powershell -Command "& {$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%SHORTCUT_PATH%'); $Shortcut.TargetPath = '%VBS_SCRIPT%'; $Shortcut.WorkingDirectory = '%CURRENT_DIR%'; $Shortcut.Description = 'Safe Milvus Server Startup - Preserves All Data'; $Shortcut.Save()}"
 
 if exist "%SHORTCUT_PATH%" (
-    echo Successfully added to Windows Startup!
+    echo ✅ Successfully added to Windows Startup!
     echo Location: %SHORTCUT_PATH%
     echo.
     echo Milvus will now start safely every time you log in to Windows.
     echo Your embedding data will always be preserved.
 ) else (
-    echo Failed to create startup shortcut.
+    echo ❌ Failed to create startup shortcut.
     echo Please try running as administrator.
 )
 goto :finish
@@ -76,7 +75,7 @@ echo.
 REM Check for admin rights
 net session >nul 2>&1
 if %errorLevel% neq 0 (
-    echo Administrator privileges required for All Users startup.
+    echo ❌ Administrator privileges required for All Users startup.
     echo Please run this script as administrator or use option 1.
     goto :finish
 )
@@ -88,12 +87,12 @@ REM Create shortcut using PowerShell
 powershell -Command "& {$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%SHORTCUT_PATH%'); $Shortcut.TargetPath = '%VBS_SCRIPT%'; $Shortcut.WorkingDirectory = '%CURRENT_DIR%'; $Shortcut.Description = 'Safe Milvus Server Startup - Preserves All Data'; $Shortcut.Save()}"
 
 if exist "%SHORTCUT_PATH%" (
-    echo Successfully added to Windows Startup for all users!
+    echo ✅ Successfully added to Windows Startup for all users!
     echo Location: %SHORTCUT_PATH%
     echo.
     echo Milvus will now start safely for all users who log in.
 ) else (
-    echo Failed to create startup shortcut.
+    echo ❌ Failed to create startup shortcut.
 )
 goto :finish
 
@@ -106,12 +105,12 @@ set "SHORTCUT_PATH=%DESKTOP_DIR%\Milvus Safe Start.lnk"
 powershell -Command "& {$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%SHORTCUT_PATH%'); $Shortcut.TargetPath = '%VBS_SCRIPT%'; $Shortcut.WorkingDirectory = '%CURRENT_DIR%'; $Shortcut.Description = 'Safe Milvus Server Startup - Preserves All Data'; $Shortcut.Save()}"
 
 if exist "%SHORTCUT_PATH%" (
-    echo Desktop shortcut created successfully!
+    echo ✅ Desktop shortcut created successfully!
     echo Location: %SHORTCUT_PATH%
     echo.
     echo You can double-click this shortcut to start Milvus safely.
 ) else (
-    echo Failed to create desktop shortcut.
+    echo ❌ Failed to create desktop shortcut.
 )
 goto :finish
 
@@ -142,9 +141,9 @@ REM Remove from current user startup
 set "USER_SHORTCUT=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Milvus Safe Start.lnk"
 if exist "%USER_SHORTCUT%" (
     del "%USER_SHORTCUT%"
-    echo Removed from current user startup
+    echo ✅ Removed from current user startup
 ) else (
-    echo Not found in current user startup
+    echo ⚪ Not found in current user startup
 )
 
 REM Remove from all users startup (if admin)
@@ -152,12 +151,12 @@ set "ALL_SHORTCUT=%PROGRAMDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Mi
 if exist "%ALL_SHORTCUT%" (
     del "%ALL_SHORTCUT%" 2>nul
     if not exist "%ALL_SHORTCUT%" (
-        echo Removed from all users startup
+        echo ✅ Removed from all users startup
     ) else (
-        echo Could not remove from all users startup (admin required)
+        echo ⚠️ Could not remove from all users startup (admin required)
     )
 ) else (
-    echo Not found in all users startup
+    echo ⚪ Not found in all users startup
 )
 
 echo.
@@ -166,7 +165,7 @@ goto :finish
 
 :invalid_choice
 echo.
-echo Invalid choice. Please select 0-5.
+echo ❌ Invalid choice. Please select 0-5.
 echo.
 pause
 goto :start
@@ -177,18 +176,18 @@ echo ================================================================
 echo                     SETUP COMPLETE
 echo ================================================================
 echo.
-echo What happens during safe startup:
-echo - Preserves ALL embedding data (volumes\etcd\, MilvusData\)
-echo - Only restarts containers safely
-echo - Waits for system to be ready
-echo - Creates detailed logs
-echo - Shows success/error notifications
+echo 📋 What happens during safe startup:
+echo ✅ Preserves ALL embedding data (volumes\etcd\, MilvusData\)
+echo ✅ Only restarts containers safely
+echo ✅ Waits for system to be ready
+echo ✅ Creates detailed logs
+echo ✅ Shows success/error notifications
 echo.
-echo Log files created:
+echo 📁 Log files created:
 echo   - milvus_startup.log (detailed startup log)
 echo   - data_status.txt (data safety verification)
 echo.
-echo Your embedding data is 100%% safe with this startup method!
+echo 💡 Your embedding data is 100%% safe with this startup method!
 echo ================================================================
 pause
 
