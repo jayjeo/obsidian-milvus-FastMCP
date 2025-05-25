@@ -174,6 +174,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **HNSW Algorithm**: Hierarchical Navigable Small World graphs for fast similarity search
 
 ---
-
-**Contact**: [acubens555@gmail.com](mailto:acubens555@gmail.com)  
-**Author**: Jay Jeong, Ph.D. in Economics, Research Fellow at KCTDI
+ 
+**Author**: Jay Jeong, Ph.D. in Economics, Research Fellow at KCTDI, [acubens555@gmail.com](mailto:acubens555@gmail.com) 
