@@ -200,6 +200,53 @@ complete-reset.bat  # Windows
 }
 ```
 
+
+## Project Tree Structure
+```
+obsidian-milvus-FastMCP/
+├── Main Application Files
+│   ├── main.py                           # Main entry point with CLI menu system
+│   ├── mcp_server.py                     # FastMCP server with advanced search tools
+│   ├── config.py                         # Central configuration settings
+│   ├── milvus_manager.py                 # Milvus database operations manager  
+│   ├── obsidian_processor.py             # Obsidian file processing and embedding
+│   ├── search_engine.py                  # Basic hybrid search engine
+│   └── embeddings.py                     # Advanced embedding model with GPU optimization
+│
+├── Advanced Search Components
+│   ├── enhanced_search_engine.py         # Advanced semantic and contextual search
+│   ├── advanced_rag.py                   # RAG engine with knowledge graphs
+│   ├── hnsw_optimizer.py                 # HNSW index optimization
+│   └── watcher.py                        # Real-time file monitoring
+│
+├── Setup and Utilities
+│   ├── setup.py                          # Interactive setup and testing system
+│   ├── requirements.txt                  # Python dependencies
+│   ├── README.md                         # Comprehensive documentation
+│   └── LICENSE                           # MIT license file
+│
+├── Batch Scripts (Windows)
+│   ├── run-main.bat                      # Launch main application
+│   ├── run-setup.bat                     # Interactive setup wizard
+│   ├── start-milvus.bat                  # Start Milvus containers
+│   ├── stop-milvus.bat                   # Stop Milvus containers
+│   └── [20+ other utility scripts]       # Various management and utility scripts
+│
+├── Container Configuration
+│   ├── milvus-podman-compose.yml         # Podman compose for Milvus
+│   └── milvus-docker-compose.yml         # Docker compose alternative
+│
+├── Data Directories (Created at runtime)
+│   ├── MilvusData/                       # Persistent embedding data
+│   └── volumes/                          # Container runtime data
+│
+└── Support Files
+    ├── .env.example                      # Environment variables template
+    ├── .gitignore                        # Git ignore patterns
+    └── [Various helper scripts]          # Additional utilities
+```
+
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
