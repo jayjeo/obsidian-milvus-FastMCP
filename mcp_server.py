@@ -894,8 +894,8 @@ async def knowledge_graph_exploration(
                             
                             knowledge_graph["nodes"].append({
                                 "id": doc_id if doc_id is not None else 0,
-                                "title": doc.get("title", ""),
-                                "path": doc.get("path", ""),
+                                "title": doc.get("title", "") or "",
+                                "path": doc.get("path", "") or "",
                                 "level": depth,
                                 "similarity_to_parent": 0.8
                             })
@@ -1440,7 +1440,7 @@ async def get_collection_stats() -> Dict[str, Any]:
         
         tag_counts = {}
         for doc in all_results:
-            tags = doc.get("tags", [])
+            tags = doc.get("tags", []) or []
             if isinstance(tags, list):
                 for tag in tags:
                     if tag:
@@ -1558,7 +1558,7 @@ async def list_available_tags(limit: int = 200) -> Dict[str, Any]:  # 기본값 
         total_docs_with_tags = 0
         
         for doc in results:
-            tags = doc.get("tags", [])
+            tags = doc.get("tags", []) or []
             if isinstance(tags, list) and tags:
                 total_docs_with_tags += 1
                 for tag in tags:
@@ -1609,16 +1609,19 @@ async def get_similar_documents(
             results, search_info = enhanced_search.hybrid_search(query=search_query, limit=limit + 10)
         else:
             results, search_info = search_engine.hybrid_search(query=search_query, limit=limit + 10)
+            
+        results = results or []
         
         similar_docs = []
         for result in results:
-            if result.get("path") != file_path and len(similar_docs) < limit:
+            if result and result.get("path") != file_path and len(similar_docs) < limit:
+                chunk_text = result.get("chunk_text", "") or ""
                 similar_docs.append({
-                    "file_path": result.get("path", ""),
-                    "title": result.get("title", "제목 없음"),
+                    "file_path": result.get("path", "") or "",
+                    "title": result.get("title", "제목 없음") or "제목 없음",
                     "similarity_score": float(result.get("score", 0)),
-                    "content_preview": result.get("chunk_text", "")[:200] + "..." if len(result.get("chunk_text", "")) > 200 else result.get("chunk_text", ""),
-                    "file_type": result.get("file_type", ""),
+                    "content_preview": chunk_text[:200] + "..." if len(chunk_text) > 200 else chunk_text,
+                    "file_type": result.get("file_type", "") or "",
                     "tags": result.get("tags", [])
                 })
         

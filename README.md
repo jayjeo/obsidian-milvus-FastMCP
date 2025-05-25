@@ -59,18 +59,16 @@
    cd obsidian-milvus-fastmcp
    ```
 
-2. **Configure paths**
-   - Edit `config.py` and set your Obsidian vault path
-   - Edit mamba path and conda path to install required packages
-     - Run `detect-paths.bat` to find paths automatically
-
 3. **Install dependencies**
-   ```bash
-   CMD at your directory, 
-   conda install -c conda-forge -y python pip
-   conda run -n base pip install pymilvus mcp fastmcp sentence-transformers torch
-   conda run -n base pip install PyPDF2 markdown beautifulsoup4 python-dotenv watchdog psutil colorama pyyaml tqdm requests
-   ```
+   - Install conda([anaconda](https://www.anaconda.com/download))
+   - Do the following:
+    ```bash
+    Open Anaconda Prompt
+    cd to your directory
+    conda install -c conda-forge -y python pip
+    conda run -n base pip install pymilvus mcp fastmcp sentence-transformers torch
+    conda run -n base pip install PyPDF2 markdown beautifulsoup4 python-dotenv watchdog psutil colorama pyyaml tqdm requests
+    ```
 
 4. **Install Podman**
    - Windows: Download from [Podman.io](https://podman.io/getting-started/installation)
@@ -78,7 +76,12 @@
    - Linux: Check your distribution's package manager
    **Run podman** : If you cannot find the path, run `find_podman_path.bat`
 
-5. **Interactive Setup & Testing**
+5. **Configure paths**
+   - Edit `config.py` and set your Obsidian vault path
+   - Edit conda path to install required packages
+     - Run `detect-paths.bat` to find paths automatically
+     - 
+6. **Interactive Setup & Testing**
    ```bash
    run-setup.bat
    ```
@@ -92,7 +95,7 @@
    - (8) **Safe Server Restart** (Preserve All Data. Use this if MCP server has launching issues)
    - (9) **Emergency: Complete Data Reset** (DELETE All Data)
 
-6. **Keep MCP Server Running**: 
+7. **Keep MCP Server Running**: 
   - There are two ways for doing this. 
     - (1) manually run `run-main.bat`, and select option 1
     - (2) run `setup_windows_startup.bat`: This will set up automatic startup at Windows boot, so you don't have to manually run `run-main.bat`
