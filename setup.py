@@ -1676,7 +1676,6 @@ def show_menu():
     """Display main menu"""
     print_header("Milvus MCP Interactive Test")
     print_colored("Select test to run:", Colors.OKBLUE)
-    print_colored("0. 🚀 Setup Podman Auto-Startup (Windows Scheduler)", Colors.OKCYAN)
     print_colored("1. Install and check required packages", Colors.ENDC)
     print_colored("2. Milvus connection test", Colors.ENDC)  
     print_colored("3. Collection creation and manipulation test", Colors.ENDC)
@@ -1686,7 +1685,7 @@ def show_menu():
     print_colored("7. Run all tests automatically", Colors.ENDC)
     print_colored("8. 🔄 Safe Server Restart (Preserve All Data)", Colors.OKGREEN)
     print_colored("9. ⚠️ Emergency: Complete Data Reset (DANGER!)", Colors.FAIL)
-    print_colored("10. Exit", Colors.ENDC)
+    print_colored("0. Exit", Colors.ENDC)
 
 def show_results(test_results):
     """Display test results"""
@@ -1781,9 +1780,7 @@ def main():
         try:
             choice = int(choice)
             
-            if choice == 0:
-                setup_podman_auto_startup()
-            elif choice == 1:
+            if choice == 1:
                 tester.test_dependencies()
             elif choice == 2:
                 tester.test_milvus_connection()
@@ -1801,11 +1798,11 @@ def main():
                 perform_safe_server_restart()
             elif choice == 9:
                 perform_emergency_data_reset()
-            elif choice == 10:
+            elif choice == 0:
                 print_colored("👋 Exiting program.", Colors.OKGREEN)
                 break
             else:
-                print_colored("❌ Invalid selection. Please enter a number between 0-10.", Colors.FAIL)
+                print_colored("❌ Invalid selection. Please enter a number between 0-9.", Colors.FAIL)
         
         except ValueError:
             print_colored("❌ Please enter a number.", Colors.FAIL)

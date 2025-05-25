@@ -99,7 +99,10 @@
    - Edit `config.py` and set your podman path
      - Find podman path using `find_podman_path.bat`
 
-6. **Interactive Setup & Testing**
+6. **Podman auto launch at startup**
+   - Run `simple-podman-startup.bat` to start Podman automatically when Windows starts
+   - 
+7. **Interactive Setup & Testing**
    ```bash
    run-setup.bat
    ```
@@ -113,7 +116,7 @@
    - (8) **Safe Server Restart** (Preserve All Data. Use this if MCP server has launching issues)
    - (9) **Emergency: Complete Data Reset** (DELETE All Data)
 
-7. **Keep MCP Server Running**: 
+8. **Keep MCP Server Running**: 
   - There are two ways for doing this. 
     - (1) manually run `run-main.bat`, and select option 1
     - (2) run `setup_windows_startup.bat`: This will set up automatic startup at Windows boot, so you don't have to manually run `run-main.bat`
