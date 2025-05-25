@@ -783,9 +783,48 @@ class ObsidianProcessor:
             print(f"Error saving vectors to Milvus: {e}")
             return False
     
+    def _verify_file_has_valid_embeddings(self, file_path):
+        """Verify that a file has valid embedding data in the database.
+        
+        Returns True if valid embeddings exist, False otherwise.
+        This is the key fix for the incremental embedding issue.
+        """
+        try:
+            rel_path = os.path.relpath(file_path, self.vault_path)
+            
+            # Query for vector data for this file path
+            results = self.milvus_manager.query(
+                expr=f"path == '{rel_path}'",
+                output_fields=["id", "chunk_index", "chunk_text"],
+                limit=10  # Check for at least some chunks
+            )
+            
+            if not results:
+                print(f"{Fore.CYAN}[DEBUG] No embedding data found for: {rel_path}{Style.RESET_ALL}")
+                return False
+            
+            # Verify that we have actual chunk data
+            valid_chunks = 0
+            for result in results:
+                chunk_text = result.get("chunk_text", "")
+                if chunk_text and len(chunk_text.strip()) > 0:
+                    valid_chunks += 1
+            
+            if valid_chunks == 0:
+                print(f"{Fore.CYAN}[DEBUG] Empty/invalid chunks found for: {rel_path}{Style.RESET_ALL}")
+                return False
+            
+            print(f"{Fore.CYAN}[DEBUG] Valid embeddings found for: {rel_path} ({valid_chunks} chunks){Style.RESET_ALL}")
+            return True
+            
+        except Exception as e:
+            print(f"{Fore.YELLOW}[WARNING] Error verifying embeddings for {file_path}: {e}{Style.RESET_ALL}")
+            # If we can't verify, assume it needs to be processed
+            return False
+    
     def process_updated_files(self):
-        """볼트의 새로운 파일 또는 수정된 파일만 처리 (증분 임베딩)"""
-        print(f"\n{Fore.CYAN}[DEBUG] Starting process_updated_files{Style.RESET_ALL}")
+        """볼트의 새로운 파일 또는 수정된 파일만 처리 (증분 임베딩) - FIXED VERSION"""
+        print(f"\n{Fore.CYAN}[DEBUG] Starting process_updated_files (FIXED VERSION){Style.RESET_ALL}")
         print(f"Processing only new or modified files in {self.vault_path}")
         
         # 경로 존재 확인
@@ -866,7 +905,7 @@ class ObsidianProcessor:
             self.embedding_in_progress = False  # 반드시 상태를 False로 설정
             return 0
         
-        # 기존 파일 정보 가져오기
+        # 기존 파일 정보 가져오기 - IMPROVED VERSION
         existing_files_info = {}
         try:
             print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus...{Style.RESET_ALL}")
@@ -886,8 +925,22 @@ class ObsidianProcessor:
                     
                 for doc in results:
                     path = doc.get("path")
-                    if path and path not in existing_files_info:
-                        existing_files_info[path] = doc.get('updated_at')
+                    updated_at = doc.get('updated_at')
+                    
+                    if path:
+                        # Take the latest updated_at for each path (in case of multiple chunks)
+                        if path not in existing_files_info:
+                            existing_files_info[path] = updated_at
+                        else:
+                            # Compare and keep the latest timestamp
+                            try:
+                                current_time = float(existing_files_info[path]) if existing_files_info[path] else 0
+                                new_time = float(updated_at) if updated_at else 0
+                                if new_time > current_time:
+                                    existing_files_info[path] = updated_at
+                            except (ValueError, TypeError):
+                                # If conversion fails, use the new value
+                                existing_files_info[path] = updated_at
                 
                 offset += max_limit
                 if len(results) < max_limit:
@@ -928,8 +981,10 @@ class ObsidianProcessor:
                         total_files_size += file_size
                         file_mtime = os.path.getmtime(full_path)
                         
-                        # 새 파일이거나 수정된 파일인지 확인
+                        # 새 파일이거나 수정된 파일인지 확인 - IMPROVED LOGIC
                         is_new_or_modified = True
+                        skip_reason = ""
+                        
                         if rel_path in existing_files_info:
                             # 기존 파일이 있는 경우 수정 시간 비교
                             existing_mtime = existing_files_info.get(rel_path, 0)
@@ -948,7 +1003,7 @@ class ObsidianProcessor:
                             if is_full_reindex:
                                 print(f"{Fore.CYAN}[DEBUG] - Result: FULL REINDEX MODE (will process) - File: {rel_path}{Style.RESET_ALL}")
                             else:
-                                # 증분 처리 모드에서는 수정 시간 비교
+                                # 증분 처리 모드에서는 수정 시간 비교 AND 임베딩 데이터 존재 확인
                                 try:
                                     if isinstance(existing_mtime, str):
                                         existing_mtime = float(existing_mtime)
@@ -957,14 +1012,25 @@ class ObsidianProcessor:
                                     # 변환 실패 시 파일을 새로 처리하도록 설정
                                     existing_mtime = 0
                                 
+                                # CRITICAL FIX: Check if embedding data actually exists
+                                has_valid_embeddings = self._verify_file_has_valid_embeddings(full_path)
+                                
                                 # 수정 시간 비교: 파일의 수정 시간이 DB에 저장된 시간보다 더 최신인 경우에만 처리
-                                if existing_mtime and file_mtime <= existing_mtime:
-                                    # 파일이 변경되지 않음 (파일 수정 시간이 DB에 저장된 시간보다 오래되었거나 같음)
+                                # BUT ALSO: Only skip if valid embeddings actually exist
+                                if existing_mtime and file_mtime <= existing_mtime and has_valid_embeddings:
+                                    # 파일이 변경되지 않음 AND 유효한 임베딩이 존재함
                                     is_new_or_modified = False
                                     skipped_count += 1
-                                    print(f"{Fore.CYAN}[DEBUG] - Result: UNCHANGED (skipping) - File time: {file_mtime}, DB time: {existing_mtime}{Style.RESET_ALL}")
+                                    skip_reason = f"UNCHANGED with valid embeddings"
+                                    print(f"{Fore.CYAN}[DEBUG] - Result: {skip_reason} (skipping) - File time: {file_mtime}, DB time: {existing_mtime}{Style.RESET_ALL}")
                                 else:
-                                    print(f"{Fore.CYAN}[DEBUG] - Result: MODIFIED (will process) - File time: {file_mtime}, DB time: {existing_mtime}{Style.RESET_ALL}")
+                                    # 파일이 수정되었거나 임베딩이 유효하지 않음
+                                    if not has_valid_embeddings:
+                                        skip_reason = f"INVALID/MISSING embeddings (will reprocess)"
+                                        print(f"{Fore.YELLOW}[DEBUG] - Result: {skip_reason} - File time: {file_mtime}, DB time: {existing_mtime}{Style.RESET_ALL}")
+                                    else:
+                                        skip_reason = f"MODIFIED (will process)"
+                                        print(f"{Fore.CYAN}[DEBUG] - Result: {skip_reason} - File time: {file_mtime}, DB time: {existing_mtime}{Style.RESET_ALL}")
                         else:
                             print(f"{Fore.CYAN}[DEBUG] File: {rel_path} - NEW FILE (not in database){Style.RESET_ALL}")
                         
@@ -975,7 +1041,7 @@ class ObsidianProcessor:
                             
                             # 수정된 경우 이전 데이터 삭제
                             if rel_path in existing_files_info:
-                                print(f"{Fore.YELLOW}File modified, will reprocess: {rel_path}{Style.RESET_ALL}")
+                                print(f"{Fore.YELLOW}File will be reprocessed: {rel_path} (Reason: {skip_reason}){Style.RESET_ALL}")
                                 self.milvus_manager.mark_for_deletion(rel_path)
                             else:
                                 print(f"{Fore.GREEN}New file found: {rel_path}{Style.RESET_ALL}")
@@ -1022,8 +1088,10 @@ class ObsidianProcessor:
             
             # 메모리 정리
             gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            if 'torch' in sys.modules:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             
             return len(files_to_process)
             
@@ -1040,8 +1108,10 @@ class ObsidianProcessor:
             
             # 메모리 정리
             gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            if 'torch' in sys.modules:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             
             return 0
         finally:
