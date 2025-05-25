@@ -1,4 +1,10 @@
 @echo off
+setlocal
+
+REM Get the directory where this batch file is located
+set "SCRIPT_DIR=%~dp0"
+cd /d "%SCRIPT_DIR%"
+
 echo ================================================================
 echo       Milvus MCP Interactive Test and Setup Tool (No Colors)
 echo ================================================================
@@ -8,8 +14,8 @@ echo.
 
 REM Check if setup.py exists
 if not exist "setup.py" (
-    echo ERROR: setup.py not found in current directory
-    echo Please make sure you're running this from the project folder
+    echo ERROR: setup.py not found in directory: %CD%
+    echo This is unexpected as we should be in the correct directory.
     echo.
     pause
     exit /b 1
