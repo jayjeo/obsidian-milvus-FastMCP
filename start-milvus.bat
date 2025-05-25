@@ -5,6 +5,9 @@ echo                    (Production Ready)
 echo ================================================================
 echo.
 
+REM Change to the script's directory
+cd /d "%~dp0"
+
 REM Check if Podman is installed
 where podman >nul 2>nul
 if %errorlevel% neq 0 (

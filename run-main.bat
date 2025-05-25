@@ -3,6 +3,10 @@ echo ================================================================
 echo          Obsidian-Milvus-FastMCP Main Program
 echo ================================================================
 echo.
+
+REM Change to the script's directory
+cd /d "%~dp0"
+
 echo Current directory: %CD%
 echo.
 

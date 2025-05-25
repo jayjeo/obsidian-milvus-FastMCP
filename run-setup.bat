@@ -3,6 +3,10 @@ echo ================================================================
 echo       Milvus MCP Interactive Test and Setup Tool
 echo ================================================================
 echo.
+
+REM Change to the script's directory
+cd /d "%~dp0"
+
 echo Current directory: %CD%
 echo.
 
