@@ -165,6 +165,12 @@
   - When saving, create the note list in a clickable format for obsidian
   - Create a list of referenced md and pdf files in clickable obsidian format at the top of the note
 
+## Use Filesystem MCP to save markdown notes to Obsidian
+  - This MCP is amazingly helpful for saving and reading any files in your system. 
+  - This includes saving markdown notes to your Obsidian vault
+  - [https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem)
+
+
 ## ⚠️ **EMERGENCY RESET**
 
 **If you encounter container conflicts or system issues**, you can use the emergency reset script:
