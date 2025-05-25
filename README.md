@@ -75,9 +75,9 @@
 
 4. **Install Podman**
    - Windows: Download from [Podman.io](https://podman.io/getting-started/installation)
-   - Mac: `brew install podman`
-   - Linux: Check your distribution's package manager
-   **Run podman** : If you cannot find the path, run `find_podman_path.bat`
+   - Download Desktop version, not CLI version, since Desktop version helps you set up the environment for WSL Linux system
+   - Run podman: If you cannot find the path, run `find_podman_path.bat`
+   - Restart after setting up WSL Linux system
 
 5. **Configure paths**
    - Edit `config.py` and set your Obsidian vault path
