@@ -47,7 +47,7 @@ if %errorlevel% neq 0 (
 
 REM Run setup.py with auto-selection of option 0
 set NO_COLOR=1
-echo import sys; sys.argv = ["setup.py", "0"]; exec(open("setup.py").read()) > run_option_0.py
+echo import sys; sys.argv = ["setup.py", "0"]; exec(open("setup.py", encoding="utf-8").read()) > run_option_0.py
 python run_option_0.py
 del run_option_0.py
 
