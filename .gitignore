@@ -51,6 +51,7 @@ obsidian-vault/
 volumes/
 EmbeddingResult/
 MilvusData/
+bat delete/
 
 # IDE
 .vscode/
