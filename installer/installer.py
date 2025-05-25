@@ -56,6 +56,9 @@ class ObsidianMilvusInstaller:
         # Auto-resume if installation was in progress
         if self.current_step > 0:
             self.resume_installation()
+        else:
+            # Flash the start button to draw attention
+            self.flash_start_button()
     
     def is_admin(self):
         """Check if running with admin privileges"""
@@ -115,9 +118,16 @@ class ObsidianMilvusInstaller:
         button_frame.pack(fill=tk.X)
         
         self.install_button = ttk.Button(button_frame, text="Start Installation", 
-                                        command=self.start_installation, 
-                                        style='Primary.TButton')
+                                        command=self.start_installation)
         self.install_button.pack(side=tk.LEFT, padx=5)
+        
+        # Make button more prominent
+        self.install_button.config(width=20, cursor="hand2")
+        
+        # Add visual indicator
+        self.button_indicator = ttk.Label(button_frame, text="← Click here to begin", 
+                                        font=('Arial', 10, 'bold'), foreground='blue')
+        self.button_indicator.pack(side=tk.LEFT, padx=10)
         
         self.cancel_button = ttk.Button(button_frame, text="Cancel", 
                                        command=self.cancel_installation)
@@ -125,6 +135,11 @@ class ObsidianMilvusInstaller:
         
         # Update step display
         self.update_step_display()
+        
+        # Show initial instructions
+        self.log("Welcome to Obsidian-Milvus-FastMCP Installer!")
+        self.log("Click 'Start Installation' button to begin the setup process.")
+        self.log("Make sure you have administrator privileges before starting.")
     
     def log(self, message):
         """Add message to log display"""
@@ -585,6 +600,17 @@ Click OK when you have completed these steps."""
                                      "Are you sure you want to cancel the installation?")
         if response:
             self.root.quit()
+    
+    def flash_start_button(self):
+        """Flash the start button to draw attention"""
+        def flash():
+            current_bg = self.install_button.cget('background')
+            self.install_button.config(background='#4CAF50')
+            self.root.after(500, lambda: self.install_button.config(background=current_bg))
+        
+        # Flash 3 times
+        for i in range(3):
+            self.root.after(i * 1000, flash)
     
     def run(self):
         """Run the installer"""
