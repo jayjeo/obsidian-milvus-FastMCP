@@ -16,14 +16,27 @@ from datetime import datetime
 
 class Colors:
     """Terminal color codes"""
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
+    # Check if NO_COLOR environment variable is set
+    if os.environ.get('NO_COLOR') or os.environ.get('no_color'):
+        # Disable colors
+        HEADER = ''
+        OKBLUE = ''
+        OKCYAN = ''
+        OKGREEN = ''
+        WARNING = ''
+        FAIL = ''
+        ENDC = ''
+        BOLD = ''
+    else:
+        # Use normal ANSI color codes
+        HEADER = '\033[95m'
+        OKBLUE = '\033[94m'
+        OKCYAN = '\033[96m'
+        OKGREEN = '\033[92m'
+        WARNING = '\033[93m'
+        FAIL = '\033[91m'
+        ENDC = '\033[0m'
+        BOLD = '\033[1m'
 
 def print_colored(message, color=Colors.ENDC):
     """Print with color"""
