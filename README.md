@@ -81,18 +81,16 @@
 5. **Interactive Setup & Testing**
    ```bash
    run-setup.bat
-
-   This interactive script will guide you through:
    ```
-   
-   0. **Podman auto launch at startup** - Sets up automatic Podman startup at Windows boot
-   1. **Package Installation** - Installs required dependencies
-   2. **Milvus Setup** - Automatically deploys Milvus using Podman with persistent data storage
-   3. **Collection Testing** - Verifies database operations
-   4. **MCP Server Validation** - Checks server files
-   5. **Claude Desktop Integration** - Configures Claude Desktop automatically
-   8. **Safe Server Restart** (Preserve All Data. Use this if MCP server has launching issues)
-   9. **Emergency: Complete Data Reset** (DELETE All Data)
+
+   - (0) **Podman auto launch at startup** - Sets up automatic Podman startup at Windows boot
+   - (1) **Package Installation** - Installs required dependencies
+   - (2) **Milvus Setup** - Automatically deploys Milvus using Podman with persistent data storage
+   - (3) **Collection Testing** - Verifies database operations
+   - (4) **MCP Server Validation** - Checks server files
+   - (5) **Claude Desktop Integration** - Configures Claude Desktop automatically
+   - (8) **Safe Server Restart** (Preserve All Data. Use this if MCP server has launching issues)
+   - (9) **Emergency: Complete Data Reset** (DELETE All Data)
 
 6. **Keep MCP Server Running**: 
   - There are two ways for doing this. 
