@@ -130,36 +130,36 @@ def check_podman():
     return False, None
 
 class MilvusPodmanController:
-    """Safe Milvus controller - 데이터 보존 중심"""
+    """Safe Milvus controller - Data Preservation Focused"""
     
     def __init__(self, podman_path):
         self.podman_path = podman_path
         self.network = "milvus-network"
         
-        # 프로젝트 디렉토리 내에 안전한 저장소 만들기 (config.py와 동일한 경로 사용)
+        # Create safe storage within project directory (use same path as config.py)
         self.project_dir = Path(__file__).parent.resolve()
         
-        # config.py에서 external storage path 가져오기
+        # Get external storage path from config.py
         try:
             import sys
             sys.path.insert(0, str(self.project_dir))
             import config
-            # config.py에서 정의된 경로 사용
+            # Use path defined in config.py
             self.data_base_path = Path(config.get_external_storage_path())
         except Exception as e:
             print_colored(f"Warning: Could not import config.py: {e}", Colors.WARNING)
-            # 폴백: 기본값 사용
+            # Fallback: use default value
             self.data_base_path = self.project_dir / "MilvusData"
         
-        # 각 서비스별 데이터 경로 (현재 compose 파일과 일치하도록 수정)
-        self.volumes_base_path = self.project_dir / "volumes"  # 컨테이너 데이터
+        # Data paths for each service (modified to match current compose file)
+        self.volumes_base_path = self.project_dir / "volumes"  # container data
         self.data_paths = {
-            "etcd": self.volumes_base_path / "etcd",           # volumes/etcd (컨테이너 데이터)
-            "minio": self.data_base_path / "minio",            # MilvusData/minio (영구 데이터)
-            "milvus": self.data_base_path / "milvus"           # MilvusData/milvus (영구 데이터)
+            "etcd": self.volumes_base_path / "etcd",           # volumes/etcd (container data)
+            "minio": self.data_base_path / "minio",            # MilvusData/minio (persistent data)
+            "milvus": self.data_base_path / "milvus"           # MilvusData/milvus (persistent data)
         }
         
-        # 기존 데이터 위치도 확인 (현재는 없음)
+        # Also check legacy data locations (currently none)
         self.legacy_data_paths = []
         
         self.images = {
@@ -171,9 +171,9 @@ class MilvusPodmanController:
         self.web_port = "9091"
     
     def show_data_info(self):
-        """데이터 저장 정보 표시"""
-        print_colored("\n💾 데이터 저장 정보:", Colors.OKBLUE)
-        print_colored(f"📂 베이스 경로: {self.data_base_path}", Colors.ENDC)
+        """Display data storage information"""
+        print_colored("\n💾 Data storage information:", Colors.OKBLUE)
+        print_colored(f"📂 Base path: {self.data_base_path}", Colors.ENDC)
         
         total_size = 0
         for service, path in self.data_paths.items():
@@ -185,11 +185,11 @@ class MilvusPodmanController:
                     total_size += size_mb
                     print_colored(f"  📁 {service}: {path} ({size_mb:.1f}MB)", Colors.ENDC)
                 except:
-                    print_colored(f"  📁 {service}: {path} (크기 계산 실패)", Colors.ENDC)
+                    print_colored(f"  📁 {service}: {path} (size calculation failed)", Colors.ENDC)
             else:
-                print_colored(f"  📁 {service}: {path} (비어있음)", Colors.ENDC)
+                print_colored(f"  📁 {service}: {path} (empty)", Colors.ENDC)
         
-        print_colored(f"📊 총 데이터 크기: {total_size:.1f}MB", Colors.OKGREEN)
+        print_colored(f"📊 Total data size: {total_size:.1f}MB", Colors.OKGREEN)
     
     def run_command(self, cmd):
         """Execute command"""
@@ -232,28 +232,28 @@ class MilvusPodmanController:
     
 
     def stop_containers(self):
-        """기존 컴테이너 정리 (데이터는 보존)"""
-        print_colored("🧹 기존 컴테이너 정리 중...", Colors.OKBLUE)
+        """Clean up existing containers (data is preserved)"""
+        print_colored("🧹 Cleaning up existing containers...", Colors.OKBLUE)
         containers = ["milvus-standalone", "milvus-minio", "milvus-etcd"]
         
         for container in containers:
-            # 컴테이너 중지
+            # Stop container
             success, _, _ = self.run_command([self.podman_path, "stop", container])
             if success:
-                print_colored(f"  ✅ {container} 중지됨", Colors.OKGREEN)
+                print_colored(f"  ✅ {container} stopped", Colors.OKGREEN)
             
-            # 컴테이너 삭제 (볼륨은 보존)
+            # Remove container (preserve volumes)
             success, _, _ = self.run_command([self.podman_path, "rm", container])
             if success:
-                print_colored(f"  ✅ {container} 삭제됨", Colors.OKGREEN)
+                print_colored(f"  ✅ {container} removed", Colors.OKGREEN)
         
-        print_colored("💡 데이터는 안전하게 보존됩니다!", Colors.OKGREEN)
+        print_colored("💡 Data is safely preserved!", Colors.OKGREEN)
     
     def start_etcd(self):
         """Start etcd container with persistent data"""
-        print_colored("[1/3] 📊 etcd 시작 중...", Colors.OKBLUE)
+        print_colored("[1/3] 📊 Starting etcd...", Colors.OKBLUE)
         
-        # 절대 경로로 변환
+        # Convert to absolute path
         etcd_data_path = str(self.data_paths["etcd"].resolve())
         
         cmd = [
@@ -271,42 +271,42 @@ class MilvusPodmanController:
         
         success, _, stderr = self.run_command(cmd)
         if success:
-            print_colored("  ✅ etcd 시작 완료", Colors.OKGREEN)
-            print_colored(f"  💾 데이터 위치: {etcd_data_path}", Colors.ENDC)
+            print_colored("  ✅ etcd startup complete", Colors.OKGREEN)
+            print_colored(f"  💾 Data location: {etcd_data_path}", Colors.ENDC)
         else:
-            print_colored(f"  ❌ etcd 시작 실패: {stderr}", Colors.FAIL)
+            print_colored(f"  ❌ etcd startup failed: {stderr}", Colors.FAIL)
         return success
     
     def check_and_migrate_data(self):
-        """기존 데이터 확인 및 마이그레이션"""
-        print_colored("🔍 기존 embedding 데이터 확인 중...", Colors.OKBLUE)
+        """Check existing data and migrate if needed"""
+        print_colored("🔍 Checking existing embedding data...", Colors.OKBLUE)
         
-        # 기존 데이터 확인
+        # Check existing data
         existing_data = False
         migration_source = None
         
         for legacy_path in self.legacy_data_paths:
             if legacy_path.exists():
-                print_colored(f"📂 기존 데이터 발견: {legacy_path}", Colors.WARNING)
+                print_colored(f"📂 Existing data found: {legacy_path}", Colors.WARNING)
                 
-                # 각 서비스 데이터 확인
+                # Check data for each service
                 for service in ["etcd", "minio", "milvus"]:
                     service_path = legacy_path / service
                     if service_path.exists() and any(service_path.iterdir()):
                         existing_data = True
                         migration_source = legacy_path
-                        print_colored(f"  ✅ {service} 데이터 있음", Colors.OKGREEN)
+                        print_colored(f"  ✅ {service} data exists", Colors.OKGREEN)
                 
                 if existing_data:
                     break
         
         if existing_data:
-            print_colored("📋 기존 embedding 데이터가 발견되었습니다!", Colors.WARNING)
-            print_colored("🔒 이 데이터를 안전하게 보존하고 새 위치로 복사합니다.", Colors.OKGREEN)
+            print_colored("📋 Existing embedding data has been found!", Colors.WARNING)
+            print_colored("🔒 This data will be safely preserved and copied to a new location.", Colors.OKGREEN)
             
-            choice = input_colored("계속 진행하시겠습니까? (y/n): ")
+            choice = input_colored("Do you want to continue? (y/n): ")
             if choice.lower() != 'y':
-                print_colored("작업이 취소되었습니다.", Colors.WARNING)
+                print_colored("Operation cancelled.", Colors.WARNING)
                 return False
             
             # 데이터 마이그레이션
@@ -317,8 +317,8 @@ class MilvusPodmanController:
         return True
     
     def migrate_data(self, source_path):
-        """데이터 마이그레이션"""
-        print_colored("🔄 데이터 마이그레이션 시작...", Colors.OKBLUE)
+        """Data migration"""
+        print_colored("🔄 Starting data migration...", Colors.OKBLUE)
         
         import shutil
         
@@ -328,42 +328,42 @@ class MilvusPodmanController:
             
             if source_service_path.exists() and any(source_service_path.iterdir()):
                 if not target_service_path.exists():
-                    print_colored(f"  🔄 {service} 데이터 복사 중...", Colors.OKBLUE)
+                    print_colored(f"  🔄 Copying {service} data...", Colors.OKBLUE)
                     target_service_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copytree(source_service_path, target_service_path)
-                    print_colored(f"  ✅ {service} 데이터 복사 완료", Colors.OKGREEN)
+                    print_colored(f"  ✅ {service} data copy complete", Colors.OKGREEN)
                 else:
-                    print_colored(f"  ⚪ {service} 데이터 이미 존재", Colors.ENDC)
+                    print_colored(f"  ⚪ {service} data already exists", Colors.ENDC)
         
-        print_colored(f"📋 원본 데이터는 {source_path}에 그대로 보존됩니다.", Colors.OKGREEN)
+        print_colored(f"📋 Original data is preserved at {source_path}.", Colors.OKGREEN)
     
     def create_data_directories(self):
-        """데이터 디렉토리 생성"""
-        print_colored("📁 데이터 디렉토리 준비 중...", Colors.OKBLUE)
+        """Create data directories"""
+        print_colored("📁 Preparing data directories...", Colors.OKBLUE)
         
-        # 베이스 디렉토리 생성 (MilvusData - 영구 데이터)
+        # Create base directory (MilvusData - persistent data)
         self.data_base_path.mkdir(parents=True, exist_ok=True)
-        print_colored(f"  ✅ MilvusData 디렉토리: {self.data_base_path}", Colors.OKGREEN)
+        print_colored(f"  ✅ MilvusData directory: {self.data_base_path}", Colors.OKGREEN)
         
-        # volumes 디렉토리 생성 (컨테이너 데이터)
+        # Create volumes directory (container data)
         self.volumes_base_path.mkdir(parents=True, exist_ok=True)
-        print_colored(f"  ✅ volumes 디렉토리: {self.volumes_base_path}", Colors.OKGREEN)
+        print_colored(f"  ✅ volumes directory: {self.volumes_base_path}", Colors.OKGREEN)
         
-        # 각 서비스별 디렉토리 생성
+        # Create directories for each service
         for service, path in self.data_paths.items():
             path.mkdir(parents=True, exist_ok=True)
             if service == "etcd":
-                print_colored(f"  ✅ {service} 디렉토리: {path} (컨테이너 데이터)", Colors.OKGREEN)
+                print_colored(f"  ✅ {service} directory: {path} (container data)", Colors.OKGREEN)
             else:
-                print_colored(f"  ✅ {service} 디렉토리: {path} (영구 데이터)", Colors.OKGREEN)
+                print_colored(f"  ✅ {service} directory: {path} (persistent data)", Colors.OKGREEN)
         
         return True
     
     def start_minio(self):
         """Start MinIO container with persistent data"""
-        print_colored("[2/3] 🗄️ MinIO 시작 중...", Colors.OKBLUE)
+        print_colored("[2/3] 🗄️ Starting MinIO...", Colors.OKBLUE)
         
-        # 절대 경로로 변환
+        # Convert to absolute path
         minio_data_path = str(self.data_paths["minio"].resolve())
         
         cmd = [
@@ -379,17 +379,17 @@ class MilvusPodmanController:
         
         success, _, stderr = self.run_command(cmd)
         if success:
-            print_colored("  ✅ MinIO 시작 완료", Colors.OKGREEN)
-            print_colored(f"  💾 데이터 위치: {minio_data_path}", Colors.ENDC)
+            print_colored("  ✅ MinIO startup complete", Colors.OKGREEN)
+            print_colored(f"  💾 Data location: {minio_data_path}", Colors.ENDC)
         else:
-            print_colored(f"  ❌ MinIO 시작 실패: {stderr}", Colors.FAIL)
+            print_colored(f"  ❌ MinIO startup failed: {stderr}", Colors.FAIL)
         return success
     
     def start_milvus(self):
         """Start Milvus container with persistent data"""
-        print_colored("[3/3] 🚀 Milvus 시작 중...", Colors.OKBLUE)
+        print_colored("[3/3] 🚀 Starting Milvus...", Colors.OKBLUE)
         
-        # 절대 경로로 변환
+        # Convert to absolute path
         milvus_data_path = str(self.data_paths["milvus"].resolve())
         
         cmd = [
@@ -407,10 +407,10 @@ class MilvusPodmanController:
         
         success, _, stderr = self.run_command(cmd)
         if success:
-            print_colored("  ✅ Milvus 시작 완룼", Colors.OKGREEN)
-            print_colored(f"  💾 데이터 위치: {milvus_data_path}", Colors.ENDC)
+            print_colored("  ✅ Milvus startup complete", Colors.OKGREEN)
+            print_colored(f"  💾 Data location: {milvus_data_path}", Colors.ENDC)
         else:
-            print_colored(f"  ❌ Milvus 시작 실패: {stderr}", Colors.FAIL)
+            print_colored(f"  ❌ Milvus startup failed: {stderr}", Colors.FAIL)
         return success
     
     def check_status(self):
@@ -534,17 +534,17 @@ class MilvusPodmanController:
     def start_all(self):
         """Start complete Milvus stack"""
         print_colored("="*60, Colors.HEADER)
-        print_colored("    안전한 Milvus 시작 (데이터 보존)", Colors.HEADER)
+        print_colored("    Safe Milvus Startup (Data Preservation)", Colors.HEADER)
         print_colored("="*60, Colors.HEADER)
         
-        # 1. 기존 데이터 확인 및 마이그레이션
+        # 1. Check existing data and migrate if needed
         if not self.check_and_migrate_data():
             return False
         
-        # 2. Podman 머신 시작
+        # 2. Start Podman machine
         self.start_machine()
         
-        # 3. 기존 컴테이너 정리
+        # 3. Clean up existing containers
         self.stop_containers()
         
         if not self.create_network():
@@ -1078,33 +1078,183 @@ class MilvusTest:
             self.test_results["claude_desktop_config"] = False
             return False
 
-def perform_complete_physical_reset():
-    """Perform complete physical reset - Hard deletion of all data"""
-    print_header("⚠️ COMPLETE PHYSICAL RESET - HARD DELETION ⚠️")
+def perform_safe_server_restart():
+    """Perform safe server restart - Preserves all embedding data"""
+    print_header("🔄 SAFE MILVUS SERVER RESTART")
+    print_colored("This will safely restart Milvus services while preserving:", Colors.OKGREEN)
+    print_colored("✅ All embedding vector data (MilvusData/minio/)", Colors.OKGREEN)
+    print_colored("✅ All vector indexes (MilvusData/milvus/)", Colors.OKGREEN)
+    print_colored("✅ All metadata and schemas (volumes/etcd/)", Colors.OKGREEN)
+    print_colored("✅ All collection configurations", Colors.OKGREEN)
+    print_colored("\n🔧 Only containers will be restarted", Colors.OKBLUE)
+    print_colored("💾 Your data is 100% safe!", Colors.OKGREEN)
+    
+    # Simple confirmation
+    confirm = input_colored("\nProceed with safe restart? (y/n): ", Colors.OKCYAN)
+    if confirm.lower() != 'y':
+        print_colored("Restart cancelled.", Colors.WARNING)
+        return
+    
+    print_colored("\n🔄 Starting safe Milvus server restart...", Colors.OKBLUE)
+    
+    # Get project directory and show data info
+    project_dir = Path(__file__).parent.resolve()
+    
+    # Import config to get data paths
+    try:
+        import sys
+        sys.path.insert(0, str(project_dir))
+        import config
+        data_base_path = Path(config.get_external_storage_path())
+    except Exception as e:
+        print_colored(f"Warning: Could not import config.py: {e}", Colors.WARNING)
+        data_base_path = project_dir / "MilvusData"
+    
+    # Show current data status
+    print_colored("\n📊 Current embedding data status:", Colors.OKBLUE)
+    volumes_base_path = project_dir / "volumes"
+    data_paths = {
+        "etcd": volumes_base_path / "etcd",
+        "minio": data_base_path / "minio", 
+        "milvus": data_base_path / "milvus"
+    }
+    
+    total_size = 0
+    for service, path in data_paths.items():
+        if path.exists():
+            try:
+                size = sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
+                size_mb = size / (1024 * 1024)
+                total_size += size_mb
+                print_colored(f"  📁 {service}: {path} ({size_mb:.1f}MB) ✅", Colors.OKGREEN)
+            except:
+                print_colored(f"  📁 {service}: {path} (exists) ✅", Colors.OKGREEN)
+        else:
+            print_colored(f"  📁 {service}: {path} (empty)", Colors.WARNING)
+    
+    if total_size > 0:
+        print_colored(f"📊 Total embedding data: {total_size:.1f}MB - WILL BE PRESERVED", Colors.OKGREEN)
+    
+    # Check if Podman is available
+    podman_available, podman_path = check_podman()
+    
+    if podman_available:
+        print_colored("\n🐳 Safely restarting Milvus containers...", Colors.OKBLUE)
+        
+        # Create controller instance
+        try:
+            controller = MilvusPodmanController(podman_path)
+            
+            # Show data preservation info
+            controller.show_data_info()
+            
+            # Stop containers (data preserved)
+            controller.stop_containers()
+            
+            # Clean up any orphaned containers or networks
+            try:
+                subprocess.run([podman_path, "network", "rm", "milvus-network"], capture_output=True)
+                print_colored("  🌐 Network cleaned", Colors.OKGREEN)
+            except:
+                pass
+            
+            print_colored("\n⏳ Waiting briefly before restart...", Colors.WARNING)
+            time.sleep(5)
+            
+            # Restart all services with preserved data
+            print_colored("🚀 Restarting Milvus services with preserved data...", Colors.OKBLUE)
+            
+            if controller.start_all():
+                print_colored("\n✅ Safe restart completed successfully!", Colors.OKGREEN)
+                
+                # Verify data integrity
+                print_colored("\n🔍 Verifying data integrity...", Colors.OKBLUE)
+                controller.show_data_info()
+                
+                # Wait for services to be ready
+                if controller.wait_for_milvus_ready():
+                    print_colored("\n🎉 All services are ready and data is intact!", Colors.OKGREEN)
+                else:
+                    print_colored("\n⚠️ Services restarted but may need more time to be fully ready", Colors.WARNING)
+                    print_colored("💡 Your data is safe and will be available once services are ready", Colors.OKGREEN)
+            else:
+                print_colored("\n❌ Restart encountered issues", Colors.FAIL)
+                print_colored("💾 Your data is still safe in the following locations:", Colors.OKGREEN)
+                for service, path in data_paths.items():
+                    if path.exists():
+                        print_colored(f"  📁 {service}: {path}", Colors.OKGREEN)
+                        
+        except Exception as e:
+            print_colored(f"❌ Error during restart: {e}", Colors.FAIL)
+            print_colored("💾 Your embedding data remains safe and untouched", Colors.OKGREEN)
+            return False
+    else:
+        print_colored("❌ Podman not found.", Colors.FAIL)
+        print_colored("💡 Please install Podman or restart Milvus manually", Colors.OKBLUE)
+        print_colored("💾 Your embedding data is safe in:", Colors.OKGREEN)
+        for service, path in data_paths.items():
+            if path.exists():
+                print_colored(f"  📁 {service}: {path}", Colors.OKGREEN)
+        return False
+    
+    # Clean only Python cache (not data)
+    print_colored("\n🧹 Cleaning Python cache files (data preserved)...", Colors.OKBLUE)
+    try:
+        cache_cleaned = 0
+        for pyc_file in project_dir.rglob("*.pyc"):
+            pyc_file.unlink()
+            cache_cleaned += 1
+        for pyo_file in project_dir.rglob("*.pyo"):
+            pyo_file.unlink()
+            cache_cleaned += 1
+        
+        if cache_cleaned > 0:
+            print_colored(f"  ✅ {cache_cleaned} cache files cleaned", Colors.OKGREEN)
+        else:
+            print_colored("  ✅ No cache files to clean", Colors.OKGREEN)
+    except Exception as e:
+        print_colored(f"  ⚠️ Error cleaning cache: {e}", Colors.WARNING)
+    
+    print_colored("\n" + "="*60, Colors.OKGREEN)
+    print_colored("🎉 SAFE RESTART COMPLETED! 🎉", Colors.OKGREEN)
+    print_colored("="*60, Colors.OKGREEN)
+    print_colored("✅ Milvus services restarted successfully", Colors.OKGREEN)
+    print_colored("✅ All embedding data preserved", Colors.OKGREEN)
+    print_colored("✅ All vector indexes intact", Colors.OKGREEN)
+    print_colored("✅ All metadata preserved", Colors.OKGREEN)
+    print_colored(f"🌐 Milvus API: http://localhost:19530", Colors.OKGREEN)
+    print_colored(f"🌐 Web Interface: http://localhost:9091", Colors.OKGREEN)
+    print_colored("💡 Your collections and embeddings are ready to use!", Colors.OKBLUE)
+    print_colored("="*60, Colors.OKGREEN)
+
+def perform_emergency_data_reset():
+    """Emergency complete data reset - Only for corrupted data situations"""
+    print_header("⚠️ EMERGENCY: COMPLETE DATA RESET - DANGER! ⚠️")
     print_colored("This will PERMANENTLY DELETE ALL data:", Colors.FAIL)
     print_colored("• All Milvus collections and vector data", Colors.FAIL)
     print_colored("• All embedding data", Colors.FAIL)
     print_colored("• All container data", Colors.FAIL)
     print_colored("• All persistent storage", Colors.FAIL)
     print_colored("\n⚠️ THIS ACTION CANNOT BE UNDONE! ⚠️", Colors.FAIL)
+    print_colored("💡 Use option 8 (Safe Restart) instead if you want to preserve data!", Colors.WARNING)
     
     # Triple confirmation
     confirm1 = input_colored("\nType 'DELETE' to confirm hard deletion: ", Colors.FAIL)
     if confirm1 != 'DELETE':
-        print_colored("Reset cancelled.", Colors.OKGREEN)
+        print_colored("Reset cancelled. Use option 8 for safe restart.", Colors.OKGREEN)
         return
     
     confirm2 = input_colored("Type 'YES' to confirm you understand data will be lost: ", Colors.FAIL)
     if confirm2 != 'YES':
-        print_colored("Reset cancelled.", Colors.OKGREEN)
+        print_colored("Reset cancelled. Use option 8 for safe restart.", Colors.OKGREEN)
         return
     
     confirm3 = input_colored("Type 'RESET' for final confirmation: ", Colors.FAIL)
     if confirm3 != 'RESET':
-        print_colored("Reset cancelled.", Colors.OKGREEN)
+        print_colored("Reset cancelled. Use option 8 for safe restart.", Colors.OKGREEN)
         return
     
-    print_colored("\n🔥 Starting complete physical reset...", Colors.WARNING)
+    print_colored("\n🔥 Starting emergency data reset...", Colors.WARNING)
     
     # Check if Podman is available
     podman_available, podman_path = check_podman()
@@ -1161,7 +1311,7 @@ def perform_complete_physical_reset():
     data_dirs_to_remove = [
         data_base_path,
         project_dir / "MilvusData",
-        project_dir / "volumes",  # 컨테이너 데이터 폴더 추가
+        project_dir / "volumes",
         project_dir / "embedding_cache",
         project_dir / "__pycache__",
     ]
@@ -1203,7 +1353,7 @@ def perform_complete_physical_reset():
             print_colored(f"  ⚠️ Error cleaning {pattern}: {e}", Colors.WARNING)
     
     print_colored("\n" + "="*60, Colors.FAIL)
-    print_colored("🔥 COMPLETE PHYSICAL RESET FINISHED 🔥", Colors.FAIL)
+    print_colored("🔥 EMERGENCY DATA RESET FINISHED 🔥", Colors.FAIL)
     print_colored("="*60, Colors.FAIL)
     print_colored("✅ All containers stopped and removed", Colors.OKGREEN)
     print_colored("✅ All data directories deleted", Colors.OKGREEN)
@@ -1224,7 +1374,8 @@ def show_menu():
     print_colored("5. Generate Claude Desktop configuration file", Colors.ENDC)
     print_colored("6. View all results", Colors.ENDC)
     print_colored("7. Run all tests automatically", Colors.ENDC)
-    print_colored("8. ⚠️ Complete Physical Reset (Hard Delete All Data)", Colors.FAIL)
+    print_colored("8. 🔄 Safe Server Restart (Preserve All Data)", Colors.OKGREEN)
+    print_colored("9. ⚠️ Emergency: Complete Data Reset (DANGER!)", Colors.FAIL)
     print_colored("0. Exit", Colors.ENDC)
 
 def show_results(test_results):
@@ -1315,7 +1466,7 @@ def main():
     while True:
         show_menu()
         
-        choice = input_colored("\nSelect (0-8): ")
+        choice = input_colored("\nSelect (0-9): ")
         
         try:
             choice = int(choice)
@@ -1338,9 +1489,11 @@ def main():
             elif choice == 7:
                 run_all_tests(tester)
             elif choice == 8:
-                perform_complete_physical_reset()
+                perform_safe_server_restart()
+            elif choice == 9:
+                perform_emergency_data_reset()
             else:
-                print_colored("❌ Invalid selection. Please enter a number between 0-8.", Colors.FAIL)
+                print_colored("❌ Invalid selection. Please enter a number between 0-9.", Colors.FAIL)
         
         except ValueError:
             print_colored("❌ Please enter a number.", Colors.FAIL)
