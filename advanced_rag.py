@@ -187,12 +187,26 @@ class AdvancedRAGEngine:
                 "error": str(e)
             }
     
+    def ensure_json_serializable(self, obj):
+        """객체가 JSON 직렬화 가능하도록 변환"""
+        if isinstance(obj, dict):
+            return {k: self.ensure_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self.ensure_json_serializable(item) for item in obj]
+        elif isinstance(obj, (str, int, float, bool, type(None))):
+            return obj
+        else:
+            return str(obj)
+    
     def semantic_graph_retrieval(self, query, max_hops=2):
         """의미적 그래프 기반 검색 - milvus_manager의 지식 그래프 기능 활용"""
         
         try:
             # 1단계: 초기 관련 문서 검색
             initial_results, _ = self.search_engine.hybrid_search(query, limit=10)
+            
+            # 결과를 JSON 직렬화 가능하게 변환
+            initial_results = self.ensure_json_serializable(initial_results)
             
             if not initial_results:
                 return {
@@ -204,16 +218,23 @@ class AdvancedRAGEngine:
             
             # 2단계: milvus_manager의 지식 그래프 구축 기능 사용
             if hasattr(self.milvus_manager, 'build_knowledge_graph'):
-                # 첫 번째 결과를 시작점으로 지식 그래프 구축
-                start_doc_id = initial_results[0]['id']
-                knowledge_graph = self.milvus_manager.build_knowledge_graph(
-                    start_doc_id=start_doc_id,
-                    max_depth=max_hops,
-                    similarity_threshold=0.7
-                )
-                
-                # 연결된 문서 ID 추출
-                connected_docs = [node["id"] for node in knowledge_graph.get("nodes", [])]
+                try:
+                    # 첫 번째 결과를 시작점으로 지식 그래프 구축
+                    start_doc_id = initial_results[0]['id']
+                    knowledge_graph = self.milvus_manager.build_knowledge_graph(
+                        start_doc_id=start_doc_id,
+                        max_depth=max_hops,
+                        similarity_threshold=0.7
+                    )
+                    
+                    # 결과를 JSON 직렬화 가능하게 변환
+                    knowledge_graph = self.ensure_json_serializable(knowledge_graph)
+                    
+                    # 연결된 문서 ID 추출
+                    connected_docs = [node["id"] for node in knowledge_graph.get("nodes", [])]
+                except Exception as e:
+                    logger.error(f"지식 그래프 구축 오류: {e}")
+                    connected_docs = []
                 
             else:
                 # 폴백: 수동으로 의미적 연결 탐색
@@ -258,12 +279,20 @@ class AdvancedRAGEngine:
                 initial_results, connected_docs, query
             )
             
-            return {
+            # 결과를 JSON 직렬화 가능하게 변환
+            graph_ranked_results = self.ensure_json_serializable(graph_ranked_results)
+            connected_docs = self.ensure_json_serializable(connected_docs)
+            
+            # 모든 결과가 직렬화 가능한지 확인
+            result = {
                 "direct_matches": initial_results,
                 "connected_documents": connected_docs,
                 "graph_ranked_results": graph_ranked_results,
                 "connection_depth": max_hops
             }
+            
+            # 최종 결과 직렬화 확인
+            return self.ensure_json_serializable(result)
             
         except Exception as e:
             logger.error(f"의미적 그래프 검색 오류: {e}")
@@ -385,21 +414,43 @@ class AdvancedRAGEngine:
         """결과 포맷팅"""
         formatted_results = []
         for hit in results:
-            formatted_result = {
-                "id": hit.id,
-                "path": hit.entity.get('path', ''),
-                "title": hit.entity.get('title', '제목 없음'),
-                "chunk_text": hit.entity.get('chunk_text', ''),
-                "score": float(hit.score),
-                "source": "formatted",
-                "file_type": hit.entity.get('file_type', ''),
-                "tags": hit.entity.get('tags', []),
-                "created_at": hit.entity.get('created_at', ''),
-                "updated_at": hit.entity.get('updated_at', '')
-            }
-            formatted_results.append(formatted_result)
+            try:
+                # 안전하게 값 추출
+                try:
+                    hit_id = hit.id
+                except:
+                    hit_id = str(getattr(hit, 'id', 'unknown_id'))
+                    
+                # entity가 딕셔너리가 아닐 경우 대비
+                entity = getattr(hit, 'entity', {})
+                if not isinstance(entity, dict):
+                    entity = {}
+                    
+                # 점수가 직렬화 가능한지 확인
+                try:
+                    score = float(hit.score)
+                except:
+                    score = 0.0
+                    
+                formatted_result = {
+                    "id": hit_id,
+                    "path": entity.get('path', ''),
+                    "title": entity.get('title', '제목 없음'),
+                    "chunk_text": entity.get('chunk_text', ''),
+                    "score": score,
+                    "source": "formatted",
+                    "file_type": entity.get('file_type', ''),
+                    "tags": entity.get('tags', []),
+                    "created_at": entity.get('created_at', ''),
+                    "updated_at": entity.get('updated_at', '')
+                }
+                formatted_results.append(formatted_result)
+            except Exception as e:
+                logger.error(f"결과 포맷팅 오류: {e}")
+                continue
         
-        return formatted_results
+        # 결과를 JSON 직렬화 가능하게 변환
+        return self.ensure_json_serializable(formatted_results)
     
     def _expand_with_adjacent_chunks(self, results):
         """인접 청크로 확장"""

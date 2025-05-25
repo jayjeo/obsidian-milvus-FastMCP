@@ -194,10 +194,18 @@ async def auto_search_mode_decision(
                 )
                 
             elif recommended_strategy == "semantic_graph" and rag_engine:
-                results = rag_engine.semantic_graph_retrieval(query, max_hops=2)
-                if isinstance(results, dict) and "primary_chunks" in results:
-                    results = results["primary_chunks"][:limit]
-                search_info = {"type": "semantic_graph", "mode": "comprehensive"}
+                try:
+                    results = rag_engine.semantic_graph_retrieval(query, max_hops=2)
+                    if isinstance(results, dict) and "primary_chunks" in results:
+                        results = results["primary_chunks"][:limit]
+                    # Ensure all data is JSON serializable
+                    results = [{k: (str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v) 
+                              for k, v in item.items()} for item in results]
+                    search_info = {"type": "semantic_graph", "mode": "comprehensive"}
+                except Exception as e:
+                    logger.error(f"Semantic graph retrieval error: {e}")
+                    # Fallback to hybrid search if semantic graph fails
+                    results, search_info = search_engine.hybrid_search(query=query, limit=limit)
                 
             else:
                 # 폴백: 하이브리드 검색
@@ -207,20 +215,34 @@ async def auto_search_mode_decision(
         
         analysis_time = time.time() - start_time
         
-        return {
+        # Ensure all data is JSON serializable
+        def ensure_json_serializable(obj):
+            if isinstance(obj, dict):
+                return {k: ensure_json_serializable(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [ensure_json_serializable(item) for item in obj]
+            elif isinstance(obj, (str, int, float, bool, type(None))):
+                return obj
+            else:
+                return str(obj)
+        
+        # Create response with serializable data
+        response = {
             "query": query,
-            "query_analysis": analysis,
+            "query_analysis": ensure_json_serializable(analysis),
             "selected_mode": recommended_mode,
             "selected_strategy": recommended_strategy,
             "limit_used": limit,
-            "results": results if execute_search else [],
-            "search_info": search_info if execute_search else {},
+            "results": ensure_json_serializable(results) if execute_search else [],
+            "search_info": ensure_json_serializable(search_info) if execute_search else {},
             "performance": {
                 "analysis_time_ms": round(analysis_time * 1000, 2),
                 "total_results": len(results) if execute_search else 0,
                 "mode_effectiveness": "optimal" if results else "needs_adjustment"
             }
         }
+        
+        return response
         
     except Exception as e:
         logger.error(f"Auto search mode decision error: {e}")
@@ -299,12 +321,34 @@ async def comprehensive_search_all(
         
         search_time = time.time() - start_time
         
+        # Ensure all data is JSON serializable
+        def ensure_json_serializable(obj):
+            if isinstance(obj, dict):
+                return {k: ensure_json_serializable(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [ensure_json_serializable(item) for item in obj]
+            elif isinstance(obj, (str, int, float, bool, type(None))):
+                return obj
+            else:
+                return str(obj)
+        
+        # Process results to ensure they're serializable
+        processed_results = []
+        for result in all_results:
+            processed_result = {}
+            for k, v in result.items():
+                if not isinstance(v, (str, int, float, bool, type(None))):
+                    processed_result[k] = str(v)
+                else:
+                    processed_result[k] = v
+            processed_results.append(processed_result)
+        
         return {
             "query": query,
             "search_type": "comprehensive_all",
             "total_documents_searched": total_entities,
-            "total_results_found": len(all_results),
-            "results": all_results,
+            "total_results_found": len(processed_results),
+            "results": processed_results,
             "search_parameters": {
                 "batch_size": batch_size,
                 "similarity_threshold": similarity_threshold,
@@ -312,9 +356,9 @@ async def comprehensive_search_all(
             },
             "performance_metrics": {
                 "search_time_seconds": round(search_time, 2),
-                "documents_per_second": round(total_entities / search_time, 2),
+                "documents_per_second": round(total_entities / search_time, 2) if search_time > 0 else 0,
                 "batches_processed": processed_batches,
-                "effectiveness_ratio": len(all_results) / total_entities if total_entities > 0 else 0
+                "effectiveness_ratio": len(processed_results) / total_entities if total_entities > 0 else 0
             }
         }
         

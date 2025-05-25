@@ -19,6 +19,17 @@ class SearchEngine:
         self.embedding_model = EmbeddingModel()
         self.recent_queries = []  # 최근 쿼리 캐시
         
+    def ensure_json_serializable(self, obj):
+        """객체가 JSON 직렬화 가능하도록 변환"""
+        if isinstance(obj, dict):
+            return {k: self.ensure_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self.ensure_json_serializable(item) for item in obj]
+        elif isinstance(obj, (str, int, float, bool, type(None))):
+            return obj
+        else:
+            return str(obj)
+        
     def hybrid_search(self, query: str, limit: int = 10, filter_params: Optional[Dict] = None) -> Tuple[List[Dict], Dict]:
         """하이브리드 검색: 벡터 검색 + 키워드 검색 결합"""
         try:
@@ -53,7 +64,8 @@ class SearchEngine:
                 "total_count": len(final_results)
             }
             
-            return final_results, search_info
+            # 결과를 JSON 직렬화 가능하게 변환
+            return self.ensure_json_serializable(final_results), self.ensure_json_serializable(search_info)
             
         except Exception as e:
             logger.error(f"하이브리드 검색 중 오류: {e}")
@@ -66,10 +78,10 @@ class SearchEngine:
                     "error": str(e),
                     "total_count": len(vector_results)
                 }
-                return vector_results, search_info
+                return self.ensure_json_serializable(vector_results), self.ensure_json_serializable(search_info)
             except Exception as e2:
                 logger.error(f"폴백 검색도 실패: {e2}")
-                return [], {"query": query, "error": str(e2), "total_count": 0}
+                return [], self.ensure_json_serializable({"query": query, "error": str(e2), "total_count": 0})
     
     def _vector_search(self, query: str, limit: int, filter_params: Optional[Dict] = None) -> List[Dict]:
         """벡터 유사도 검색"""
@@ -97,23 +109,45 @@ class SearchEngine:
             # 결과 포맷팅
             formatted_results = []
             for hit in raw_results:
-                result = {
-                    "id": hit.id,
-                    "path": hit.entity.get('path', ''),
-                    "title": hit.entity.get('title', '제목 없음'),
-                    "chunk_text": hit.entity.get('chunk_text', ''),
-                    "content": hit.entity.get('content', ''),
-                    "score": float(hit.score),
-                    "source": "vector",
-                    "file_type": hit.entity.get('file_type', ''),
-                    "tags": hit.entity.get('tags', []),
-                    "chunk_index": hit.entity.get('chunk_index', 0),
-                    "created_at": hit.entity.get('created_at', ''),
-                    "updated_at": hit.entity.get('updated_at', '')
-                }
-                formatted_results.append(result)
+                try:
+                    # 안전하게 값 추출
+                    try:
+                        hit_id = hit.id
+                    except:
+                        hit_id = str(getattr(hit, 'id', 'unknown_id'))
+                        
+                    # entity가 딕셔너리가 아닐 경우 대비
+                    entity = getattr(hit, 'entity', {})
+                    if not isinstance(entity, dict):
+                        entity = {}
+                        
+                    # 점수가 직렬화 가능한지 확인
+                    try:
+                        score = float(hit.score)
+                    except:
+                        score = 0.0
+                    
+                    result = {
+                        "id": hit_id,
+                        "path": entity.get('path', ''),
+                        "title": entity.get('title', '제목 없음'),
+                        "chunk_text": entity.get('chunk_text', ''),
+                        "content": entity.get('content', ''),
+                        "score": score,
+                        "source": "vector",
+                        "file_type": entity.get('file_type', ''),
+                        "tags": entity.get('tags', []),
+                        "chunk_index": entity.get('chunk_index', 0),
+                        "created_at": entity.get('created_at', ''),
+                        "updated_at": entity.get('updated_at', '')
+                    }
+                    formatted_results.append(result)
+                except Exception as e:
+                    logger.error(f"벡터 결과 포맷팅 오류: {e}")
+                    continue
             
-            return formatted_results
+            # 결과를 JSON 직렬화 가능하게 변환
+            return self.ensure_json_serializable(formatted_results)
             
         except Exception as e:
             logger.error(f"벡터 검색 중 오류: {e}")
@@ -169,7 +203,10 @@ class SearchEngine:
             
             # 점수 순으로 정렬하고 상위 결과 반환
             scored_results.sort(key=lambda x: x['score'], reverse=True)
-            return scored_results[:limit]
+            limited_results = scored_results[:limit]
+            
+            # 결과를 JSON 직렬화 가능하게 변환
+            return self.ensure_json_serializable(limited_results)
             
         except Exception as e:
             logger.error(f"키워드 검색 중 오류: {e}")
@@ -338,23 +375,46 @@ class SearchEngine:
             # 유사도 임계값 적용
             filtered_results = []
             for hit in raw_results:
-                if hit.score >= similarity_threshold:
-                    result = {
-                        "id": hit.id,
-                        "path": hit.entity.get('path', ''),
-                        "title": hit.entity.get('title', '제목 없음'),
-                        "chunk_text": hit.entity.get('chunk_text', ''),
-                        "score": float(hit.score),
-                        "semantic_score": float(hit.score),
-                        "source": "semantic",
-                        "file_type": hit.entity.get('file_type', ''),
-                        "tags": hit.entity.get('tags', []),
-                        "created_at": hit.entity.get('created_at', ''),
-                        "updated_at": hit.entity.get('updated_at', '')
-                    }
-                    filtered_results.append(result)
+                try:
+                    if hit.score >= similarity_threshold:
+                        # 안전하게 값 추출
+                        try:
+                            hit_id = hit.id
+                        except:
+                            hit_id = str(getattr(hit, 'id', 'unknown_id'))
+                            
+                        # entity가 딕셔너리가 아닐 경우 대비
+                        entity = getattr(hit, 'entity', {})
+                        if not isinstance(entity, dict):
+                            entity = {}
+                            
+                        # 점수가 직렬화 가능한지 확인
+                        try:
+                            score = float(hit.score)
+                        except:
+                            score = 0.0
+                            
+                        result = {
+                            "id": hit_id,
+                            "path": entity.get('path', ''),
+                            "title": entity.get('title', '제목 없음'),
+                            "chunk_text": entity.get('chunk_text', ''),
+                            "score": score,
+                            "semantic_score": score,
+                            "source": "semantic",
+                            "file_type": entity.get('file_type', ''),
+                            "chunk_index": entity.get('chunk_index', 0),
+                            "tags": entity.get('tags', []),
+                            "created_at": entity.get('created_at', ''),
+                            "updated_at": entity.get('updated_at', '')
+                        }
+                        filtered_results.append(result)
+                except Exception as e:
+                    logger.error(f"의미적 검색 결과 포맷팅 오류: {e}")
+                    continue
             
-            return filtered_results
+            # 결과를 JSON 직렬화 가능하게 변환
+            return self.ensure_json_serializable(filtered_results)
             
         except Exception as e:
             logger.error(f"의미적 검색 중 오류: {e}")
