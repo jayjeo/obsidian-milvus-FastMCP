@@ -107,18 +107,25 @@ class InstallerThread(QtCore.QThread):
         steps_done += 1
         self.progress_changed.emit(int(steps_done * 100 / total_steps))
         
-        status("Installing Ubuntu 22.04 LTS via winget (this may take a while)...")
+        status("Installing/Verifying Ubuntu 22.04 LTS via winget...")
         res, output = run_cmd(["winget", "install", "-e", "--id", "Canonical.Ubuntu.2204", 
                                "--accept-package-agreements", "--accept-source-agreements"], shell=True)
-        if res is None or res.returncode != 0:
+        
+        # Check if Ubuntu is already installed (similar to Podman check)
+        if (res is None or res.returncode != 0) and output and ("already installed" in output.lower() or "no available upgrade found" in output.lower()):
+            log("✓ Ubuntu 22.04 LTS is already installed (WSL)")
+            steps_done += 1
+            self.progress_changed.emit(int(steps_done * 100 / total_steps))
+        elif res is None or res.returncode != 0:
             log("✖ Installing Ubuntu 22.04 via winget failed")
             if output: 
                 log(output.strip())
             self.completed.emit(False)
             return
-        log("✓ Ubuntu 22.04 LTS installed (WSL)")
-        steps_done += 1
-        self.progress_changed.emit(int(steps_done * 100 / total_steps))
+        else:
+            log("✓ Ubuntu 22.04 LTS installed (WSL)")
+            steps_done += 1
+            self.progress_changed.emit(int(steps_done * 100 / total_steps))
         
         # Handle reboot if required
         if reboot_required and not self.no_reboot:
