@@ -60,7 +60,8 @@
 
 ## 🔧 Installation
 ##### Recommended Installation
-1.Download the installer from [here](https://www.dropbox.com/scl/fo/l4qtgiuajhrcqk6ejatdt/ANv-uIw78Q9hvbUzp5FEWHM?rlkey=8apdv9cwzptivbjaat39uwcfp&st=9esvs2et)
+
+1. Download the installer from [here](https://www.dropbox.com/scl/fo/l4qtgiuajhrcqk6ejatdt/ANv-uIw78Q9hvbUzp5FEWHM?rlkey=8apdv9cwzptivbjaat39uwcfp&st=9esvs2et), and run it
 
 2. 🚨 GPU not detected issue even though my GPU exists and supports CUDA
 - Pytorch has two different versions. One is for CPU and the other is for GPU. Make sure you have the correct version installed. 
@@ -76,7 +77,7 @@
     python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
     ```
 
-1. 🚨 NumPy compatibility error solution
+3. 🚨 NumPy compatibility error solution
   - Run `fix_numpy_compatibility.bat`
 
 ##### Manual Installation
