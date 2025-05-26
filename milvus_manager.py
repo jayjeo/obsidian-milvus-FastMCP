@@ -382,26 +382,7 @@ class MilvusManager:
         except Exception as e:
             logger.warning(f"Error during container cleanup: {e}")
     
-    def ensure_external_storage_directories(self):
-        """외부 저장소 디렉토리를 확인하고 필요한 경우 생성"""
-        # config에서 설정된 외부 저장소 경로 사용
-        external_storage_path = config.get_external_storage_path()
-        logger.info(f"외부 저장소 경로: {external_storage_path}")
-        
-        # 디렉토리가 존재하지 않으면 생성
-        if not os.path.exists(external_storage_path):
-            logger.info(f"외부 저장소 디렉토리 생성: {external_storage_path}")
-            os.makedirs(external_storage_path, exist_ok=True)
-        
-        # 하위 디렉토리 확인 및 생성
-        subdirs = ["minio", "etcd"]
-        for subdir in subdirs:
-            subdir_path = os.path.join(external_storage_path, subdir)
-            if not os.path.exists(subdir_path):
-                logger.info(f"하위 디렉토리 생성: {subdir_path}")
-                os.makedirs(subdir_path, exist_ok=True)
-        
-        return external_storage_path
+    # Implementation moved to line ~687
     
     def ensure_milvus_running(self):
         """Milvus 서버와 모든 관련 컨테이너가 실행 중인지 확인하고, 실행 중이 아니면 시작"""
@@ -1100,6 +1081,22 @@ class MilvusManager:
             print(f"\u2714 Successfully removed: {len(successful_deletions)} files")
             if failed_deletions:
                 print(f"\u26a0 Failed to remove: {len(failed_deletions)} files")
+                print("Files that could not be deleted:")
+                for f in failed_deletions[:10]:
+                    print(f"- {f}")
+                if len(failed_deletions) > 10:
+                    print(f"...and {len(failed_deletions) - 10} more files")
+
+            # ✅ 성공적으로 삭제된 파일만 대기열에서 제거
+            for path in successful_deletions:
+                self.pending_deletions.discard(path)
+
+            # ✅ 변경 사항을 확실히 반영하기 위해 flush 추가
+            try:
+                self.collection.flush()
+                print("✓ Milvus collection flushed after deletions.")
+            except Exception as e:
+                print(f"⚠️ Flush failed: {e}")
         
         except Exception as e:
             print(f"Warning: Error in batch deletion: {e}")
