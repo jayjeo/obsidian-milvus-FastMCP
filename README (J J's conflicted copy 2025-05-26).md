@@ -60,7 +60,7 @@
 
 ## 🔧 Installation
 ##### Recommended Installation
-- Download the installer from [here](https://www.dropbox.com/scl/fi/zm71b24j7brwmbxp1ip0u/Obsidian_Milvus_Installer_AMD64.exe?rlkey=8dptyvqd3i4yiy4gasfjfdtwt&st=wvdgfyjo)
+- Download the installer from [here](https://www.dropbox.com/scl/fi/cskhfaq62b5z5gr6o2nfp/Obsidian_Milvus_Installer_AMD64.exe?rlkey=dtvxgpzlixflgogb0qvoep0r0&st=hqordj9x)
 
 ##### Manual Installation
 1. **Clone the repository**

@@ -370,6 +370,11 @@ class IntroPage(QtWidgets.QWizardPage):
         anaconda_label.setWordWrap(True)
         before_layout.addWidget(anaconda_label)
         
+        # Add the path environment variable instruction
+        path_var_label = QtWidgets.QLabel("While installing, make sure to select the path environment variable option.")
+        path_var_label.setWordWrap(True)
+        before_layout.addWidget(path_var_label)
+        
         layout.addWidget(welcome_label)
         layout.addWidget(desc_label)
         layout.addWidget(process_label)

@@ -17,7 +17,7 @@ VSVersionInfo(
           StringStruct('Jay Jeong', 'Obsidian-Milvus Project'),
           StringStruct('FileDescription', 'Obsidian-Milvus-FastMCP Installer'),
           StringStruct('FileVersion', '1.0.0'),
-          StringStruct('InternalName', 'ObsidianMilvusInstaller'),
+          StringStruct('InternalName', 'Obsidian_Milvus_Installer_AMD64'),
           StringStruct('LegalCopyright', 'MIT License'),
           StringStruct('OriginalFilename', 'Obsidian_Milvus_Installer.exe'),
           StringStruct('ProductName', 'Obsidian-Milvus-FastMCP Installer'),
