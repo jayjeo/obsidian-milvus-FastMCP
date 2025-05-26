@@ -21,7 +21,7 @@ class InstallerThread(QtCore.QThread):
         def run_cmd(cmd, cwd=None, shell=False):
             """Run a command and return (result, output). `result` is subprocess.CompletedProcess or None on error."""
             try:
-                result = subprocess.run(cmd, shell=shell, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                result = subprocess.run(cmd, shell=shell, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
             except Exception as e:
                 return None, str(e)
             return result, result.stdout
@@ -66,7 +66,7 @@ class InstallerThread(QtCore.QThread):
         # Enable WSL optional features via DISM
         status("Enabling Virtual Machine Platform (for WSL 2)...")
         res = subprocess.run(["dism.exe", "/online", "/enable-feature", "/featurename:VirtualMachinePlatform", "/all", "/norestart"],
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
         output = res.stdout.strip()
         if res.returncode not in (0, 3010):
             log("✖ Enabling Virtual Machine Platform failed")
@@ -82,7 +82,7 @@ class InstallerThread(QtCore.QThread):
         
         status("Enabling Windows Subsystem for Linux...")
         res = subprocess.run(["dism.exe", "/online", "/enable-feature", "/featurename:Microsoft-Windows-Subsystem-Linux", "/all", "/norestart"],
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
         output = res.stdout.strip()
         if res.returncode not in (0, 3010):
             log("✖ Enabling Windows Subsystem for Linux failed")
@@ -174,7 +174,7 @@ class InstallerThread(QtCore.QThread):
         status("Detecting Podman path...")
         try:
             bat_path = os.path.join(self.install_dir, "find_podman_path.bat")
-            proc = subprocess.Popen(bat_path, cwd=self.install_dir, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            proc = subprocess.Popen(bat_path, cwd=self.install_dir, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
             podman_output = proc.communicate(timeout=10)[0]
         except subprocess.TimeoutExpired:
             proc.kill()
@@ -234,7 +234,7 @@ class InstallerThread(QtCore.QThread):
             # Run setup.py and feed menu choices 1-5
             setup_py = os.path.join(self.install_dir, "setup.py")
             proc = subprocess.Popen(["python", setup_py], cwd=self.install_dir,
-                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
             proc.communicate("1\n2\n3\n4\n5\n\n", timeout=300)  # 5 min timeout for all tests
             log("✓ Interactive setup & testing (options 1–5) completed")
         except Exception as e:
