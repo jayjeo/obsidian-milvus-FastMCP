@@ -497,19 +497,10 @@ class SummaryPage(QtWidgets.QWizardPage):
         changes_label = QtWidgets.QLabel("⚠ <b>System Changes:</b> Windows WSL feature will be enabled")
         changes_label.setTextFormat(QtCore.Qt.RichText)
         
-        important_group = QtWidgets.QGroupBox("Important")
-        important_layout = QtWidgets.QVBoxLayout(important_group)
-        important_text = QtWidgets.QLabel(
-            "A system restart will be required after installing WSL. The installer will reboot your PC automatically and resume afterward."
-        )
-        important_text.setWordWrap(True)
-        important_layout.addWidget(important_text)
-        
         layout.addWidget(self.install_label)
         layout.addWidget(self.vault_label)
         layout.addWidget(components_label)
         layout.addWidget(changes_label)
-        layout.addWidget(important_group)
     
     def initializePage(self):
         install_dir = self.field("installDir")
