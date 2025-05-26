@@ -1,6 +1,19 @@
 # Import warning suppressor first to suppress all warnings
 import warning_suppressor
 
+# NumPy compatibility check
+try:
+    import numpy as np
+    numpy_version = np.__version__
+    major_version = int(numpy_version.split('.')[0])
+    
+    if major_version >= 2:
+        print(f"WARNING: NumPy version {numpy_version} detected.")
+        print("For best compatibility with sentence-transformers, please use NumPy 1.x")
+        print("Run 'fix_numpy_compatibility.bat' to fix this issue")
+except ImportError:
+    print("WARNING: NumPy not found")
+
 from sentence_transformers import SentenceTransformer
 import config
 from functools import lru_cache
