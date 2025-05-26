@@ -1,6 +1,10 @@
 # 🚀 Obsidian-Milvus-FastMCP
 
-**A powerful, production-ready system that connects your Obsidian vault to Claude Desktop via FastMCP, leveraging Milvus vector database for intelligent document search and retrieval.**
+**A powerful, production-ready system that connects your Obsidian vault to Claude Desktop via FastMCP, leveraging Milvus vector database for intelligent document search and retrieval.** 
+
+**This program is useful for people who store extensive Markdown and PDF materials in Obsidian and need to extract comprehensive information from Obsidian for research, work, and study purposes.**
+
+**Warning! This program is extremely heavy and requires high memory (RAM) usage due to the need to keep the Milvus server running constantly, even when not performing embedding tasks. Therefore, it is not suitable for PCs with limited memory or laptops where power consumption needs to be conserved. Additionally, this program only supports Windows 10 and 11.**
 
 ## ✨ Features
 
