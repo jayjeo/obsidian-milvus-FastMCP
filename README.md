@@ -59,7 +59,10 @@
 - **Obsidian vault** with markdown files
 
 ## 🔧 Installation
+##### Recommended Installation
+- Download the installer from [here](https://raw.githubusercontent.com/jayjeo/obsidian-milvus-FastMCP/main/Obsidian_Milvus_Installer (AMD 64).exe)
 
+##### Manual Installation
 1. **Clone the repository**
    ```bash
    git clone https://github.com/jayjeo/obsidian-milvus-FastMCP
