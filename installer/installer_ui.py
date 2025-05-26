@@ -39,7 +39,7 @@ class InstallerThread(QtCore.QThread):
             ("Installing Python packages (2/2)", ["conda", "run", "-n", "base", "pip", "install",
                                                  "PyPDF2", "markdown", "beautifulsoup4", "python-dotenv", 
                                                  "watchdog", "psutil", "colorama", "pyyaml", "tqdm", "requests"]),
-            ("Installing Podman via winget", ["winget", "install", "-e", "--id", "RedHat.Podman", 
+            ("Installing/Verifying Podman via winget", ["winget", "install", "-e", "--id", "RedHat.Podman", 
                                               "--accept-package-agreements", "--accept-source-agreements"])
         ]
         # Post-installation tasks (after reboot)
@@ -53,6 +53,17 @@ class InstallerThread(QtCore.QThread):
         for desc, cmd in tasks_pre:
             status(f"{desc}...")
             res, output = run_cmd(cmd, cwd=None, shell=True)
+            
+            # Special case for Podman installation via winget
+            if "Podman" in desc and res is not None and res.returncode != 0:
+                # Check if the failure is because Podman is already installed
+                if output and ("already installed" in output.lower() or "no available upgrade found" in output.lower()):
+                    log(f"✓ {desc} - Podman is already installed")
+                    steps_done += 1
+                    self.progress_changed.emit(int(steps_done * 100 / total_steps))
+                    continue
+            
+            # Normal case for all other commands
             if res is None or res.returncode != 0:
                 log(f"✖ {desc} failed")
                 if output: 
