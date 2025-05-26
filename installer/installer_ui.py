@@ -224,16 +224,23 @@ class InstallerThread(QtCore.QThread):
             log("✓ Podman path detection skipped (timeout or no output)")
         steps_done += 1
         self.progress_changed.emit(int(steps_done * 100 / total_steps))
-        
-        status("Running complete-podman-reset.bat...")
-        res, output = run_cmd(os.path.join(self.install_dir, "complete-podman-reset.bat"), cwd=self.install_dir, shell=True)
-        if res is None or res.returncode != 0:
-            log("✖ complete-podman-reset.bat failed")
-            if output: 
-                log(output.strip())
+        status("Running complete-podman-reset_noask.bat...")
+        try:
+            bat_path = os.path.join(self.install_dir, "complete-podman-reset_noask.bat")
+            proc = subprocess.Popen(bat_path, shell=True, cwd=self.install_dir,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, encoding='utf-8', errors='replace')
+            for line in proc.stdout:
+                line = line.strip()
+                log(line)
+            proc.wait()
+            if proc.returncode != 0:
+                raise RuntimeError(f"reset script exited with code {proc.returncode}")
+            log("✓ Podman environment reset (complete-podman-reset_noask.bat)")
+        except Exception as e:
+            log(f"✖ complete-podman-reset_noask.bat failed ({e})")
             self.completed.emit(False)
             return
-        log("✓ Podman environment reset (complete-podman-reset.bat)")
         steps_done += 1
         self.progress_changed.emit(int(steps_done * 100 / total_steps))
         
