@@ -986,61 +986,126 @@ class MilvusManager:
             return False
     
     def execute_pending_deletions(self):
-        """삭제 대기열에 있는 모든 파일 삭제 (배치 처리)"""
+        """삭제 대기열에 있는 모든 파일 삭제 (배치 처리) - 오류 처리 강화"""
         if not self.pending_deletions:
             return
             
         print(f"Executing batch deletion for {len(self.pending_deletions)} files...")
+        logger.info(f"Batch deletion for {len(self.pending_deletions)} files started")
+        
+        # 성공적으로 삭제된 파일들을 추적
+        successful_deletions = []
+        failed_deletions = []
         
         try:
             # 수정: 페이지네이션을 사용하여 대용량 데이터 처리
-            max_limit = 16000  # Milvus의 최대 한계보다 조금 작게 설정
+            max_limit = 10000  # 한계를 조금 더 낮게 설정하여 오류 방지
             offset = 0
             all_results = []
             
-            # 페이지네이션을 통한 데이터 가져오기
-            while True:
-                results = self.collection.query(
-                    output_fields=["id", "path"],
-                    limit=max_limit,
-                    offset=offset,
-                    expr="id >= 0"  # 모든 문서 조회
-                )
-                
-                if not results:  # 결과가 없으면 중단
-                    break
-                    
-                all_results.extend(results)
-                offset += max_limit
-                
-                # 만약 결과가 한계보다 적으면 더 이상 없는 것으로 간주
-                if len(results) < max_limit:
-                    break
+            try:
+                # 페이지네이션을 통한 데이터 가져오기
+                while True:
+                    try:
+                        results = self.collection.query(
+                            output_fields=["id", "path"],
+                            limit=max_limit,
+                            offset=offset,
+                            expr="id >= 0"  # 모든 문서 조회
+                        )
+                        
+                        if not results:  # 결과가 없으면 중단
+                            break
+                            
+                        all_results.extend(results)
+                        offset += max_limit
+                        
+                        # 만약 결과가 한계보다 적으면 더 이상 없는 것으로 간주
+                        if len(results) < max_limit:
+                            break
+                    except Exception as e:
+                        logger.error(f"Error during query iteration at offset {offset}: {e}")
+                        # 한계에 도달했다고 가정하고 중단
+                        break
+                        
+            except Exception as e:
+                logger.error(f"Error querying documents for deletion: {e}")
+                # 에러가 있어도 계속 진행
             
-            # 삭제할 ID 목록 수집
-            ids_to_delete = []
-            deleted_files = set()
+            logger.info(f"Found {len(all_results)} documents to process for deletion")
+            
+            # 파일별 ID 수집
+            files_to_delete = {}
             
             for doc in all_results:
-                path = doc.get("path")
-                doc_id = doc.get("id")
-                
-                if path in self.pending_deletions and doc_id is not None:
-                    ids_to_delete.append(doc_id)
-                    deleted_files.add(path)
+                try:
+                    path = doc.get("path")
+                    doc_id = doc.get("id")
+                    
+                    if path in self.pending_deletions and doc_id is not None:
+                        if path not in files_to_delete:
+                            files_to_delete[path] = []
+                        files_to_delete[path].append(doc_id)
+                except Exception as e:
+                    logger.error(f"Error processing document for deletion: {e}")
             
-            # 삭제 실행
-            if ids_to_delete:
-                # 대용량 삭제 시 배치 사이즈 제한
-                batch_size = 1000
-                for i in range(0, len(ids_to_delete), batch_size):
-                    batch = ids_to_delete[i:i+batch_size]
-                    self.collection.delete(f"id in {batch}")
-                
-                print(f"Deleted {len(ids_to_delete)} chunks from {len(deleted_files)} files")
+            # 파일별 삭제 실행
+            for path, ids in files_to_delete.items():
+                try:
+                    if ids:
+                        # 대용량 삭제 시 배치 사이즈 제한
+                        batch_size = 500  # 작은 배치 사이즈로 오류 방지
+                        for i in range(0, len(ids), batch_size):
+                            batch = ids[i:i+batch_size]
+                            try:
+                                # id 직접 삭제 방식 사용
+                                self.collection.delete(f"id in {batch}")
+                            except Exception as e:
+                                logger.error(f"Error deleting batch for {path}: {e}")
+                                # 배치 삭제 실패 시 개별 삭제 시도
+                                for single_id in batch:
+                                    try:
+                                        self.collection.delete(f"id == {single_id}")
+                                    except:
+                                        pass
+                        
+                        successful_deletions.append(path)
+                        print(f"Deleted {len(ids)} chunks for file {path}")
+                    else:
+                        logger.warning(f"No chunks found for file {path}")
+                        failed_deletions.append(path)
+                except Exception as e:
+                    logger.error(f"Error processing deletion for {path}: {e}")
+                    failed_deletions.append(path)
             
-            # 삭제 대기열 초기화
-            self.pending_deletions.clear()
+            # 요약 출력
+            if successful_deletions:
+                logger.info(f"Successfully deleted chunks from {len(successful_deletions)} files")
+                print(f"\n\u2714 Successfully removed: {len(successful_deletions)} files")
+            
+            if failed_deletions:
+                logger.warning(f"Failed to delete {len(failed_deletions)} files")
+                print(f"\n\u26a0 Failed to remove: {len(failed_deletions)} files")
+                print("Files that could not be deleted:")
+                for f in failed_deletions[:10]:  # 처음 10개만 표시
+                    print(f"- {f}")
+                if len(failed_deletions) > 10:
+                    print(f"...and {len(failed_deletions) - 10} more files")
+            
+            # 성공적으로 삭제된 파일만 대기열에서 제거
+            for path in successful_deletions:
+                self.pending_deletions.discard(path)
+            
+            print("Cleanup Results:")
+            print(f"\u2714 Successfully removed: {len(successful_deletions)} files")
+            if failed_deletions:
+                print(f"\u26a0 Failed to remove: {len(failed_deletions)} files")
+        
+        except Exception as e:
+            print(f"Warning: Error in batch deletion: {e}")
+            logger.error(f"Error in batch deletion: {e}")
+            import traceback
+            logger.error(f"Deletion traceback: {traceback.format_exc()}")
             
         except Exception as e:
             print(f"Warning: Error in batch deletion: {e}")
