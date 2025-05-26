@@ -152,8 +152,10 @@
 
 ## 🚨 GPU not detected issue even though my GPU exists and supports CUDA
 - Make sure set `USE_GPU = True` in `config.py` to use GPU mode
-- Pytorch has two different versions. One is for CPU and the other is for GPU. Make sure you have the correct version installed. If you arn't sure, run `pytorch_gpu_installer.bat` to install the correct version.
-
+- Pytorch has two different versions. One is for CPU and the other is for GPU. Make sure you have the correct version installed. 
+- If you arn't sure, follow the instruction below:
+  - Install [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
+  - Run `pytorch_gpu_installer.bat` to install the correct Pytorch version.
 
 ## Backup & Restore Milvus Data (Embedding Data)
 - 🟢 **Backup** : Run `backup-all-data.bat`
