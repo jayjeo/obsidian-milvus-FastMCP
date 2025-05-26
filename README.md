@@ -59,7 +59,7 @@
 - **Obsidian vault** with markdown files
 
 ## 🔧 Installation
-##### Recommended Installation
+### Recommended Installation
 
 1. Download the installer from [here](https://www.dropbox.com/scl/fo/l4qtgiuajhrcqk6ejatdt/ANv-uIw78Q9hvbUzp5FEWHM?rlkey=8apdv9cwzptivbjaat39uwcfp&st=9esvs2et), and run it
 
@@ -80,7 +80,7 @@
 3. 🚨 NumPy compatibility error solution
   - Run `fix_numpy_compatibility.bat`
 
-##### Manual Installation
+### Manual Installation
 1. **Clone the repository**
    ```bash
    git clone https://github.com/jayjeo/obsidian-milvus-FastMCP
