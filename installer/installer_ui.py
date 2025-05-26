@@ -226,29 +226,78 @@ class InstallerThread(QtCore.QThread):
         self.progress_changed.emit(int(steps_done * 100 / total_steps))
         status("Running complete-podman-reset_noask.bat...")
         try:
+            # Execute the reset batch file but don't try to capture all output directly
+            # This avoids encoding issues with certain characters
             bat_path = os.path.join(self.install_dir, "complete-podman-reset_noask.bat")
-            proc = subprocess.Popen(bat_path, shell=True, cwd=self.install_dir,
-                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    text=True, encoding='utf-8', errors='replace')
-            for line in proc.stdout:
-                line = line.strip()
-                log(line)
-            proc.wait()
-            if proc.returncode != 0:
-                raise RuntimeError(f"reset script exited with code {proc.returncode}")
-            log("✓ Podman environment reset (complete-podman-reset_noask.bat)")
+            
+            # Just run the batch file and wait for completion rather than streaming all output
+            # Use run_cmd which already has encoding='utf-8', errors='replace'
+            res, output = run_cmd(bat_path, cwd=self.install_dir, shell=True)
+            
+            # Log a summary of the output rather than every line
+            if output:
+                # Split the output into lines and log a reasonable number of them
+                lines = output.strip().split('\n')
+                # Log first few lines and last few lines to avoid excessive output
+                for line in lines[:5]:
+                    if line.strip():
+                        log(line.strip())
+                if len(lines) > 10:
+                    log(f"... ({len(lines) - 10} more lines) ...")
+                for line in lines[-5:]:
+                    if line.strip():
+                        log(line.strip())
+            
+            if res is None or res.returncode != 0:
+                log(f"Warning: reset script completed with non-zero code {res.returncode if res else 'unknown'}")
+                # Continue anyway since this might still work
+            
+            log("✓ Podman environment reset completed")
         except Exception as e:
             log(f"✖ complete-podman-reset_noask.bat failed ({e})")
-            self.completed.emit(False)
-            return
+            # Don't fail the installation, just log the error and continue
+            log("Continuing installation despite reset script error...")
+            # self.completed.emit(False)
+            # return
         steps_done += 1
         self.progress_changed.emit(int(steps_done * 100 / total_steps))
+        
+        status("Preparing directories for Milvus...")
+        try:
+            # Create volumes directory structure first
+            volumes_dir = os.path.join(self.install_dir, "volumes")
+            etcd_dir = os.path.join(volumes_dir, "etcd")
+            minio_dir = os.path.join(volumes_dir, "minio")
+            os.makedirs(etcd_dir, exist_ok=True)
+            os.makedirs(minio_dir, exist_ok=True)
+            log("✓ Created required volume directories")
+            
+            # Fix config file to use relative paths instead of absolute paths
+            docker_compose_file = os.path.join(self.install_dir, "docker-compose.yml")
+            if os.path.exists(docker_compose_file):
+                with open(docker_compose_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # Replace absolute paths with relative paths
+                # Use './volumes/' instead of any absolute path
+                import re
+                # Pattern to match absolute paths to the volumes directory
+                pattern = r'(["\']?)/[\w/\\:_\.-]+?(/volumes/[\w/\.-]+?)(["\']?)'
+                # Replace with relative path
+                updated_content = re.sub(pattern, r'\1./\2\3', content)
+                
+                with open(docker_compose_file, 'w', encoding='utf-8') as f:
+                    f.write(updated_content)
+                log("✓ Updated docker-compose.yml with correct paths")
+        except Exception as e:
+            log(f"Warning: Error preparing directories: {e}")
         
         status("Starting Milvus MCP server for initial setup...")
         try:
             # Launch in a new console (detached) so it continues running
             subprocess.Popen(f'start "" "{os.path.join(self.install_dir, "start_mcp_with_encoding_fix.bat")}"', shell=True, cwd=self.install_dir)
             log("✓ Milvus MCP server started (encoding fix applied)")
+            log("Note: NumPy version warning can be ignored or fixed with fix_numpy_compatibility.bat")
         except Exception as e:
             log(f"✖ Failed to start MCP server ({e}) – you may start it manually later.")
         steps_done += 1

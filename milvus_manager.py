@@ -188,10 +188,16 @@ class MilvusManager:
             self.ensure_network_exists(network_name)
             
             if container_type == "etcd":
+                # Create the volumes/etcd directory if it doesn't exist
+                etcd_dir = os.path.join(project_dir, "volumes", "etcd")
+                os.makedirs(etcd_dir, exist_ok=True)
+                
+                # Use a relative path instead of absolute path
+                # This is equivalent to "./volumes/etcd:/etcd"
                 cmd = [
                     runtime_path, "run", "-d", "--name", container_name,
                     "--network", network_name,
-                    "-v", f"{project_dir}/volumes/etcd:/etcd",
+                    "-v", "./volumes/etcd:/etcd",  # Use relative path
                     "-e", "ETCD_AUTO_COMPACTION_MODE=revision",
                     "-e", "ETCD_AUTO_COMPACTION_RETENTION=1000",
                     "-e", "ETCD_QUOTA_BACKEND_BYTES=4294967296",
@@ -201,10 +207,14 @@ class MilvusManager:
                     "-listen-client-urls", "http://0.0.0.0:2379", "--data-dir", "/etcd"
                 ]
             elif container_type == "minio":
+                # Create the minio directory if it doesn't exist
+                minio_dir = os.path.join(project_dir, "volumes", "minio")
+                os.makedirs(minio_dir, exist_ok=True)
+                
                 cmd = [
                     runtime_path, "run", "-d", "--name", container_name,
                     "--network", network_name,
-                    "-v", f"{project_dir}/MilvusData/minio:/minio_data",
+                    "-v", "./volumes/minio:/minio_data",  # Use relative path
                     "-e", "MINIO_ACCESS_KEY=minioadmin",
                     "-e", "MINIO_SECRET_KEY=minioadmin",
                     "--user", "0:0",
@@ -212,11 +222,15 @@ class MilvusManager:
                     "server", "/minio_data"
                 ]
             elif container_type == "standalone":
+                # Create the milvus data directory if it doesn't exist
+                milvus_dir = os.path.join(project_dir, "volumes", "milvus")
+                os.makedirs(milvus_dir, exist_ok=True)
+                
                 cmd = [
                     runtime_path, "run", "-d", "--name", container_name,
                     "--network", network_name,
                     "-p", "19530:19530", "-p", "9091:9091",
-                    "-v", f"{project_dir}/MilvusData/milvus:/var/lib/milvus",
+                    "-v", "./volumes/milvus:/var/lib/milvus",  # Use relative path
                     "-e", "ETCD_ENDPOINTS=milvus-etcd:2379",
                     "-e", "MINIO_ADDRESS=milvus-minio:9000",
                     "--user", "0:0",
