@@ -33,6 +33,9 @@ class ObsidianProcessor:
         self.use_gpu = config.USE_GPU
         self.device_idx = config.GPU_DEVICE_ID if hasattr(config, 'GPU_DEVICE_ID') else 0
         
+        # 처리 타임아웃 설정 (초 단위)
+        self.processing_timeout = 300  # 기본값: 5분
+        
         # 임베딩 진행 상태 추적을 위한 변수
         self.embedding_in_progress = False
         self.embedding_progress = {
