@@ -335,9 +335,7 @@ class IntroPage(QtWidgets.QWizardPage):
         welcome_label.setAlignment(QtCore.Qt.AlignCenter)
         
         desc_label = QtWidgets.QLabel(
-            "This wizard will install Obsidian-Milvus-FastMCP with full administrative privileges.\n\n"
-            "Obsidian-Milvus-FastMCP integrates the Milvus vector database with Obsidian notes, "
-            "enabling powerful semantic search through Claude Desktop."
+            "This wizard will install Obsidian-Milvus-FastMCP with full administrative privileges."
         )
         desc_label.setWordWrap(True)
         
@@ -349,7 +347,6 @@ class IntroPage(QtWidgets.QWizardPage):
             "✔ Podman container runtime installation<br>"
             "✔ WSL and Ubuntu 22.04 setup<br>"
             "✔ Milvus vector database deployment<br>"
-            "✔ Auto-start services for Podman/Milvus<br>"
             "✔ Claude Desktop integration"
         )
         process_label.setTextFormat(QtCore.Qt.RichText)
@@ -357,11 +354,8 @@ class IntroPage(QtWidgets.QWizardPage):
         
         req_label = QtWidgets.QLabel(
             "<b>System Requirements:</b><br>"
-            "• Windows 10 or later (for WSL 2)<br>"
             "• Anaconda or Miniconda (REQUIRED – must be pre-installed)<br>"
             "• 20 GB free disk space (containers & dependencies)<br>"
-            "• Stable internet connection<br>"
-            "• Administrator privileges (run this installer as Admin)<br>"
             "• 8 GB RAM or more recommended"
         )
         req_label.setTextFormat(QtCore.Qt.RichText)
@@ -369,17 +363,23 @@ class IntroPage(QtWidgets.QWizardPage):
         
         before_group = QtWidgets.QGroupBox("Before Starting")
         before_layout = QtWidgets.QVBoxLayout(before_group)
-        before_text = QtWidgets.QLabel(
-            'Please ensure Anaconda (Conda) is installed on your system.<br>'
-            'Download: <a href="https://www.anaconda.com/download">anaconda.com/download</a> – install with default settings and be sure to <b>add Anaconda to PATH</b> when prompted.<br><br>'
-            'This installer will make system-level changes, including:<br>'
-            '– Installing Podman and WSL<br>'
-            '– Modifying system startup services'
+        
+        # Create a label with larger, red text for the Anaconda notice
+        anaconda_label = QtWidgets.QLabel(
+            '<span style="font-size: 12pt; color: red; font-weight: bold;">Please ensure Anaconda (Conda) is installed on your system.</span>'
         )
-        before_text.setTextFormat(QtCore.Qt.RichText)
-        before_text.setOpenExternalLinks(True)
-        before_text.setWordWrap(True)
-        before_layout.addWidget(before_text)
+        anaconda_label.setTextFormat(QtCore.Qt.RichText)
+        anaconda_label.setWordWrap(True)
+        before_layout.addWidget(anaconda_label)
+        
+        # Regular text for download link
+        download_label = QtWidgets.QLabel(
+            'Download: <a href="https://www.anaconda.com/download">anaconda.com/download</a> – install with default settings and be sure to <b>add Anaconda to PATH</b> when prompted.'
+        )
+        download_label.setTextFormat(QtCore.Qt.RichText)
+        download_label.setOpenExternalLinks(True)
+        download_label.setWordWrap(True)
+        before_layout.addWidget(download_label)
         
         layout.addWidget(welcome_label)
         layout.addWidget(desc_label)
