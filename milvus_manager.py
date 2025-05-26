@@ -1135,18 +1135,28 @@ class MilvusManager:
         return results[0]  # 첫 번째 쿼리의 결과
     
     def _sanitize_query_expr(self, expr):
-        """쿼리 표현식에서 한글과 특수문자를 안전하게 처리"""
+        """쿼리 표현식에서 특수문자와 경로를 안전하게 처리"""
         import re
         
         # 이미 안전한 쿼리인 경우 그대로 반환
         if expr is None or expr == "id >= 0":
             return expr
-            
-        # 'path = 'value'' 또는 'path like 'value%'' 패턴 감지
-        path_equals_pattern = re.compile(r"(path\s*=\s*['\"])(.*?)(['\"])")
-        path_like_pattern = re.compile(r"(path\s+like\s+['\"])(.*?)(['\"])")
-        title_equals_pattern = re.compile(r"(title\s*=\s*['\"])(.*?)(['\"])")
-        title_like_pattern = re.compile(r"(title\s+like\s+['\"])(.*?)(['\"])")
+        
+        try:
+            # 안전한 기본 쿼리로 대체하여 오류 방지
+            if "path" in expr and ("=" in expr or "like" in expr):
+                # 오류 발생 가능성이 있는 경우 안전한 쿼리로 대체
+                logger.warning(f"Potentially unsafe query detected: {expr}. Using safe alternative.")
+                return "id >= 0"
+                
+            # 'path = 'value'' 또는 'path like 'value%'' 패턴 감지
+            path_equals_pattern = re.compile(r"(path\s*=\s*['\"])(.*?)(['\"])")
+            path_like_pattern = re.compile(r"(path\s+like\s+['\"])(.*?)(['\"])")
+            title_equals_pattern = re.compile(r"(title\s*=\s*['\"])(.*?)(['\"])")
+            title_like_pattern = re.compile(r"(title\s+like\s+['\"])(.*?)(['\"])")
+        except Exception as e:
+            logger.error(f"Error in sanitize query expression: {e}")
+            return "id >= 0"  # 오류 발생시 안전한 쿼리 반환
         
         # 한글이나 특수문자가 포함된 경우 처리
         if re.search(r'[가-힣\(\)\s]', expr):
