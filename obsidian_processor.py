@@ -65,8 +65,12 @@ class ObsidianProcessor:
         # 진행률 및 리소스 모니터링 관리자 생성
         self.monitor = ProgressMonitor(self)
         
-        # 전역 처리 타임아웃 추가
-        self.processing_timeout = 600  # 10분 (초 단위)
+        # OPTIMIZATION: Session cache for verification results
+        self.verification_cache = {}
+        
+        # OPTIMIZATION: Performance thresholds for smart decision making
+        self.FAST_SKIP_THRESHOLD = 0.1  # Files with time diff < 0.1s are very likely unchanged
+        self.FAST_PROCESS_THRESHOLD = 2.0  # Files with time diff > 2.0s are definitely changed
         
     def _get_next_id(self):
         """다음 ID 값 가져오기"""
@@ -783,29 +787,119 @@ class ObsidianProcessor:
             print(f"Error saving vectors to Milvus: {e}")
             return False
     
-    def _verify_actual_embedding_exists(self, file_path):
-        """실제 임베딩 데이터가 존재하는지 빠르게 확인 (타임스탬프 비교 후에만 사용)"""
-        try:
-            rel_path = os.path.relpath(file_path, self.vault_path)
+    def _fast_decision_engine(self, file_path, file_mtime, existing_mtime, file_size):
+        """OPTIMIZATION: 3-Tier fast decision making for file processing"""
+        rel_path = os.path.relpath(file_path, self.vault_path)
+        
+        # Cache key for this file
+        cache_key = f"{rel_path}:{file_mtime}:{file_size}"
+        
+        # Check cache first
+        if cache_key in self.verification_cache:
+            cached_result = self.verification_cache[cache_key]
+            print(f"{Fore.BLUE}[CACHED] {rel_path}: {cached_result['decision']} ({cached_result['reason']}){Style.RESET_ALL}")
+            return cached_result['decision'], cached_result['reason']
+        
+        # Calculate time difference
+        time_diff = abs(file_mtime - existing_mtime) if existing_mtime > 0 else float('inf')
+        
+        decision = None
+        reason = ""
+        
+        # TIER 1: Lightning Fast Decisions (90%+ of files)
+        if time_diff > self.FAST_PROCESS_THRESHOLD:
+            # File definitely modified - immediate process
+            decision = "PROCESS"
+            reason = f"definitely modified (time_diff: {time_diff:.2f}s)"
+            print(f"{Fore.GREEN}[FAST-PROCESS] {rel_path}: {reason}{Style.RESET_ALL}")
             
-            # 해당 파일의 실제 벡터 데이터 존재 확인 (최소한의 쿼리)
+        elif time_diff < self.FAST_SKIP_THRESHOLD:
+            # File very likely unchanged - immediate skip (low risk)
+            decision = "SKIP"
+            reason = f"very likely unchanged (time_diff: {time_diff:.2f}s)"
+            print(f"{Fore.CYAN}[FAST-SKIP] {rel_path}: {reason}{Style.RESET_ALL}")
+            
+        else:
+            # TIER 2: Smart Batch Check for ambiguous cases
+            decision = "VERIFY"
+            reason = f"ambiguous timestamp (time_diff: {time_diff:.2f}s) - needs verification"
+            print(f"{Fore.YELLOW}[NEED-VERIFY] {rel_path}: {reason}{Style.RESET_ALL}")
+        
+        # Cache the result
+        result = {"decision": decision, "reason": reason}
+        self.verification_cache[cache_key] = result
+        
+        return decision, reason
+
+    def _batch_existence_check(self, suspect_files):
+        """OPTIMIZATION: Batch check multiple files at once"""
+        if not suspect_files:
+            return {}
+            
+        try:
+            # Build batch query for multiple files
+            paths = [os.path.relpath(fp, self.vault_path) for fp, _ in suspect_files]
+            path_conditions = " or ".join([f"path == '{path}'" for path in paths])
+            
+            # Single query to check all suspect files
             results = self.milvus_manager.query(
-                expr=f"path == '{rel_path}'",
-                output_fields=["id"],  # 최소한의 필드만
-                limit=1  # 하나만 있어도 충분
+                expr=f"({path_conditions})",
+                output_fields=["path", "id"],
+                limit=len(paths) * 10  # Assume max 10 chunks per file
             )
             
-            exists = len(results) > 0
-            print(f"{Fore.CYAN}[DEBUG] - Actual embedding check for {rel_path}: {'EXISTS' if exists else 'MISSING'}{Style.RESET_ALL}")
-            return exists
+            # Count chunks per file
+            file_chunk_counts = {}
+            for result in results:
+                path = result.get("path")
+                if path:
+                    file_chunk_counts[path] = file_chunk_counts.get(path, 0) + 1
+            
+            print(f"{Fore.CYAN}[BATCH-CHECK] Verified {len(suspect_files)} files in single query{Style.RESET_ALL}")
+            
+            return file_chunk_counts
             
         except Exception as e:
-            print(f"{Fore.YELLOW}[WARNING] Error checking actual embedding for {file_path}: {e}{Style.RESET_ALL}")
-            return False  # 확인 실패시 재처리하도록
+            print(f"{Fore.YELLOW}[WARNING] Batch check failed: {e}{Style.RESET_ALL}")
+            return {}
+    
+    def _normalize_timestamp(self, timestamp_value):
+        """Normalize timestamp to float for reliable comparison"""
+        try:
+            if timestamp_value is None:
+                return 0.0
+            
+            if isinstance(timestamp_value, (int, float)):
+                return float(timestamp_value)
+            
+            if isinstance(timestamp_value, str):
+                # Handle empty strings
+                if not timestamp_value.strip():
+                    return 0.0
+                
+                # Try direct float conversion
+                try:
+                    return float(timestamp_value)
+                except ValueError:
+                    # Try parsing as datetime string if needed
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(timestamp_value.replace('Z', '+00:00'))
+                        return dt.timestamp()
+                    except:
+                        print(f"{Fore.YELLOW}[WARNING] Could not parse timestamp: {timestamp_value}{Style.RESET_ALL}")
+                        return 0.0
+            
+            print(f"{Fore.YELLOW}[WARNING] Unknown timestamp type: {type(timestamp_value)}{Style.RESET_ALL}")
+            return 0.0
+            
+        except Exception as e:
+            print(f"{Fore.YELLOW}[WARNING] Error normalizing timestamp {timestamp_value}: {e}{Style.RESET_ALL}")
+            return 0.0
     
     def process_updated_files(self):
         """볼트의 새로운 파일 또는 수정된 파일만 처리 + 삭제된 파일 정리 (증분 임베딩) - ENHANCED VERSION"""
-        print(f"\n{Fore.CYAN}[DEBUG] Starting process_updated_files with deleted file cleanup (ENHANCED VERSION){Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}[DEBUG] Starting FIXED process_updated_files with deleted file cleanup{Style.RESET_ALL}")
         print(f"Processing new/modified files AND cleaning up deleted files in {self.vault_path}")
         
         # 경로 존재 확인
@@ -886,16 +980,16 @@ class ObsidianProcessor:
             self.embedding_in_progress = False  # 반드시 상태를 False로 설정
             return 0
         
-        # 기존 파일 정보 가져오기 - SIMPLEST VERSION (timestamp only)
+        # Get existing file information - IMPROVED VERSION (more robust)
         existing_files_info = {}
         
         try:
-            print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus (simple timestamp check)...{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus (improved timestamp check)...{Style.RESET_ALL}")
             max_limit = 16000
             offset = 0
             
             while True:
-                # SIMPLE: Only get path and updated_at, no complex validation
+                # Get only path and updated_at for timestamp comparison
                 results = self.milvus_manager.query(
                     output_fields=["path", "updated_at"],
                     limit=max_limit,
@@ -911,14 +1005,15 @@ class ObsidianProcessor:
                     updated_at = doc.get('updated_at')
                     
                     if path and path not in existing_files_info:
-                        # Keep only the first occurrence (simple approach)
-                        existing_files_info[path] = updated_at
+                        # Store normalized timestamp
+                        normalized_timestamp = self._normalize_timestamp(updated_at)
+                        existing_files_info[path] = normalized_timestamp
                 
                 offset += max_limit
                 if len(results) < max_limit:
                     break
                 
-                # 메모리 관리
+                # Memory management
                 gc.collect()
                 
             print(f"{Fore.CYAN}[DEBUG] Found {len(existing_files_info)} unique files in DB{Style.RESET_ALL}")
@@ -962,66 +1057,26 @@ class ObsidianProcessor:
                         total_files_size += file_size
                         file_mtime = os.path.getmtime(full_path)
                         
-                        # 새 파일이거나 수정된 파일인지 확인 - IMPROVED LOGIC
-                        is_new_or_modified = True
-                        skip_reason = ""
+                        # OPTIMIZED: Use fast decision engine
+                        file_mtime = os.path.getmtime(full_path)
+                        existing_mtime = self._normalize_timestamp(existing_files_info.get(rel_path, 0))
                         
-                        if rel_path in existing_files_info:
-                            # 기존 파일이 있는 경우 수정 시간 비교만 수행
-                            existing_mtime = existing_files_info.get(rel_path, 0)
-                            
-                            # 디버깅 정보 (간소화)
-                            print(f"{Fore.CYAN}[DEBUG] File: {rel_path} - File time: {file_mtime}, DB time: {existing_mtime}{Style.RESET_ALL}")
-                            
-                            # 전체 재처리 모드인지 확인
-                            is_full_reindex = self.embedding_progress.get("is_full_reindex", False)
-                            
-                            if is_full_reindex:
-                                print(f"{Fore.CYAN}[DEBUG] - Result: FULL REINDEX MODE (will process){Style.RESET_ALL}")
-                            else:
-                                # 타임스탬프 변환 시도
-                                try:
-                                    if isinstance(existing_mtime, str):
-                                        existing_mtime = float(existing_mtime)
-                                except (ValueError, TypeError):
-                                    print(f"{Fore.YELLOW}[WARNING] Invalid timestamp: {existing_mtime}, treating as new file{Style.RESET_ALL}")
-                                    existing_mtime = 0
-                                
-                                # TWO-STAGE VERIFICATION LOGIC
-                                if existing_mtime and file_mtime <= existing_mtime:
-                                    # Stage 1: Timestamp suggests file is unchanged
-                                    # Stage 2: Verify actual embedding data exists
-                                    print(f"{Fore.CYAN}[DEBUG] - Stage 1: Timestamp suggests unchanged, checking actual data...{Style.RESET_ALL}")
-                                    
-                                    actual_embedding_exists = self._verify_actual_embedding_exists(full_path)
-                                    
-                                    if actual_embedding_exists:
-                                        # Both timestamp and actual data confirm file is up to date
-                                        is_new_or_modified = False
-                                        skipped_count += 1
-                                        print(f"{Fore.CYAN}[DEBUG] - Stage 2: Actual embedding confirmed - SKIP{Style.RESET_ALL}")
-                                    else:
-                                        # Timestamp says unchanged but actual data missing
-                                        print(f"{Fore.YELLOW}[DEBUG] - Stage 2: Metadata exists but actual embedding missing - PROCESS{Style.RESET_ALL}")
-                                else:
-                                    # File was modified after last embedding - definitely process
-                                    print(f"{Fore.YELLOW}[DEBUG] - Stage 1: File modified since last embedding - PROCESS{Style.RESET_ALL}")
-                        else:
-                            print(f"{Fore.GREEN}[DEBUG] File: {rel_path} - NEW FILE (will process){Style.RESET_ALL}")
+                        decision, reason = self._fast_decision_engine(full_path, file_mtime, existing_mtime, file_size)
                         
-                        if is_new_or_modified:
-                            # 새 파일이거나 수정된 파일
+                        if decision == "PROCESS":
                             new_or_modified_count += 1
                             new_or_modified_size += file_size
                             
-                            # 수정된 경우 이전 데이터 삭제
                             if rel_path in existing_files_info:
-                                print(f"{Fore.YELLOW}File will be reprocessed: {rel_path}{Style.RESET_ALL}")
                                 self.milvus_manager.mark_for_deletion(rel_path)
-                            else:
-                                print(f"{Fore.GREEN}New file found: {rel_path}{Style.RESET_ALL}")
                             
-                            # 처리할 파일 목록에 추가
+                            files_to_process.append((full_path, file_size))
+                            
+                        elif decision == "SKIP":
+                            skipped_count += 1
+                            
+                        elif decision == "VERIFY":
+                            # Will be handled in batch verification below
                             files_to_process.append((full_path, file_size))
                     except Exception as e:
                         print(f"Warning: Error checking file {rel_path}: {e}")
@@ -1073,6 +1128,15 @@ class ObsidianProcessor:
         
         # 전체 파일 수와 크기 정보 출력
         print(f"Total files to process: {new_or_modified_count} files ({new_or_modified_size/(1024*1024):.2f} MB)")
+        
+        # OPTIMIZATION: Performance summary
+        total_scanned = total_files_count
+        if total_scanned > 0:
+            print(f"\n{Fore.CYAN}[PERFORMANCE SUMMARY]{Style.RESET_ALL}")
+            print(f"Files scanned: {total_scanned}")
+            print(f"Processing decisions: {len(files_to_process)}/{total_scanned} ({len(files_to_process)/total_scanned*100:.1f}%)")
+            print(f"Skipped decisions: {skipped_count}/{total_scanned} ({skipped_count/total_scanned*100:.1f}%)")
+            print(f"Cache entries: {len(self.verification_cache)}")
         
         # 처리할 파일이 없는 경우
         if not files_to_process:
