@@ -60,7 +60,7 @@
 
 ## 🔧 Installation
 ##### Recommended Installation
-- Download the installer from [here](https://raw.githubusercontent.com/jayjeo/obsidian-milvus-FastMCP/main/Obsidian_Milvus_Installer_AMD64.exe)
+- Download the installer from [here](https://www.dropbox.com/scl/fi/qlfcq06js7b35wyx38576/Obsidian_Milvus_Installer_AMD64.exe?rlkey=crm02s28g4zaj4x2cydzpcvti&st=desu41vz)
 
 ##### Manual Installation
 1. **Clone the repository**
