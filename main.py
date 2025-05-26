@@ -2,6 +2,7 @@ import threading
 import time
 import os
 import sys
+from robust_incremental_embedding import process_incremental_embedding
 
 # Enhanced error handling for common compatibility issues
 try:
@@ -339,8 +340,8 @@ def perform_full_embedding(processor):
             processor.embedding_in_progress = False
 
 def perform_incremental_embedding(processor):
-    """Perform incremental embedding with automatic cleanup of deleted files"""
-    from colorama import Fore, Style
+    """Robust incremental embedding with DB consistency checks"""
+    process_incremental_embedding(processor)
     
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}Starting incremental embedding & deleted cleanup process...{Style.RESET_ALL}")
     print("This will process new/modified files and automatically clean up deleted files.")
