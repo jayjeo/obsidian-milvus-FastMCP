@@ -586,8 +586,32 @@ class FinalPage(QtWidgets.QWizardPage):
         super().__init__()
         self.setTitle("Installation Complete")
         layout = QtWidgets.QVBoxLayout(self)
-        complete_label = QtWidgets.QLabel("Obsidian-Milvus-FastMCP has been installed successfully.")
-        complete_label.setWordWrap(True)
+        
+        # First paragraph: Basic information
+        status_label = QtWidgets.QLabel(
+            "A cmd window should have popped up.\n"
+            "This launches the Milvus server, which takes about 5 minutes.\n"
+            "You need to keep this window open; otherwise, the server will close."
+        )
+        status_label.setWordWrap(True)
+        layout.addWidget(status_label)
+        layout.addSpacing(10)  # Add some spacing between paragraphs
+        
+        # Second paragraph: Auto-launch recommendation (in pink)
+        recommend_label = QtWidgets.QLabel(
+            "For your convenience, I strongly recommend setting up Podman and Milvus to auto-launch at startup."
+        )
+        recommend_label.setStyleSheet("color: #FF69B4;")  # Pink color
+        recommend_label.setWordWrap(True)
+        recommend_label.setFont(QtGui.QFont(recommend_label.font().family(), weight=QtGui.QFont.Bold))
+        layout.addWidget(recommend_label)
+        
+        # Instructions text
+        follow_label = QtWidgets.QLabel("Follow the instructions below:")
+        follow_label.setWordWrap(True)
+        layout.addWidget(follow_label)
+        
+        # Links to guides
         link_label = QtWidgets.QLabel(
             '• <a href="https://share.note.sx/r6kx06pj#78CIGnxLJYkJG+ZrQKYQhU35gtl+nKa47ZllwEyfUE0">Podman auto-launch setup guide</a><br>'
             '• <a href="https://share.note.sx/y9vrzgj6#zr1aL4s1WFBK/A4WvqvkP6ETVMC4sKcAwbqAt4NyZhk">Milvus server auto-launch setup guide</a>'
@@ -595,8 +619,28 @@ class FinalPage(QtWidgets.QWizardPage):
         link_label.setTextFormat(QtCore.Qt.RichText)
         link_label.setOpenExternalLinks(True)
         link_label.setWordWrap(True)
-        layout.addWidget(complete_label)
         layout.addWidget(link_label)
+        
+        # Benefits of auto-launch
+        benefits_label = QtWidgets.QLabel(
+            "This provides two significant conveniences:\n"
+            "1) You do not have to launch these manually every time Windows starts\n"
+            "2) When Windows starts, nothing will pop up unless there is an error"
+        )
+        benefits_label.setWordWrap(True)
+        layout.addWidget(benefits_label)
+        layout.addSpacing(10)  # Add some spacing
+        
+        # Warning about launch time (in red)
+        warning_label = QtWidgets.QLabel(
+            "Launching the server takes approximately 5-7 minutes depending on your PC performance.\n"
+            "Wait for it to finish before you start Claude Desktop"
+        )
+        warning_label.setStyleSheet("color: red;")  # Red color
+        warning_label.setWordWrap(True)
+        warning_label.setFont(QtGui.QFont(warning_label.font().family(), weight=QtGui.QFont.Bold))
+        layout.addWidget(warning_label)
+        
         self.setFinalPage(True)
 
 
