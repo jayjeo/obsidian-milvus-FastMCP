@@ -60,7 +60,24 @@
 
 ## 🔧 Installation
 ##### Recommended Installation
-- Download the installer from [here](https://www.dropbox.com/scl/fo/l4qtgiuajhrcqk6ejatdt/ANv-uIw78Q9hvbUzp5FEWHM?rlkey=8apdv9cwzptivbjaat39uwcfp&st=9esvs2et)
+1.Download the installer from [here](https://www.dropbox.com/scl/fo/l4qtgiuajhrcqk6ejatdt/ANv-uIw78Q9hvbUzp5FEWHM?rlkey=8apdv9cwzptivbjaat39uwcfp&st=9esvs2et)
+
+2. 🚨 GPU not detected issue even though my GPU exists and supports CUDA
+- Pytorch has two different versions. One is for CPU and the other is for GPU. Make sure you have the correct version installed. 
+- If you arn't sure, follow the instruction below:
+  - Install [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
+  - Run the following commands:
+  
+    ```bash
+    pip uninstall torch torchvision torchaudio -y
+    conda create -n pytorch-gpu python=3.11 -y
+    conda activate pytorch-gpu
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
+    ```
+
+1. 🚨 NumPy compatibility error solution
+  - Run `fix_numpy_compatibility.bat`
 
 ##### Manual Installation
 1. **Clone the repository**
@@ -72,6 +89,7 @@
 3. **Install dependencies**
    - Install conda([anaconda](https://www.anaconda.com/download))
    - Do the following:
+
     ```bash
     Open Anaconda Prompt with administrator privileges
     cd to your directory
@@ -83,17 +101,23 @@
 4. **Install Podman**
    - From CMD: winget install RedHat.Podman
    - Open PowerShell as Administrator and run (Enable Virtual Machine)
-     ```
+
+     ```powershell
      dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
      ```
+
    - Open PowerShell as Administrator and run (Linux kernel update package)
-     ```
+
+     ```powershell
      wsl.exe --install
      ```
+
    - Set WSL 2 as your default version
-     ```
+
+     ```powershell
      wsl --set-default-version 2
      ```
+
    - Install your Linux distribution of choice
      - Ubuntu 18.04 LTS
      - Ubuntu 20.04 LTS
@@ -108,11 +132,13 @@
      - Find podman path using `find_podman_path.bat`
 
 6. **Initialize Podman Container**
+
    ```
    complete-podman-reset.bat
    ```
 
 7. **Initialize Milvus Server**
+
    ```
    start_mcp_with_encoding_fix.bat
    ```   
@@ -122,7 +148,7 @@
    - When Windows starts, nothing will pop up unless there is an error
      - If you want to figure out the error, see `podman_startup.log`
 
-9. **Milvus Server auto launch at startup**
+9.  **Milvus Server auto launch at startup**
    - Follow instructions in [Milvus auto launch.md](https://share.note.sx/y9vrzgj6#zr1aL4s1WFBK/A4WvqvkP6ETVMC4sKcAwbqAt4NyZhk)
    - When Windows starts, nothing will pop up unless there is an error
      - If you want to figure out the error, see `auto_startup_mcp.log` and `vbs_startup.log`
@@ -132,9 +158,11 @@
      - You have to keep this CMD opened. Otherwise, the server will be terminated
 
 10.  **Interactive Setup & Testing**
+
    ```bash
    run-setup.bat
    ```
+
    - (1) **Package Installation** - Installs required dependencies
    - (2) **Milvus Setup** - Automatically deploys Milvus using Podman with persistent data storage
    - (3) **Collection Testing** - Verifies database operations
@@ -143,6 +171,24 @@
    - (8) **Safe Server Restart** (Preserve All Data. Use this if MCP server has launching issues)
    - (9) **Emergency: Complete Data Reset** (DELETE All Data)
 
+11. 🚨 GPU not detected issue even though my GPU exists and supports CUDA
+- Make sure set `USE_GPU = True` in `config.py` to use GPU mode
+- Pytorch has two different versions. One is for CPU and the other is for GPU. Make sure you have the correct version installed. 
+- If you arn't sure, follow the instruction below:
+  - Install [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
+  - Run the following commands:
+
+    ```bash
+    pip uninstall torch torchvision torchaudio -y
+    conda create -n pytorch-gpu python=3.11 -y
+    conda activate pytorch-gpu
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
+    ```
+
+1.  🚨 NumPy compatibility error solution
+  - Run `fix_numpy_compatibility.bat`
+
 ## 🎮 Daily Use
 
 ##### Once setup is complete:
@@ -150,18 +196,7 @@
 - **Open Claude Desktop**: Your Obsidian vault is now searchable
 - **Start Searching**: Use natural language queries in Claude Desktop
 
-## 🚨 GPU not detected issue even though my GPU exists and supports CUDA
-- Make sure set `USE_GPU = True` in `config.py` to use GPU mode
-- Pytorch has two different versions. One is for CPU and the other is for GPU. Make sure you have the correct version installed. 
-- If you arn't sure, follow the instruction below:
-  - Install [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
-  - Run the following commands:
-    ```bash
-    pip uninstall torch torchvision torchaudio -y
-    conda create -n pytorch-gpu python=3.11 -y
-    conda activate pytorch-gpu
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-    python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
+
 
 ## Backup & Restore Milvus Data (Embedding Data)
 - 🟢 **Backup** : Run `backup-all-data.bat`
