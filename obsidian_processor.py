@@ -121,23 +121,8 @@ class ObsidianProcessor:
             
         self.last_resource_check = current_time
         
-        # SystemMonitor에서 시스템 상태 가져오기
-        status = self.monitor.get_system_status()
-        
-        # 상태 정보에서 CPU 및 메모리 정보 추출
-        if status:
-            cpu_percent = status.get('cpu_percent', 0)
-            memory_percent = status.get('memory_percent', 0)
-            self.embedding_progress["cpu_percent"] = cpu_percent
-            self.embedding_progress["memory_percent"] = memory_percent
-            
-            # 시스템 리소스 사용량에 따라 배치 크기 조절
-            if cpu_percent > self.max_cpu_percent or memory_percent > self.max_memory_percent:
-                # 리소스 사용량이 높으면 배치 크기 감소
-                self.dynamic_batch_size = max(self.min_batch_size, self.dynamic_batch_size // 2)
-            elif cpu_percent < self.max_cpu_percent * 0.7 and memory_percent < self.max_memory_percent * 0.7:
-                # 리소스 사용량이 낮으면 배치 크기 증가
-                self.dynamic_batch_size = min(self.max_batch_size, self.dynamic_batch_size * 2)
+        # ProgressMonitor의 _update_system_resources 메서드 호출
+        self.monitor._update_system_resources()
         
         return self.dynamic_batch_size
         
@@ -175,15 +160,15 @@ class ObsidianProcessor:
                 
                 # 예상 시간 포맷팅
                 if remaining_seconds < 60:
-                    time_str = f"{int(remaining_seconds)}sec"
+                    time_str = f"{int(remaining_seconds)}초"
                 elif remaining_seconds < 3600:
                     minutes = int(remaining_seconds / 60)
                     seconds = int(remaining_seconds % 60)
-                    time_str = f"{minutes}min {seconds}sec"
+                    time_str = f"{minutes}분 {seconds}초"
                 else:
                     hours = int(remaining_seconds / 3600)
                     minutes = int((remaining_seconds % 3600) / 60)
-                    time_str = f"{hours}hour {minutes}min"
+                    time_str = f"{hours}시간 {minutes}분"
                     
                 self.embedding_progress["estimated_time_remaining"] = time_str
             else:
@@ -205,11 +190,11 @@ class ObsidianProcessor:
         
     def start_monitoring(self):
         """모든 모니터링 시작"""
-        self.monitor.start_monitoring()
+        self.monitor.start()
         
     def stop_monitoring(self):
         """모든 모니터링 중지"""
-        self.monitor.stop_monitoring()
+        self.monitor.stop()
     
     def process_file(self, file_path):
         """단일 파일 처리 및 색인 (최적화 및 안전장치 추가)"""
