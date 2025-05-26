@@ -1,0 +1,30 @@
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 0, 0, 0),
+    prodvers=(1, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '040904B0',
+        [
+          StringStruct('Jay Jeong', 'Obsidian-Milvus Project'),
+          StringStruct('FileDescription', 'Obsidian-Milvus-FastMCP Installer'),
+          StringStruct('FileVersion', '1.0.0'),
+          StringStruct('InternalName', 'ObsidianMilvusInstaller'),
+          StringStruct('LegalCopyright', 'MIT License'),
+          StringStruct('OriginalFilename', 'Obsidian_Milvus_Installer.exe'),
+          StringStruct('ProductName', 'Obsidian-Milvus-FastMCP Installer'),
+          StringStruct('ProductVersion', '1.0.0')
+        ]
+      )
+    ]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)

@@ -7,11 +7,11 @@ class InstallerThread(QtCore.QThread):
     log_added = QtCore.pyqtSignal(str)
     completed = QtCore.pyqtSignal(bool)
     
-    def __init__(self, install_dir, vault_dir, no_reboot=False):
+    def __init__(self, install_dir, vault_dir, resume=False):
         super().__init__()
         self.install_dir = install_dir
         self.vault_dir = vault_dir
-        self.no_reboot = no_reboot  # True if running in dev mode (skip actual reboot)
+        self.resume = resume
     
     def run(self):
         def log(msg): 
@@ -21,7 +21,9 @@ class InstallerThread(QtCore.QThread):
         def run_cmd(cmd, cwd=None, shell=False):
             """Run a command and return (result, output). `result` is subprocess.CompletedProcess or None on error."""
             try:
-                result = subprocess.run(cmd, shell=shell, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
+                result = subprocess.run(cmd, shell=shell, cwd=cwd, 
+                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
+                                        encoding='utf-8', errors='replace')
             except Exception as e:
                 return None, str(e)
             return result, result.stdout
@@ -40,7 +42,7 @@ class InstallerThread(QtCore.QThread):
                                                  "PyPDF2", "markdown", "beautifulsoup4", "python-dotenv", 
                                                  "watchdog", "psutil", "colorama", "pyyaml", "tqdm", "requests"]),
             ("Installing/Verifying Podman via winget", ["winget", "install", "-e", "--id", "RedHat.Podman", 
-                                              "--accept-package-agreements", "--accept-source-agreements"])
+                                                       "--accept-package-agreements", "--accept-source-agreements"])
         ]
         # Post-installation tasks (after reboot)
         tasks_post = [
@@ -49,105 +51,116 @@ class InstallerThread(QtCore.QThread):
         # Count total steps for progress percentage (including individual steps below)
         total_steps = len(tasks_pre) + len(tasks_post) + 8  # +8 for WSL enable (2), Ubuntu install, .env update, find_podman, reset, start_mcp, interactive
         
-        # Execute pre-reboot tasks
-        for desc, cmd in tasks_pre:
-            status(f"{desc}...")
-            res, output = run_cmd(cmd, cwd=None, shell=True)
+        if self.resume:
+            # Skip pre-reboot steps and continue from post-reboot setup
+            log("Resuming installation after reboot - continuing with post-reboot steps.")
+            status("Resuming installation after reboot...")
+            steps_done = len(tasks_pre) + 3  # pre-reboot tasks + 2 WSL feature steps + 1 Ubuntu install step
+            self.progress_changed.emit(int(steps_done * 100 / total_steps))
+        else:
+            # Execute pre-reboot tasks
+            for desc, cmd in tasks_pre:
+                status(f"{desc}...")
+                res, output = run_cmd(cmd, cwd=None, shell=True)
+                
+                # Special case for Podman installation via winget
+                if "Podman" in desc and res is not None and res.returncode != 0:
+                    # Check if the failure is because Podman is already installed
+                    if output and ("already installed" in output.lower() or "no available upgrade found" in output.lower()):
+                        log(f"✓ {desc} - Podman is already installed")
+                        steps_done += 1
+                        self.progress_changed.emit(int(steps_done * 100 / total_steps))
+                        continue
+                
+                # Normal case for all other commands
+                if res is None or res.returncode != 0:
+                    log(f"✖ {desc} failed")
+                    if output: 
+                        log(output.strip())
+                    self.completed.emit(False)
+                    return
+                log(f"✓ {desc} completed")
+                steps_done += 1
+                self.progress_changed.emit(int(steps_done * 100 / total_steps))
             
-            # Special case for Podman installation via winget
-            if "Podman" in desc and res is not None and res.returncode != 0:
-                # Check if the failure is because Podman is already installed
-                if output and ("already installed" in output.lower() or "no available upgrade found" in output.lower()):
-                    log(f"✓ {desc} - Podman is already installed")
-                    steps_done += 1
-                    self.progress_changed.emit(int(steps_done * 100 / total_steps))
-                    continue
+            # Enable WSL optional features via DISM
+            status("Enabling Virtual Machine Platform (for WSL 2)...")
+            res = subprocess.run(["dism.exe", "/online", "/enable-feature", "/featurename:VirtualMachinePlatform", "/all", "/norestart"],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
+            output = res.stdout.strip()
+            if res.returncode not in (0, 3010):
+                log("✖ Enabling Virtual Machine Platform failed")
+                if output: 
+                    log(output)
+                self.completed.emit(False)
+                return
+            log("✓ Virtual Machine Platform enabled")
+            if res.returncode == 3010:
+                reboot_required = True
+            steps_done += 1
+            self.progress_changed.emit(int(steps_done * 100 / total_steps))
             
-            # Normal case for all other commands
-            if res is None or res.returncode != 0:
-                log(f"✖ {desc} failed")
+            status("Enabling Windows Subsystem for Linux...")
+            res = subprocess.run(["dism.exe", "/online", "/enable-feature", "/featurename:Microsoft-Windows-Subsystem-Linux", "/all", "/norestart"],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
+            output = res.stdout.strip()
+            if res.returncode not in (0, 3010):
+                log("✖ Enabling Windows Subsystem for Linux failed")
+                if output: 
+                    log(output)
+                self.completed.emit(False)
+                return
+            log("✓ Windows Subsystem for Linux enabled")
+            if res.returncode == 3010:
+                reboot_required = True
+            steps_done += 1
+            self.progress_changed.emit(int(steps_done * 100 / total_steps))
+            
+            status("Installing/Verifying Ubuntu 22.04 LTS via winget...")
+            res, output = run_cmd(["winget", "install", "-e", "--id", "Canonical.Ubuntu.2204", 
+                                   "--accept-package-agreements", "--accept-source-agreements"], shell=True)
+            
+            # Check if Ubuntu is already installed (similar to Podman check)
+            if (res is None or res.returncode != 0) and output and ("already installed" in output.lower() or "no available upgrade found" in output.lower()):
+                log("✓ Ubuntu 22.04 LTS is already installed (WSL)")
+                steps_done += 1
+                self.progress_changed.emit(int(steps_done * 100 / total_steps))
+            elif res is None or res.returncode != 0:
+                log("✖ Installing Ubuntu 22.04 via winget failed")
                 if output: 
                     log(output.strip())
                 self.completed.emit(False)
                 return
-            log(f"✓ {desc} completed")
-            steps_done += 1
-            self.progress_changed.emit(int(steps_done * 100 / total_steps))
-        
-        # Enable WSL optional features via DISM
-        status("Enabling Virtual Machine Platform (for WSL 2)...")
-        res = subprocess.run(["dism.exe", "/online", "/enable-feature", "/featurename:VirtualMachinePlatform", "/all", "/norestart"],
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
-        output = res.stdout.strip()
-        if res.returncode not in (0, 3010):
-            log("✖ Enabling Virtual Machine Platform failed")
-            if output: 
-                log(output)
-            self.completed.emit(False)
-            return
-        log("✓ Virtual Machine Platform enabled")
-        if res.returncode == 3010:
-            reboot_required = True
-        steps_done += 1
-        self.progress_changed.emit(int(steps_done * 100 / total_steps))
-        
-        status("Enabling Windows Subsystem for Linux...")
-        res = subprocess.run(["dism.exe", "/online", "/enable-feature", "/featurename:Microsoft-Windows-Subsystem-Linux", "/all", "/norestart"],
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
-        output = res.stdout.strip()
-        if res.returncode not in (0, 3010):
-            log("✖ Enabling Windows Subsystem for Linux failed")
-            if output: 
-                log(output)
-            self.completed.emit(False)
-            return
-        log("✓ Windows Subsystem for Linux enabled")
-        if res.returncode == 3010:
-            reboot_required = True
-        steps_done += 1
-        self.progress_changed.emit(int(steps_done * 100 / total_steps))
-        
-        status("Installing/Verifying Ubuntu 22.04 LTS via winget...")
-        res, output = run_cmd(["winget", "install", "-e", "--id", "Canonical.Ubuntu.2204", 
-                               "--accept-package-agreements", "--accept-source-agreements"], shell=True)
-        
-        # Check if Ubuntu is already installed (similar to Podman check)
-        if (res is None or res.returncode != 0) and output and ("already installed" in output.lower() or "no available upgrade found" in output.lower()):
-            log("✓ Ubuntu 22.04 LTS is already installed (WSL)")
-            steps_done += 1
-            self.progress_changed.emit(int(steps_done * 100 / total_steps))
-        elif res is None or res.returncode != 0:
-            log("✖ Installing Ubuntu 22.04 via winget failed")
-            if output: 
-                log(output.strip())
-            self.completed.emit(False)
-            return
-        else:
-            log("✓ Ubuntu 22.04 LTS installed (WSL)")
-            steps_done += 1
-            self.progress_changed.emit(int(steps_done * 100 / total_steps))
-        
-        # Handle reboot if required
-        if reboot_required and not self.no_reboot:
-            log("System restart will occur now to complete WSL installation...")
-            try:
-                # Schedule this installer to resume after reboot with appropriate parameters
-                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\RunOnce", 0, winreg.KEY_SET_VALUE)
-                exe_path = sys.executable  # path to this installer EXE
-                run_cmd_line = f"\"{exe_path}\" --resume \"{self.install_dir}\" \"{self.vault_dir}\""
-                winreg.SetValueEx(key, "ObsidianFastMCPInstaller", 0, winreg.REG_SZ, run_cmd_line)
-                winreg.CloseKey(key)
-            except Exception as e:
-                log(f"Warning: could not schedule auto-resume ({e})")
-            # Initiate system reboot
-            try:
-                subprocess.Popen(["shutdown", "/r", "/t", "5"])
-            except Exception as e:
-                log(f"Please reboot your system manually to continue installation (error scheduling reboot: {e})")
-            # Do not emit completion (installer will close on reboot)
-            return
-        elif reboot_required and self.no_reboot:
-            log("Reboot skipped (developer mode) – continuing installation without reboot.")
+            else:
+                log("✓ Ubuntu 22.04 LTS installed (WSL)")
+                steps_done += 1
+                self.progress_changed.emit(int(steps_done * 100 / total_steps))
+            
+            # Handle reboot if required
+            if reboot_required:
+                log("System restart will occur now to complete WSL installation...")
+                try:
+                    # Schedule this installer to resume after reboot with appropriate parameters
+                    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\RunOnce", 0, winreg.KEY_SET_VALUE)
+                    exe_path = sys.executable  # path to this installer EXE
+                    inst_path = self.install_dir
+                    vault_path = self.vault_dir
+                    if inst_path.endswith("\\"): 
+                        inst_path += "\\"
+                    if vault_path.endswith("\\"): 
+                        vault_path += "\\"
+                    run_cmd_line = f"\"{exe_path}\" --resume \"{inst_path}\" \"{vault_path}\""
+                    winreg.SetValueEx(key, "ObsidianFastMCPInstaller", 0, winreg.REG_SZ, run_cmd_line)
+                    winreg.CloseKey(key)
+                except Exception as e:
+                    log(f"Warning: could not schedule auto-resume ({e})")
+                # Initiate system reboot
+                try:
+                    subprocess.Popen(["shutdown", "/r", "/t", "5"])
+                except Exception as e:
+                    log(f"Please reboot your system manually to continue installation (error scheduling reboot: {e})")
+                # Installer will exit here due to reboot
+                return
         
         # Execute post-reboot tasks
         for desc, cmd in tasks_post:
@@ -192,7 +205,8 @@ class InstallerThread(QtCore.QThread):
         status("Detecting Podman path...")
         try:
             bat_path = os.path.join(self.install_dir, "find_podman_path.bat")
-            proc = subprocess.Popen(bat_path, cwd=self.install_dir, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
+            proc = subprocess.Popen(bat_path, cwd=self.install_dir, shell=True, 
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
             podman_output = proc.communicate(timeout=10)[0]
         except subprocess.TimeoutExpired:
             proc.kill()
@@ -203,7 +217,7 @@ class InstallerThread(QtCore.QThread):
             for line in podman_output.splitlines():
                 line = line.strip()
                 if line.startswith("1.") and "podman.exe" in line:
-                    # The first result path after "1." 
+                    # The first result path after "1."
                     try:
                         _, path = line.split(" ", 1)
                     except ValueError:
@@ -224,21 +238,17 @@ class InstallerThread(QtCore.QThread):
             log("✓ Podman path detection skipped (timeout or no output)")
         steps_done += 1
         self.progress_changed.emit(int(steps_done * 100 / total_steps))
+        
         status("Running complete-podman-reset_noask.bat...")
         try:
             # Execute the reset batch file but don't try to capture all output directly
             # This avoids encoding issues with certain characters
             bat_path = os.path.join(self.install_dir, "complete-podman-reset_noask.bat")
-            
-            # Just run the batch file and wait for completion rather than streaming all output
-            # Use run_cmd which already has encoding='utf-8', errors='replace'
+            # Run the batch file and wait for completion
             res, output = run_cmd(bat_path, cwd=self.install_dir, shell=True)
-            
             # Log a summary of the output rather than every line
             if output:
-                # Split the output into lines and log a reasonable number of them
                 lines = output.strip().split('\n')
-                # Log first few lines and last few lines to avoid excessive output
                 for line in lines[:5]:
                     if line.strip():
                         log(line.strip())
@@ -247,45 +257,34 @@ class InstallerThread(QtCore.QThread):
                 for line in lines[-5:]:
                     if line.strip():
                         log(line.strip())
-            
             if res is None or res.returncode != 0:
                 log(f"Warning: reset script completed with non-zero code {res.returncode if res else 'unknown'}")
                 # Continue anyway since this might still work
-            
             log("✓ Podman environment reset completed")
         except Exception as e:
             log(f"✖ complete-podman-reset_noask.bat failed ({e})")
             # Don't fail the installation, just log the error and continue
             log("Continuing installation despite reset script error...")
-            # self.completed.emit(False)
-            # return
         steps_done += 1
         self.progress_changed.emit(int(steps_done * 100 / total_steps))
         
         status("Preparing directories for Milvus...")
         try:
-            # Create volumes directory structure first
+            # Create volumes directory structure
             volumes_dir = os.path.join(self.install_dir, "volumes")
             etcd_dir = os.path.join(volumes_dir, "etcd")
             minio_dir = os.path.join(volumes_dir, "minio")
             os.makedirs(etcd_dir, exist_ok=True)
             os.makedirs(minio_dir, exist_ok=True)
             log("✓ Created required volume directories")
-            
             # Fix config file to use relative paths instead of absolute paths
             docker_compose_file = os.path.join(self.install_dir, "docker-compose.yml")
             if os.path.exists(docker_compose_file):
                 with open(docker_compose_file, 'r', encoding='utf-8') as f:
                     content = f.read()
-                
-                # Replace absolute paths with relative paths
-                # Use './volumes/' instead of any absolute path
                 import re
-                # Pattern to match absolute paths to the volumes directory
                 pattern = r'(["\']?)/[\w/\\:_\.-]+?(/volumes/[\w/\.-]+?)(["\']?)'
-                # Replace with relative path
                 updated_content = re.sub(pattern, r'\1./\2\3', content)
-                
                 with open(docker_compose_file, 'w', encoding='utf-8') as f:
                     f.write(updated_content)
                 log("✓ Updated docker-compose.yml with correct paths")
@@ -308,8 +307,9 @@ class InstallerThread(QtCore.QThread):
             # Run setup.py and feed menu choices 1-5
             setup_py = os.path.join(self.install_dir, "setup.py")
             proc = subprocess.Popen(["python", setup_py], cwd=self.install_dir,
-                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
-            proc.communicate("1\n2\n3\n4\n5\n\n", timeout=300)  # 5 min timeout for all tests
+                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, encoding='utf-8', errors='replace')
+            proc.communicate("1\n2\n3\n4\n5\n\n", timeout=300)  # up to 5 minutes for all tests
             log("✓ Interactive setup & testing (options 1–5) completed")
         except Exception as e:
             log(f"✖ Interactive setup tool did not finish cleanly ({e}) – see console for details.")
@@ -365,21 +365,10 @@ class IntroPage(QtWidgets.QWizardPage):
         before_layout = QtWidgets.QVBoxLayout(before_group)
         
         # Create a label with larger, red text for the Anaconda notice
-        anaconda_label = QtWidgets.QLabel(
-            '<span style="font-size: 12pt; color: red; font-weight: bold;">Please ensure Anaconda (Conda) is installed on your system.</span>'
-        )
-        anaconda_label.setTextFormat(QtCore.Qt.RichText)
+        anaconda_label = QtWidgets.QLabel("⚠ <b>Please ensure Anaconda or Miniconda is installed before proceeding.</b>")
+        anaconda_label.setStyleSheet("color: red;")
         anaconda_label.setWordWrap(True)
         before_layout.addWidget(anaconda_label)
-        
-        # Regular text for download link
-        download_label = QtWidgets.QLabel(
-            'Download: <a href="https://www.anaconda.com/download">anaconda.com/download</a> – install with default settings and be sure to <b>add Anaconda to PATH</b> when prompted.'
-        )
-        download_label.setTextFormat(QtCore.Qt.RichText)
-        download_label.setOpenExternalLinks(True)
-        download_label.setWordWrap(True)
-        before_layout.addWidget(download_label)
         
         layout.addWidget(welcome_label)
         layout.addWidget(desc_label)
@@ -528,12 +517,11 @@ class SummaryPage(QtWidgets.QWizardPage):
 
 
 class ProgressPage(QtWidgets.QWizardPage):
-    def __init__(self, install_dir, vault_dir, no_reboot):
+    def __init__(self, install_dir, vault_dir):
         super().__init__()
         self.thread = None
         self.install_dir = install_dir
         self.vault_dir = vault_dir
-        self.no_reboot = no_reboot
         self.setTitle("Installing Obsidian-Milvus-FastMCP")
         
         layout = QtWidgets.QVBoxLayout(self)
@@ -562,7 +550,8 @@ class ProgressPage(QtWidgets.QWizardPage):
         # Start the installation thread
         install_dir = self.field("installDir") or self.install_dir
         vault_dir = self.field("vaultDir") or self.vault_dir
-        self.thread = InstallerThread(install_dir, vault_dir, no_reboot=self.wizard().no_reboot_mode)
+        resume_mode = getattr(wizard, 'resume_mode', False)
+        self.thread = InstallerThread(install_dir, vault_dir, resume=resume_mode)
         self.thread.progress_changed.connect(self.progress_bar.setValue)
         self.thread.status_changed.connect(self.status_label.setText)
         self.thread.log_added.connect(lambda txt: self.log_edit.appendPlainText(txt))
@@ -629,14 +618,14 @@ class FinalPage(QtWidgets.QWizardPage):
         )
         benefits_label.setWordWrap(True)
         layout.addWidget(benefits_label)
-        layout.addSpacing(10)  # Add some spacing
+        layout.addSpacing(10)
         
         # Warning about launch time (in red)
         warning_label = QtWidgets.QLabel(
             "Launching the server takes approximately 5-7 minutes depending on your PC performance.\n"
             "Wait for it to finish before you start Claude Desktop"
         )
-        warning_label.setStyleSheet("color: red;")  # Red color
+        warning_label.setStyleSheet("color: red;")
         warning_label.setWordWrap(True)
         warning_label.setFont(QtGui.QFont(warning_label.font().family(), weight=QtGui.QFont.Bold))
         layout.addWidget(warning_label)
@@ -645,9 +634,9 @@ class FinalPage(QtWidgets.QWizardPage):
 
 
 class InstallerWizard(QtWidgets.QWizard):
-    def __init__(self, resume_mode=False, install_dir="", vault_dir="", no_reboot=False):
+    def __init__(self, resume_mode=False, install_dir="", vault_dir=""):
         super().__init__()
-        self.no_reboot_mode = no_reboot
+        self.resume_mode = resume_mode
         self.setWindowTitle("Obsidian-Milvus-FastMCP Setup")
         # Use ClassicStyle to avoid modern header banner
         self.setWizardStyle(QtWidgets.QWizard.ClassicStyle)
@@ -655,7 +644,7 @@ class InstallerWizard(QtWidgets.QWizard):
         
         if resume_mode:
             # In resume mode, skip straight to progress and final pages
-            progress_page = ProgressPage(install_dir, vault_dir, no_reboot)
+            progress_page = ProgressPage(install_dir, vault_dir)
             final_page = FinalPage()
             self.addPage(progress_page)
             self.addPage(final_page)
@@ -664,7 +653,7 @@ class InstallerWizard(QtWidgets.QWizard):
             path_page = PathPage()
             vault_page = VaultPage()
             summary_page = SummaryPage()
-            progress_page = ProgressPage("", "", no_reboot)
+            progress_page = ProgressPage("", "")
             final_page = FinalPage()
             self.addPage(intro_page)
             self.addPage(path_page)
@@ -675,7 +664,7 @@ class InstallerWizard(QtWidgets.QWizard):
             # Set the Next button text on the summary page to "Install"
             # (Will be done in SummaryPage.initializePage)
         
-        # Style navigation buttons: Next button blue when enabled, white/grey when disabled; Back as outline
+        # Style navigation buttons
         next_btn = self.button(QtWidgets.QWizard.NextButton)
         back_btn = self.button(QtWidgets.QWizard.BackButton)
         cancel_btn = self.button(QtWidgets.QWizard.CancelButton)
@@ -698,8 +687,6 @@ if __name__ == "__main__":
     font.setPointSize(font.pointSize() + 1)
     app.setFont(font)
     
-    # Determine if running as frozen EXE or not (for reboot handling)
-    no_reboot = not hasattr(sys, "frozen")
     resume = False
     inst_dir = ""
     vault_dir = ""
@@ -709,7 +696,13 @@ if __name__ == "__main__":
         if len(sys.argv) >= 4:
             inst_dir = sys.argv[2]
             vault_dir = sys.argv[3]
-    wizard = InstallerWizard(resume_mode=resume, install_dir=inst_dir, vault_dir=vault_dir, no_reboot=no_reboot)
+    # Restore working directory to installation path if resuming
+    if resume and inst_dir:
+        try:
+            os.chdir(inst_dir)
+        except Exception as e:
+            print(f"Warning: could not set working directory to {inst_dir}: {e}")
+    wizard = InstallerWizard(resume_mode=resume, install_dir=inst_dir, vault_dir=vault_dir)
     wizard.setMinimumSize(900, 600)
     wizard.show()
     sys.exit(app.exec_())

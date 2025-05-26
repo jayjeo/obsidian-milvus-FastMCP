@@ -1,0 +1,8 @@
+
+pip install pyinstaller
+
+C:\Users\acube\AppData\Local\Programs\Python\Python313\python.exe -m pip uninstall pathlib
+
+pyinstaller --onefile --windowed --name ObsidianMilvusInstaller --uac-admin --version-file=version_info.txt --icon=installer.ico  installer_ui.py
+
+
