@@ -85,7 +85,15 @@
     ```
 
 4. 🚨 NumPy compatibility error solution
-  - Run `fix_numpy_compatibility.bat`
+  - Run following codes in CMD:
+  
+    ```bash
+    conda --version
+    conda remove -y numpy sentence-transformers
+    python -m pip uninstall -y numpy sentence-transformers
+    conda install python=3.12
+    conda install -y numpy=1.26.4
+    conda install -y -c conda-forge "sentence-transformers>=2.2.2"
 
 ### Manual Installation
 
@@ -197,8 +205,16 @@
     python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
     ```
 
-1.   🚨 NumPy compatibility error solution
-  - Run `fix_numpy_compatibility.bat`
+12.   🚨 NumPy compatibility error solution
+  - Run following codes in CMD:
+  
+    ```bash
+    conda --version
+    conda remove -y numpy sentence-transformers
+    python -m pip uninstall -y numpy sentence-transformers
+    conda install python=3.12
+    conda install -y numpy=1.26.4
+    conda install -y -c conda-forge "sentence-transformers>=2.2.2"
 
 ## 🎮 Daily Use
 
