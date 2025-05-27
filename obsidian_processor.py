@@ -56,14 +56,31 @@ class ObsidianProcessor:
             "current_batch_size": 0
         }
         
-        # 시스템 리소스 사용량 제한을 위한 설정
+        # ENHANCED: 시스템 리소스 사용량 제한 및 동적 최적화 설정
         self.max_cpu_percent = 85
         self.max_memory_percent = 80
         self.resource_check_interval = 2
         self.last_resource_check = 0
-        self.dynamic_batch_size = config.BATCH_SIZE * 2
-        self.min_batch_size = max(1, config.BATCH_SIZE // 2)
-        self.max_batch_size = config.BATCH_SIZE * 4
+        
+        # 동적 배치 크기: embedding_model에서 최적값 가져오기
+        try:
+            if hasattr(self.embedding_model, 'batch_optimizer'):
+                self.dynamic_batch_size = self.embedding_model.batch_optimizer.current_batch_size
+                self.min_batch_size = self.embedding_model.batch_optimizer.min_batch_size
+                self.max_batch_size = self.embedding_model.batch_optimizer.max_batch_size
+                print(f"🚀 Using optimized batch sizes from embedding model: {self.dynamic_batch_size} (range: {self.min_batch_size}-{self.max_batch_size})")
+            else:
+                # 폴백: 기본 설정
+                self.dynamic_batch_size = getattr(config, 'BATCH_SIZE', 32)
+                self.min_batch_size = max(1, self.dynamic_batch_size // 2)
+                self.max_batch_size = self.dynamic_batch_size * 4
+                print(f"⚠️ Using fallback batch sizes: {self.dynamic_batch_size} (range: {self.min_batch_size}-{self.max_batch_size})")
+        except Exception as e:
+            print(f"Error initializing dynamic batch sizes: {e}")
+            # 안전 폴백
+            self.dynamic_batch_size = 32
+            self.min_batch_size = 8
+            self.max_batch_size = 128
         
         # 진행률 및 리소스 모니터링 관리자 생성
         self.monitor = ProgressMonitor(self)
@@ -113,7 +130,7 @@ class ObsidianProcessor:
         return bar
         
     def _check_system_resources(self):
-        """시스템 리소스 사용량 확인 및 배치 크기 조절"""
+        """시스템 리소스 사용량 확인 및 동적 배치 크기 조절 (ENHANCED)"""
         current_time = time.time()
         
         if current_time - self.last_resource_check < self.resource_check_interval:
@@ -121,8 +138,37 @@ class ObsidianProcessor:
             
         self.last_resource_check = current_time
         
-        # ProgressMonitor의 _update_system_resources 메서드 호출
-        self.monitor._update_system_resources()
+        try:
+            # ENHANCED: embedding_model의 동적 배치 최적화 사용
+            if hasattr(self.embedding_model, 'system_monitor'):
+                system_status = self.embedding_model.system_monitor.get_system_status()
+                memory_percent = system_status.get('memory_percent', 50)
+                cpu_percent = system_status.get('cpu_percent', 50)
+                gpu_percent = system_status.get('gpu_percent', 0)
+                
+                # embedding_model의 batch_optimizer로 최적 배치 크기 결정
+                if hasattr(self.embedding_model, 'batch_optimizer'):
+                    optimal_batch = self.embedding_model.batch_optimizer.adjust_batch_size({
+                        'memory_percent': memory_percent,
+                        'cpu_percent': cpu_percent,
+                        'gpu_percent': gpu_percent,
+                        'processing_time': 1.0
+                    })
+                    
+                    # 동적 배치 크기 업데이트
+                    self.dynamic_batch_size = optimal_batch
+                    
+                    # 진행률 정보 업데이트
+                    self.embedding_progress["current_batch_size"] = self.dynamic_batch_size
+                    
+                    print(f"📈 Dynamic batch size adjusted to: {self.dynamic_batch_size} (Memory: {memory_percent:.1f}%, GPU: {gpu_percent:.1f}%)")
+            
+            # ProgressMonitor 업데이트
+            if hasattr(self.monitor, '_update_system_resources'):
+                self.monitor._update_system_resources()
+                
+        except Exception as e:
+            print(f"Error in enhanced system resource check: {e}")
         
         return self.dynamic_batch_size
         
@@ -258,28 +304,37 @@ class ObsidianProcessor:
                     # 메모리 사용량 확인
                     self._check_memory_usage("Before embedding generation")
                     
-                    # 청크에 대한 임베딩 생성
-                    vectors = []
+                    # ENHANCED: 청크에 대한 배치 임베딩 생성 (속도 대폭 개선!)
+                    print(f"Processing {len(chunks)} chunks with enhanced batch embedding...")
                     
-                    # 모든 청크를 개별적으로 처리
-                    for i, chunk in enumerate(chunks):
-                        try:
-                            # 메모리 사용량 체크 및 조절
-                            if i > 0 and i % 5 == 0:
-                                self._check_memory_usage(f"Processing chunk {i}/{len(chunks)}")
-                                
-                            # 벡터 임베딩 생성
-                            vector = self.embedding_model.get_embedding(chunk)
-                            vectors.append(vector)
+                    try:
+                        # 배치 처리로 모든 청크를 한번에 처리 (개별 처리보다 5-10배 빠름)
+                        vectors = self.embedding_model.get_embeddings_batch_adaptive(chunks)
+                        
+                        if not vectors or len(vectors) != len(chunks):
+                            print(f"Warning: Batch embedding failed, falling back to individual processing")
+                            # 폴백: 개별 처리
+                            vectors = []
+                            for i, chunk in enumerate(chunks):
+                                try:
+                                    vector = self.embedding_model.get_embedding(chunk)
+                                    vectors.append(vector)
+                                except Exception as e:
+                                    print(f"Error embedding chunk {i}: {e}")
+                                    vectors.append([0] * config.VECTOR_DIM)
+                        else:
+                            print(f"✅ Successfully processed {len(chunks)} chunks with batch embedding")
                             
-                            # 진행 상황 업데이트 메시지 출력 제거
-                            # if i > 0 and i % 5 == 0:
-                            #     print(f"Processed {i}/{len(chunks)} chunks")
-                                
-                        except Exception as e:
-                            print(f"Error embedding chunk {i}: {e}")
-                            # 오류 발생 시 빈 벡터 추가 (처리 계속 진행)
-                            vectors.append([0] * config.VECTOR_DIM)
+                    except Exception as e:
+                        print(f"Error in batch embedding, using individual fallback: {e}")
+                        # 완전 폴백: 개별 처리
+                        vectors = []
+                        for chunk in chunks:
+                            try:
+                                vector = self.embedding_model.get_embedding(chunk)
+                                vectors.append(vector)
+                            except Exception:
+                                vectors.append([0] * config.VECTOR_DIM)
                     
                     # 메타데이터 매핑 준비
                     chunk_file_map = [metadata] * len(chunks)
