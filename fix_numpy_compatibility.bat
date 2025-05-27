@@ -1,6 +1,6 @@
 @echo off
 echo ================================================================
-echo          Improved NumPy Compatibility Fix
+echo          NumPy Compatibility Fix using Conda
 echo ================================================================
 echo.
 
@@ -9,9 +9,10 @@ cd /d "%~dp0"
 echo Current directory: %CD%
 echo.
 
-echo This script will fix the NumPy compatibility issue by:
-echo 1. Installing pre-compiled NumPy wheel (no compilation needed)
-echo 2. Reinstalling sentence-transformers with the compatible NumPy
+echo This script will fix the NumPy compatibility issue using Conda by:
+echo 1. Uninstalling current NumPy and sentence-transformers
+echo 2. Installing compatible NumPy version via conda
+echo 3. Installing sentence-transformers via conda/pip
 echo.
 
 echo Press any key to continue or Ctrl+C to cancel...
@@ -19,38 +20,48 @@ pause
 
 echo.
 echo ================================================================
-echo Step 1: Uninstalling current NumPy and sentence-transformers
+echo Step 1: Checking conda installation
 echo ================================================================
 
-python -m pip uninstall -y numpy sentence-transformers
+conda --version
 if %errorlevel% neq 0 (
-    echo Warning: Uninstall may have had issues, continuing...
+    echo ERROR: Conda is not installed or not in PATH
+    echo.
+    echo Please install Anaconda or Miniconda first:
+    echo - Anaconda: https://www.anaconda.com/products/distribution
+    echo - Miniconda: https://docs.conda.io/en/latest/miniconda.html
+    echo.
+    pause
+    exit /b 1
 )
 
 echo.
 echo ================================================================
-echo Step 2: Installing pre-compiled NumPy (avoiding compilation)
+echo Step 2: Uninstalling current packages
 echo ================================================================
 
-REM Try to install pre-compiled wheel first
-python -m pip install --only-binary=all "numpy>=1.21.0,<2.0.0"
+echo Removing with pip first...
+python -m pip uninstall -y numpy sentence-transformers
+
+echo Removing with conda...
+conda remove -y numpy sentence-transformers
+
+echo.
+echo ================================================================
+echo Step 3: Installing NumPy via conda
+echo ================================================================
+
+conda install -y numpy=1.26.4
 if %errorlevel% neq 0 (
     echo.
-    echo Pre-compiled wheel failed, trying specific version...
-    python -m pip install --only-binary=all numpy==1.26.4
+    echo Trying with conda-forge channel...
+    conda install -y -c conda-forge numpy=1.26.4
     if %errorlevel% neq 0 (
         echo.
-        echo Trying alternative approach with pip cache refresh...
-        python -m pip install --upgrade pip
-        python -m pip cache purge
-        python -m pip install --only-binary=all --force-reinstall numpy==1.26.4
+        echo Trying flexible version constraint...
+        conda install -y "numpy>=1.21.0,<2.0.0"
         if %errorlevel% neq 0 (
-            echo.
-            echo ERROR: All NumPy installation methods failed
-            echo.
-            echo SOLUTION: Please install Microsoft Visual Studio Build Tools
-            echo Download from: https://visualstudio.microsoft.com/visual-cpp-build-tools/
-            echo Or install a conda distribution like Anaconda/Miniconda
+            echo ERROR: Failed to install NumPy via conda
             pause
             exit /b 1
         )
@@ -59,31 +70,46 @@ if %errorlevel% neq 0 (
 
 echo.
 echo ================================================================
-echo Step 3: Reinstalling sentence-transformers
+echo Step 4: Installing sentence-transformers
 echo ================================================================
 
-python -m pip install --no-cache-dir sentence-transformers>=2.2.2
+echo Trying conda first...
+conda install -y sentence-transformers
 if %errorlevel% neq 0 (
-    echo ERROR: Failed to install sentence-transformers
-    pause
-    exit /b 1
+    echo.
+    echo Conda install failed, trying conda-forge...
+    conda install -y -c conda-forge sentence-transformers
+    if %errorlevel% neq 0 (
+        echo.
+        echo Conda methods failed, using pip with conda environment...
+        python -m pip install --no-cache-dir sentence-transformers>=2.2.2
+        if %errorlevel% neq 0 (
+            echo ERROR: Failed to install sentence-transformers
+            pause
+            exit /b 1
+        )
+    )
 )
 
 echo.
 echo ================================================================
-echo Step 4: Verifying installation
+echo Step 5: Verifying installation
 echo ================================================================
 
 python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
 python -c "import sentence_transformers; print('Sentence Transformers imported successfully')"
+python -c "import numpy; print(f'NumPy install location: {numpy.__file__}')"
 
 if %errorlevel% equ 0 (
     echo.
     echo ================================================================
-    echo SUCCESS: NumPy compatibility issue fixed!
+    echo SUCCESS: NumPy compatibility issue fixed with Conda!
     echo ================================================================
     echo.
     echo You can now run the incremental embedding option again.
+    echo.
+    echo Conda environment info:
+    conda info --envs
 ) else (
     echo.
     echo ERROR: Installation verification failed
