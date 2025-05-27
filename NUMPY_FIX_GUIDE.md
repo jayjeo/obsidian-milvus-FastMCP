@@ -1,94 +1,57 @@
-# NumPy Compatibility Fix Guide
+# NumPy Compatibility Notice
 
-## Problem Description
+## Important Update
 
-If you encounter an error like:
+This guide is no longer relevant as the compatibility issue has been resolved.
+
+## Current Status
+
+The latest version of `sentence-transformers` now fully supports NumPy 2.x. There is no longer any need to downgrade NumPy or perform special installation steps.
+
+If you previously saw an error like this:
 ```
 A module that was compiled using NumPy 1.x cannot be run in
 NumPy 2.2.6 as it may crash. To support both 1.x and 2.x
 versions of NumPy, modules must be compiled with NumPy 2.0.
 ```
 
-This happens because `sentence-transformers` was compiled with NumPy 1.x but your system has NumPy 2.x installed, which is incompatible.
+This error should no longer occur with the latest versions.
 
-## Quick Solution
+## What Changed
 
-1. **Run the automatic fix (Recommended)**:
+- **sentence-transformers** has been updated to support NumPy 2.x API
+- The restrictions on NumPy versions have been removed from requirements.txt
+- The fix_numpy_compatibility.bat script is no longer needed
+- All compatibility warnings have been removed from the codebase
+
+## Recommended Actions
+
+If you are updating from an older version:
+
+1. **Update your packages**:
    ```batch
-   fix_numpy_compatibility.bat
+   python -m pip install -r requirements.txt
    ```
 
-2. **Or run the diagnostic script**:
+2. **Run the normal diagnostic tool if needed**:
    ```batch
    diagnose_and_fix.bat
    ```
 
-## Manual Solution
-
-If the automatic fix doesn't work, follow these steps:
-
-1. **Uninstall incompatible packages**:
-   ```batch
-   python -m pip uninstall -y numpy sentence-transformers
-   ```
-
-2. **Install compatible NumPy version**:
-   ```batch
-   python -m pip install "numpy<2,>=1.21.0"
-   ```
-
-3. **Reinstall sentence-transformers**:
-   ```batch
-   python -m pip install --no-cache-dir sentence-transformers>=2.2.2
-   ```
-
-4. **Verify the fix**:
-   ```batch
-   python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
-   python -c "import sentence_transformers; print('Success!')"
-   ```
-
-## Why This Happens
-
-- **sentence-transformers** depends on NumPy for tensor operations
-- The current version was compiled against NumPy 1.x API
-- NumPy 2.x has breaking changes that make it incompatible
-- Until sentence-transformers is recompiled for NumPy 2.x, we need to use NumPy 1.x
-
-## Prevention
-
-The `requirements.txt` file has been updated to prevent this issue:
-```
-# NumPy compatibility fix (must be before other packages)
-numpy<2,>=1.21.0
-```
-
-When installing packages, always use:
-```batch
-python -m pip install -r requirements.txt
-```
-
 ## Verification
 
-After fixing, run option 3 (incremental embedding) to test:
+To verify everything is working correctly:
 ```batch
-run-main.bat
-# Choose option 3
+python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
+python -c "import sentence_transformers; print('Success!')"
 ```
-
-## Additional Help
-
-- Run `diagnose_and_fix.bat` for comprehensive environment checking
-- Check Python version compatibility
-- Ensure all packages are installed in the same environment
 
 ## Technical Details
 
-- **Compatible NumPy versions**: 1.21.0 to 1.26.4
-- **Incompatible NumPy versions**: 2.0.0 and above
+- **Compatible NumPy versions**: All versions 1.21.0 and above (including 2.x)
 - **sentence-transformers version**: 2.2.2 or higher
 - **Python requirement**: 3.8 or higher
 
 ---
 
-*This issue is common when NumPy 2.x is installed by default in newer Python environments. The fix is simple and permanent once applied correctly.*
+*This guide is kept for historical reference only. The NumPy compatibility issue has been permanently resolved.*

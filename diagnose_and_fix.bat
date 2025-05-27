@@ -27,14 +27,9 @@ python -c "import numpy; print(f'NumPy version: {numpy.__version__}')" 2>nul
 if %errorlevel% neq 0 (
     echo NumPy not installed or import error
 ) else (
-    python -c "import numpy; major = int(numpy.__version__.split('.')[0]); print(f'Major version: {major}'); exit(1 if major >= 2 else 0)"
-    if %errorlevel% equ 1 (
-        echo [WARNING] NumPy 2.x detected - compatibility issue found!
-        set "NUMPY_FIX_NEEDED=1"
-    ) else (
-        echo [OK] NumPy 1.x detected - compatible version
-        set "NUMPY_FIX_NEEDED=0"
-    )
+    python -c "import numpy; print(f'NumPy version: {numpy.__version__}');"
+    echo [OK] NumPy detected - version is compatible
+    set "NUMPY_FIX_NEEDED=0"
 )
 
 echo.
@@ -92,34 +87,8 @@ echo ================================================================
 echo Step 4: Auto-Fix Recommendations
 echo ================================================================
 
-if "%NUMPY_FIX_NEEDED%"=="1" (
-    echo [ACTION REQUIRED] NumPy compatibility fix needed
-    echo.
-    echo Would you like to automatically fix the NumPy compatibility issue?
-    echo This will:
-    echo - Downgrade NumPy to version 1.26.4
-    echo - Reinstall sentence-transformers with compatible NumPy
-    echo.
-    set /p fix_choice="Apply fix? (y/n): "
-    if /i "!fix_choice!"=="y" (
-        echo.
-        echo Applying NumPy compatibility fix...
-        call fix_numpy_compatibility.bat
-        echo.
-        echo Re-testing after fix...
-        python -c "
-try:
-    from embeddings import EmbeddingModel
-    print('[SUCCESS] EmbeddingModel now works correctly!')
-except Exception as e:
-    print(f'[ERROR] Still having issues: {e}')
-"
-    ) else (
-        echo Fix skipped. Please run 'fix_numpy_compatibility.bat' manually when ready.
-    )
-) else (
-    echo [OK] No NumPy compatibility issues detected
-)
+rem NumPy compatibility check removed as sentence-transformers now supports NumPy 2.x
+echo [OK] NumPy compatibility check skipped (not needed with current versions)
 
 if "%ST_INSTALL_NEEDED%"=="1" (
     echo.

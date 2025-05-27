@@ -2,12 +2,13 @@
 mcp>=1.2.0
 fastmcp>=2.0.0
 
-# NumPy compatibility fix (must be before other packages)
-numpy<2,>=1.21.0
+# NumPy package
+numpy>2.0.0
 
 # Milvus and vector database
 pymilvus>=2.3.0
-sentence-transformers>=2.2.2
+transformers==4.52.3
+sentence-transformers==4.1.0
 
 # Document processing
 PyPDF2>=3.0.1

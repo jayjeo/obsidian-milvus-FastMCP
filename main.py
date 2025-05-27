@@ -4,33 +4,13 @@ import os
 import sys
 from robust_incremental_embedding import process_incremental_embedding
 
-# Enhanced error handling for common compatibility issues
+# Import numpy without compatibility check as sentence-transformers now supports NumPy 2.x
 try:
-    # Check NumPy compatibility before importing other modules
     import numpy as np
-    numpy_version = np.__version__
-    major_version = int(numpy_version.split('.')[0])
-    
-    if major_version >= 2:
-        print("\n" + "="*70)
-        print("❌ NUMPY COMPATIBILITY ERROR DETECTED")
-        print("="*70)
-        print(f"Current NumPy version: {numpy_version}")
-        print("Required: NumPy 1.x (for sentence-transformers compatibility)")
-        print("\nThis error occurs because sentence-transformers was compiled")
-        print("with NumPy 1.x but you have NumPy 2.x installed.")
-        print("\n🔧 SOLUTION:")
-        print("Run the following command to fix this issue:")
-        print("   fix_numpy_compatibility.bat")
-        print("\nOr run: diagnose_and_fix.bat for automatic detection and fix")
-        print("\nPress any key to exit...")
-        input()
-        sys.exit(1)
-        
 except ImportError:
     print("WARNING: NumPy not found. Please install required packages.")
 except Exception as e:
-    print(f"Warning during NumPy compatibility check: {e}")
+    print(f"Warning during NumPy import: {e}")
 
 # Now import the main modules
 try:
@@ -48,12 +28,10 @@ except ImportError as e:
     print(f"Failed to import required modules: {e}")
     print("\nThis usually means one of the following:")
     print("1. Required packages are not installed")
-    print("2. NumPy compatibility issue")
-    print("3. Python environment problem")
+    print("2. Python environment problem")
     print("\n🔧 SOLUTIONS:")
     print("1. Run: diagnose_and_fix.bat")
     print("2. Install packages: pip install -r requirements.txt")
-    print("3. Fix NumPy: fix_numpy_compatibility.bat")
     print("\nPress any key to exit...")
     input()
     sys.exit(1)

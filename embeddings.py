@@ -1,16 +1,9 @@
 # Import warning suppressor first to suppress all warnings
 import warning_suppressor
 
-# NumPy compatibility check
+# Import NumPy without compatibility check as sentence-transformers now supports NumPy 2.x
 try:
     import numpy as np
-    numpy_version = np.__version__
-    major_version = int(numpy_version.split('.')[0])
-    
-    if major_version >= 2:
-        print(f"WARNING: NumPy version {numpy_version} detected.")
-        print("For best compatibility with sentence-transformers, please use NumPy 1.x")
-        print("Run 'fix_numpy_compatibility.bat' to fix this issue")
 except ImportError:
     print("WARNING: NumPy not found")
 
