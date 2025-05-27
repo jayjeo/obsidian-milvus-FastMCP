@@ -34,6 +34,7 @@ class InstallerThread(QtCore.QThread):
         
         # Pre-installation tasks (before reboot)
         tasks_pre = [
+            ("Cloning repository from GitHub", ["git", "clone", "https://github.com/jayjeo/obsidian-milvus-FastMCP", self.install_dir]),
             ("Removing incompatible packages", ["pip", "uninstall", "-y", "numpy", "sentence-transformers"]),
             ("Installing NumPy", ["pip", "install", "numpy>2.0.0"]),
             ("Installing transformers with no-deps", ["pip", "install", "--no-deps", "transformers==4.52.3"]),
