@@ -88,12 +88,10 @@
   - Run following codes in CMD:
   
     ```bash
-    conda --version
-    conda remove -y numpy sentence-transformers
     python -m pip uninstall -y numpy sentence-transformers
-    conda install python=3.12
-    conda install -y numpy=1.26.4
-    conda install -y -c conda-forge "sentence-transformers>=2.2.2"
+    py --version  # Check your current Python version
+    py -3.13 -m pip install tqdm filelock fsspec sentence-transformers "numpy>=1.24.0"  # If your version is 3.13, for example
+    ```
 
 ### Manual Installation
 
@@ -209,12 +207,10 @@
   - Run following codes in CMD:
   
     ```bash
-    conda --version
-    conda remove -y numpy sentence-transformers
     python -m pip uninstall -y numpy sentence-transformers
-    conda install python=3.12
-    conda install -y numpy=1.26.4
-    conda install -y -c conda-forge "sentence-transformers>=2.2.2"
+    py --version  # Check your current Python version
+    py -3.13 -m pip install tqdm filelock fsspec sentence-transformers "numpy>=1.24.0"  # If your version is 3.13, for example
+    ```
 
 ## 🎮 Daily Use
 
