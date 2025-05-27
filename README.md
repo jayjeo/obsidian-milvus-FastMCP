@@ -61,7 +61,7 @@
 ## 🔧 Installation
 ### Recommended Installation
 
-1. Make sure git is installed
+1. Make sure git and anaconda (or miniconda) is installed
 
 2. Download an installer from [here](https://www.dropbox.com/scl/fo/l4qtgiuajhrcqk6ejatdt/ANv-uIw78Q9hvbUzp5FEWHM?rlkey=8apdv9cwzptivbjaat39uwcfp&st=9esvs2et), and run it
    
