@@ -1,6 +1,6 @@
 @echo off
 echo ================================================================
-echo          Direct Conda NumPy Fix (Miniconda 환경)
+echo          Direct Conda NumPy Fix (Miniconda Environment)
 echo ================================================================
 echo.
 
@@ -9,65 +9,65 @@ cd /d "%~dp0"
 echo Current directory: %CD%
 echo.
 
-echo Miniconda가 이미 설치되어 있으므로 conda를 직접 사용합니다.
-echo 이 스크립트는 다음을 수행합니다:
-echo 1. 현재 패키지 상태 확인
-echo 2. pip 대신 conda로 NumPy 설치
-echo 3. sentence-transformers 재설치
+echo Since Miniconda is already installed, we'll use conda directly.
+echo This script will:
+echo 1. Check current package status
+echo 2. Install NumPy using conda instead of pip
+echo 3. Reinstall sentence-transformers
 echo.
 
-echo 계속하려면 아무 키나 누르세요...
+echo Press any key to continue...
 pause
 
 echo.
 echo ================================================================
-echo Step 1: 현재 환경 확인
+echo Step 1: Check current environment
 echo ================================================================
 
-echo Python 위치:
+echo Python location:
 where python
 echo.
 
-echo 현재 NumPy 상태:
+echo Current NumPy status:
 python -c "import numpy; print('NumPy version:', numpy.__version__)" 2>nul || echo NumPy not installed
 
-echo 현재 conda 환경:
+echo Current conda environments:
 conda info --envs
 
 echo.
 echo ================================================================
-echo Step 2: 기존 패키지 제거 (conda 사용)
+echo Step 2: Remove existing packages (using conda)
 echo ================================================================
 
-echo conda로 패키지 제거 중...
+echo Removing packages with conda...
 conda remove -y numpy sentence-transformers --force-remove
 echo.
 
-echo pip로도 제거 (혹시 남아있을 수 있음)...
+echo Also removing with pip (in case any remain)...
 python -m pip uninstall -y numpy sentence-transformers
 
 echo.
 echo ================================================================
-echo Step 3: conda로 NumPy 설치
+echo Step 3: Install NumPy with conda
 echo ================================================================
 
-echo 기본 채널에서 NumPy 설치 시도...
+echo Attempting NumPy installation from default channel...
 conda install -y numpy=1.26.4
 
 if %errorlevel% neq 0 (
     echo.
-    echo 기본 채널 실패, conda-forge 채널 시도...
+    echo Default channel failed, trying conda-forge channel...
     conda install -y -c conda-forge numpy=1.26.4
     
     if %errorlevel% neq 0 (
         echo.
-        echo 특정 버전 실패, 호환 버전 범위로 시도...
+        echo Specific version failed, trying compatible version range...
         conda install -y -c conda-forge "numpy>=1.21.0,<2.0.0"
         
         if %errorlevel% neq 0 (
-            echo ERROR: conda로도 NumPy 설치 실패
+            echo ERROR: NumPy installation failed even with conda
             echo.
-            echo 대안: 새로운 conda 환경 생성
+            echo Alternative: Create new conda environment
             echo conda create -n numpy_fix python=3.9 numpy=1.26.4
             echo conda activate numpy_fix
             pause
@@ -78,19 +78,19 @@ if %errorlevel% neq 0 (
 
 echo.
 echo ================================================================
-echo Step 4: sentence-transformers 설치
+echo Step 4: Install sentence-transformers
 echo ================================================================
 
-echo conda로 sentence-transformers 설치 시도...
+echo Attempting sentence-transformers installation with conda...
 conda install -y -c conda-forge sentence-transformers
 
 if %errorlevel% neq 0 (
     echo.
-    echo conda 설치 실패, conda 환경에서 pip 사용...
+    echo conda installation failed, using pip in conda environment...
     python -m pip install sentence-transformers>=2.2.2
     
     if %errorlevel% neq 0 (
-        echo ERROR: sentence-transformers 설치 실패
+        echo ERROR: sentence-transformers installation failed
         pause
         exit /b 1
     )
@@ -98,28 +98,28 @@ if %errorlevel% neq 0 (
 
 echo.
 echo ================================================================
-echo Step 5: 설치 확인
+echo Step 5: Verify installation
 echo ================================================================
 
 python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
 python -c "import numpy; print(f'NumPy location: {numpy.__file__}')"
-python -c "import sentence_transformers; print('Sentence Transformers 성공적으로 import됨')"
+python -c "import sentence_transformers; print('Sentence Transformers imported successfully')"
 
 if %errorlevel% equ 0 (
     echo.
     echo ================================================================
-    echo 성공! NumPy 호환성 문제가 해결되었습니다!
+    echo SUCCESS! NumPy compatibility issue resolved!
     echo ================================================================
     echo.
-    echo 이제 incremental embedding 옵션을 다시 실행할 수 있습니다.
+    echo You can now run the incremental embedding option again.
     echo.
-    echo 설치된 패키지 정보:
+    echo Installed package information:
     conda list numpy
     conda list sentence-transformers
 ) else (
     echo.
-    echo ERROR: 설치 확인 실패
-    echo 위의 오류 메시지를 확인해주세요.
+    echo ERROR: Installation verification failed
+    echo Please check the error messages above.
 )
 
 echo.
