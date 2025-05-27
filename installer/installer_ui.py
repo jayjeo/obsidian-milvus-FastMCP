@@ -34,15 +34,12 @@ class InstallerThread(QtCore.QThread):
         
         # Pre-installation tasks (before reboot)
         tasks_pre = [
-            ("Removing incompatible packages", ["conda", "remove", "-y", "numpy", "sentence-transformers"]),
-            ("Installing Python 3.13 via Conda", ["conda", "install", "-y", "python=3.13"]),
-            ("Installing sentence-transformers", ["conda", "install", "-c", "conda-forge", "-y", "sentence-transformers>=3.1.1"]),
-            ("Installing NumPy and dependencies", ["conda", "install", "-c", "conda-forge", "-y", "numpy>2.0.0", "tqdm", "filelock", "fsspec"]),
-            ("Installing other Python packages (1/2)", ["conda", "run", "-n", "base", "pip", "install",
-                                                 "pymilvus", "mcp", "fastmcp", "torch"]),
-            ("Installing other Python packages (2/2)", ["conda", "run", "-n", "base", "pip", "install",
-                                                 "PyPDF2", "markdown", "beautifulsoup4", "python-dotenv", 
-                                                 "watchdog", "psutil", "colorama", "pyyaml", "requests"]),
+            ("Removing incompatible packages", ["pip", "uninstall", "-y", "numpy", "sentence-transformers"]),
+            ("Installing NumPy", ["pip", "install", "numpy>2.0.0"]),
+            ("Installing transformers with no-deps", ["pip", "install", "--no-deps", "transformers==4.52.3"]),
+            ("Installing sentence-transformers and dependencies", ["pip", "install", "sentence-transformers==4.1.0", "tqdm", "filelock", "fsspec"]),
+            ("Installing Python packages", ["pip", "install", "PyPDF2", "markdown", "beautifulsoup4", "python-dotenv", 
+                                           "watchdog", "psutil", "colorama", "pyyaml", "tqdm", "requests", "pymilvus", "mcp", "fastmcp", "torch"]),
             ("Installing/Verifying Podman via winget", ["winget", "install", "-e", "--id", "RedHat.Podman", 
                                                        "--accept-package-agreements", "--accept-source-agreements"])
         ]

@@ -103,10 +103,11 @@
     cd to your directory
     conda remove numpy sentence-transformers
     python --version     # Check your current priority version
-    conda install python=3.13   # Use your version
-    conda install -c conda-forge "sentence-transformers>=3.1.1"
-    conda install -c conda-forge "numpy>2.0.0" tqdm filelock fsspec
-    conda run -n base pip install pymilvus mcp fastmcp torch PyPDF2 markdown beautifulsoup4 python-dotenv watchdog psutil colorama pyyaml requests
+    conda install python=3.12   # Use your version. 3.12 is just an example
+    conda install -c conda-forge "numpy>2.0.0" 
+    pip install --no-deps transformers==4.52.3
+    pip install sentence-transformers==4.1.0 tqdm filelock fsspec
+    conda install -c conda-forge PyPDF2 markdown beautifulsoup4 python-dotenv watchdog psutil colorama pyyaml tqdm requests
     ```
 
     - Sentence Transformers Library (sentence-transformers): The v3.1.1 release announced in September 2024 removed the numpy<2 constraint that was previously set to prevent conflicts in Windows environments on GitHub. This means that the latest version (≥3.1.1) of Sentence Transformers officially supports NumPy 2.x, allowing users to freely choose between NumPy 1.x and 2.x.
