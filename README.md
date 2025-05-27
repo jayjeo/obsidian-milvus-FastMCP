@@ -70,6 +70,7 @@
    ```
 
 3. 🚨 GPU not detected issue even though my GPU exists and supports CUDA
+- If you do not have a CUDA supported GPU, you may skip this step
 - Pytorch has two different versions. One is for CPU and the other is for GPU. Make sure you have the correct version installed. 
 - If you arn't sure, follow the instruction below:
   - Install [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
@@ -182,7 +183,7 @@
    - (9) **Emergency: Complete Data Reset** (DELETE All Data)
 
 11. 🚨 GPU not detected issue even though my GPU exists and supports CUDA
-- Make sure set `USE_GPU = True` in `config.py` to use GPU mode
+- If you do not have a CUDA supported GPU, you may skip this step
 - Pytorch has two different versions. One is for CPU and the other is for GPU. Make sure you have the correct version installed. 
 - If you arn't sure, follow the instruction below:
   - Install [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
@@ -196,7 +197,7 @@
     python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
     ```
 
-12.  🚨 NumPy compatibility error solution
+1.   🚨 NumPy compatibility error solution
   - Run `fix_numpy_compatibility.bat`
 
 ## 🎮 Daily Use
