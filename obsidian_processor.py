@@ -679,10 +679,10 @@ class ObsidianProcessor:
         text = re.sub(r'\s+', ' ', text)  # 여러 공백을 하나로 통합
         text = re.sub(r'\.{3,}', '...', text)  # 여러 점(...)을 하나로 통합
         
-        # 안전을 위한 텍스트 길이 제한
-        max_safe_length = 100000  # 최대 10만 자
+        # 🔧 ENHANCED: 안전을 위한 텍스트 길이 제한 (속도와 안정성 균형)
+        max_safe_length = 80000  # 8만 자로 조정 (속도 개선 위해)
         if len(text) > max_safe_length:
-            print(f"Warning: Text too long ({len(text)} chars), truncating")
+            print(f"🚨 WARNING: Text too long ({len(text)} chars), truncating to {max_safe_length} for Milvus compatibility")
             text = text[:max_safe_length]
             
         # 사전 검사로 메모리 효율성 개선
@@ -776,16 +776,61 @@ class ObsidianProcessor:
                     seen.add(chunk_hash)
                     unique_chunks.append(chunk)
         
-        # 청크 개수 제한
-        max_chunks = 100  # 최대 청크 수 제한
+        # 🔧 ENHANCED: GPU/CPU 성능에 따른 동적 청크 개수 제한
+        if hasattr(self, 'embedding_model') and hasattr(self.embedding_model, 'hardware_profiler'):
+            profile = self.embedding_model.hardware_profiler.performance_profile
+            
+            # GPU 성능에 따른 청크 수 결정
+            if 'professional_gpu' in profile:
+                max_chunks = 200  # Tesla, A100, H100 등
+            elif 'flagship_gpu' in profile:
+                max_chunks = 150  # RTX 5090, RX 7900 XTX 등
+            elif 'ultra_high_end_gpu' in profile:
+                max_chunks = 120  # RTX 5080, RTX 4080 등
+            elif 'high_end_gpu' in profile:
+                max_chunks = 100  # RTX 5070, RTX 4070 등
+            elif 'mid_range_gpu' in profile:
+                max_chunks = 80   # RTX 3060, RTX 2080 등
+            elif 'low_mid_gpu' in profile:
+                max_chunks = 60   # RTX 2060, GTX 1660 Ti 등
+            elif 'low_end_gpu' in profile:
+                max_chunks = 50   # GTX 1650, RX 580 등
+            elif 'very_low_end_gpu' in profile:
+                max_chunks = 40   # GTX 1050 등
+            elif 'high_end_cpu' in profile:
+                max_chunks = 60   # 고성능 CPU
+            elif 'mid_range_cpu' in profile:
+                max_chunks = 40   # 중급 CPU
+            else:
+                max_chunks = 30   # 저성능 CPU
+            
+            # 하드웨어 성능이 좋더라도 최대 100개로 제한 (안정성)
+            max_chunks = min(max_chunks, 100)
+            
+            print(f"🚀 Dynamic chunk limit based on {profile}: {max_chunks} chunks")
+        else:
+            # 폴백: 기본 제한
+            max_chunks = 80
+            print(f"⚠️ Using fallback chunk limit: {max_chunks} chunks")
         if len(unique_chunks) > max_chunks:
-            print(f"Warning: Too many chunks ({len(unique_chunks)}), limiting to {max_chunks}")
+            print(f"🚨 WARNING: Too many chunks ({len(unique_chunks)}), limiting to {max_chunks} for Milvus stability")
             unique_chunks = unique_chunks[:max_chunks]
+        
+        # 🔧 FINAL CHUNK SAFETY: 각 청크의 길이도 최종 확인 (속도와 안정성 균형)
+        safe_chunks = []
+        max_chunk_length = 12000  # 개별 청크 최대 12K 자 (속도 개선)
+        for chunk in unique_chunks:
+            if len(chunk) > max_chunk_length:
+                print(f"🚨 CHUNK TOO LONG: {len(chunk)} chars, truncating to {max_chunk_length}")
+                chunk = chunk[:max_chunk_length]
+            safe_chunks.append(chunk)
+        
+        unique_chunks = safe_chunks
             
         return unique_chunks
     
     def _save_vectors_to_milvus(self, vectors, chunks, chunk_file_map):
-        """벡터와 청크 데이터를 Milvus에 저장하는 최적화된 메소드"""
+        """벡터와 청크 데이터를 Milvus에 저장하는 최적화된 메소드 (문자열 길이 제한 강화)"""
         if not vectors or not chunks or not chunk_file_map or len(vectors) != len(chunks):
             return False
             
@@ -817,14 +862,22 @@ class ObsidianProcessor:
                 except:
                     tags_json = "[]"
                 
-                # 최대 문자열 길이 (Milvus 제한보다 안전하게 설정)
-                MAX_STRING_LENGTH = 65000  # Milvus 최대 한계: 65535
+                # 🔧 FIXED: 최대 문자열 길이 (더 안전한 마진)
+                MAX_STRING_LENGTH = 32000  # Milvus 제한 65535보다 충분히 안전하게 설정
+                MAX_CONTENT_LENGTH = 16000  # content 필드는 더 짧게
+                MAX_CHUNK_LENGTH = 16000    # chunk_text 필드도 더 짧게
                 
-                # 문자열 안전하게 자르기 위한 함수
+                # 🔧 ENHANCED: 강화된 문자열 안전 자르기 함수
                 def safe_truncate(text, max_len=MAX_STRING_LENGTH):
                     if not isinstance(text, str):
-                        return text
-                    return text[:max_len] if text and len(text) > max_len else text
+                        return str(text) if text is not None else ""
+                    if not text:
+                        return ""
+                    # UTF-8 바이트 기준으로도 확인
+                    text_bytes = text.encode('utf-8', errors='ignore')[:max_len//2]
+                    truncated = text_bytes.decode('utf-8', errors='ignore')
+                    # 최종적으로 문자 길이도 확인
+                    return truncated[:max_len] if len(truncated) > max_len else truncated
                 
                 # 각 항목을 개별적으로 삽입
                 single_data = {
@@ -832,8 +885,8 @@ class ObsidianProcessor:
                     "path": safe_truncate(rel_path, 500),
                     "title": safe_truncate(metadata["title"], 500) if metadata["title"] else "",
                     # 첫 번째 청크일 때만 전체 내용 저장, 나머지는 빈 문자열
-                    "content": safe_truncate(metadata["content"], MAX_STRING_LENGTH) if chunk_index == 0 else "",
-                    "chunk_text": safe_truncate(chunk, MAX_STRING_LENGTH),
+                    "content": safe_truncate(metadata["content"], MAX_CONTENT_LENGTH) if chunk_index == 0 else "",  # content 길이 제한
+                    "chunk_text": safe_truncate(chunk, MAX_CHUNK_LENGTH),  # chunk_text 길이 제한 강화
                     "chunk_index": chunk_index,
                     "file_type": safe_truncate(metadata["file_ext"], 10),
                     "tags": safe_truncate(tags_json, 1000),
@@ -842,12 +895,27 @@ class ObsidianProcessor:
                     "vector": vector
                 }
                 
-                # 추가 데이터 유효성 검사 (안전 장치)
+                # 🔧 ENHANCED: 강화된 데이터 유효성 검사 (안전 장치)
                 valid_data = True
                 for key, value in single_data.items():
-                    if key != "vector" and isinstance(value, str) and len(value) > MAX_STRING_LENGTH:
-                        print(f"Warning: Field {key} still too long ({len(value)} chars) after truncation, forcing truncation")
-                        single_data[key] = value[:MAX_STRING_LENGTH]  # 강제 제한
+                    if key != "vector" and isinstance(value, str):
+                        # 모든 문자열 필드에 대해 강제 길이 제한
+                        if key == "content":
+                            max_field_len = MAX_CONTENT_LENGTH
+                        elif key == "chunk_text":
+                            max_field_len = MAX_CHUNK_LENGTH
+                        else:
+                            max_field_len = MAX_STRING_LENGTH
+                        
+                        if len(value) > max_field_len:
+                            print(f"🚨 CRITICAL: Field {key} too long ({len(value)} chars), forcing truncation to {max_field_len}")
+                            single_data[key] = value[:max_field_len]
+                
+                # 🔧 FINAL SAFETY: 모든 문자열이 안전한 길이인지 최종 확인
+                for key, value in single_data.items():
+                    if key != "vector" and isinstance(value, str) and len(value) > 16000:
+                        print(f"🚨 EMERGENCY: Field {key} still too long after all checks ({len(value)} chars), emergency truncation")
+                        single_data[key] = value[:10000]  # 응급 처치 - 매우 보수적으로 10K로 제한
                 
                 # 단일 항목 삽입
                 try:

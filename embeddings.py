@@ -696,6 +696,32 @@ class DynamicBatchOptimizer:
         
         return current_size
     
+    def _apply_advanced_performance_tuning(self, current_size):
+        """Enhanced performance-based fine-tuning with trend analysis"""
+        if len(self.performance_history) < 5:
+            return current_size
+        
+        # Analyze recent performance trends
+        recent_performance = self.performance_history[-5:]
+        avg_gpu_util = sum(p["gpu_utilization"] for p in recent_performance) / len(recent_performance)
+        avg_memory = sum(p["memory_percent"] for p in recent_performance) / len(recent_performance)
+        avg_throughput = sum(p.get("throughput", 0) for p in recent_performance) / len(recent_performance)
+        avg_success_rate = sum(p.get("success_rate", 1.0) for p in recent_performance) / len(recent_performance)
+        
+        # Performance-based adjustments
+        if avg_success_rate > 0.95 and avg_throughput > 0:
+            # Excellent performance - can be more aggressive
+            if avg_gpu_util < 30 and avg_memory < 60:
+                return min(self.max_batch_size, int(current_size * 1.3))
+            elif avg_gpu_util < 50 and avg_memory < 70:
+                return min(self.max_batch_size, int(current_size * 1.1))
+        
+        # Poor performance - be conservative
+        elif avg_success_rate < 0.9 or avg_gpu_util > 95:
+            return max(self.min_batch_size, int(current_size * 0.8))
+        
+        return current_size
+    
     def _adjust_for_gpu(self, memory_percent, gpu_percent, gpu_memory_percent, current_size):
         """Legacy GPU adjustment - kept for compatibility"""
         return self._adjust_for_gpu_enhanced(memory_percent, gpu_percent, gpu_memory_percent, 
