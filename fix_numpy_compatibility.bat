@@ -1,6 +1,6 @@
 @echo off
 echo ================================================================
-echo          NumPy Compatibility Fix for Sentence Transformers
+echo          Improved NumPy Compatibility Fix
 echo ================================================================
 echo.
 
@@ -10,7 +10,7 @@ echo Current directory: %CD%
 echo.
 
 echo This script will fix the NumPy compatibility issue by:
-echo 1. Downgrading NumPy to version 1.26.4 (last stable 1.x version)
+echo 1. Installing pre-compiled NumPy wheel (no compilation needed)
 echo 2. Reinstalling sentence-transformers with the compatible NumPy
 echo.
 
@@ -29,14 +29,32 @@ if %errorlevel% neq 0 (
 
 echo.
 echo ================================================================
-echo Step 2: Installing compatible NumPy version
+echo Step 2: Installing pre-compiled NumPy (avoiding compilation)
 echo ================================================================
 
-python -m pip install "numpy<2,>=1.21.0"
+REM Try to install pre-compiled wheel first
+python -m pip install --only-binary=all "numpy>=1.21.0,<2.0.0"
 if %errorlevel% neq 0 (
-    echo ERROR: Failed to install compatible NumPy
-    pause
-    exit /b 1
+    echo.
+    echo Pre-compiled wheel failed, trying specific version...
+    python -m pip install --only-binary=all numpy==1.26.4
+    if %errorlevel% neq 0 (
+        echo.
+        echo Trying alternative approach with pip cache refresh...
+        python -m pip install --upgrade pip
+        python -m pip cache purge
+        python -m pip install --only-binary=all --force-reinstall numpy==1.26.4
+        if %errorlevel% neq 0 (
+            echo.
+            echo ERROR: All NumPy installation methods failed
+            echo.
+            echo SOLUTION: Please install Microsoft Visual Studio Build Tools
+            echo Download from: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+            echo Or install a conda distribution like Anaconda/Miniconda
+            pause
+            exit /b 1
+        )
+    )
 )
 
 echo.
