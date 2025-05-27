@@ -305,36 +305,63 @@ class ObsidianProcessor:
                     self._check_memory_usage("Before embedding generation")
                     
                     # ENHANCED: 청크에 대한 배치 임베딩 생성 (속도 대폭 개선!)
-                    print(f"Processing {len(chunks)} chunks with enhanced batch embedding...")
+                    print(f"🚀 Processing {len(chunks)} chunks with FORCED batch embedding...")
+                    
+                    # STEP 1: 배치 크기 확인 및 최적화
+                    optimal_batch_size = self._check_system_resources()
+                    if hasattr(self.embedding_model, 'batch_optimizer'):
+                        current_batch_size = self.embedding_model.batch_optimizer.current_batch_size
+                        print(f"📦 Current optimal batch size: {current_batch_size}")
+                    
+                    vectors = []
+                    batch_success = False
                     
                     try:
-                        # 배치 처리로 모든 청크를 한번에 처리 (개별 처리보다 5-10배 빠름)
+                        # STEP 2: 강제 배치 처리 (폴백 없이)
+                        print(f"🔥 FORCING batch processing for {len(chunks)} chunks...")
+                        start_time = time.time()
+                        
+                        # 배치 처리 강제 실행
                         vectors = self.embedding_model.get_embeddings_batch_adaptive(chunks)
                         
-                        if not vectors or len(vectors) != len(chunks):
-                            print(f"Warning: Batch embedding failed, falling back to individual processing")
-                            # 폴백: 개별 처리
-                            vectors = []
-                            for i, chunk in enumerate(chunks):
-                                try:
-                                    vector = self.embedding_model.get_embedding(chunk)
-                                    vectors.append(vector)
-                                except Exception as e:
-                                    print(f"Error embedding chunk {i}: {e}")
-                                    vectors.append([0] * config.VECTOR_DIM)
+                        batch_time = time.time() - start_time
+                        
+                        # 결과 검증
+                        if vectors and len(vectors) == len(chunks):
+                            batch_success = True
+                            print(f"✅ BATCH SUCCESS: {len(chunks)} chunks in {batch_time:.2f}s ({len(chunks)/batch_time:.1f} chunks/sec)")
+                            print(f"🎯 GPU utilization should be HIGH during this process")
                         else:
-                            print(f"✅ Successfully processed {len(chunks)} chunks with batch embedding")
+                            print(f"❌ BATCH FAILED: Expected {len(chunks)} vectors, got {len(vectors) if vectors else 0}")
                             
                     except Exception as e:
-                        print(f"Error in batch embedding, using individual fallback: {e}")
-                        # 완전 폴백: 개별 처리
+                        print(f"❌ BATCH PROCESSING ERROR: {e}")
+                        import traceback
+                        print(f"📍 Error details: {traceback.format_exc()}")
+                    
+                    # STEP 3: 배치가 실패한 경우에만 개별 처리
+                    if not batch_success:
+                        print(f"⚠️ Falling back to individual processing (this should be rare)...")
                         vectors = []
-                        for chunk in chunks:
+                        individual_start = time.time()
+                        
+                        for i, chunk in enumerate(chunks):
                             try:
                                 vector = self.embedding_model.get_embedding(chunk)
                                 vectors.append(vector)
-                            except Exception:
+                            except Exception as e:
+                                print(f"Error embedding chunk {i}: {e}")
                                 vectors.append([0] * config.VECTOR_DIM)
+                        
+                        individual_time = time.time() - individual_start
+                        print(f"🐌 Individual processing completed in {individual_time:.2f}s ({len(chunks)/individual_time:.1f} chunks/sec)")
+                    
+                    # STEP 4: 성능 통계 출력
+                    if batch_success:
+                        print(f"🏆 PERFORMANCE: Batch processing achieved {len(chunks)/batch_time:.1f} chunks/second")
+                        print(f"💪 Expected GPU usage: HIGH during batch processing")
+                    else:
+                        print(f"🚨 WARNING: Batch processing failed - investigating...")
                     
                     # 메타데이터 매핑 준비
                     chunk_file_map = [metadata] * len(chunks)
