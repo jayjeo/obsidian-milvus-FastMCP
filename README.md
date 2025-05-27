@@ -209,7 +209,6 @@
    
     ```bash
     python -m pip uninstall -y numpy sentence-transformers
-    py -3.13 -m pip install tqdm filelock fsspec sentence-transformers "numpy>=1.24.0"  # If your version is 3.13, for example
     pip index versions numpy   # The version has to be < 2.0.0
     py -3.13 -m pip install tqdm filelock fsspec sentence-transformers "numpy<2.0.0"
     Ignore the error message: "ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts."
