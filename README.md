@@ -78,10 +78,7 @@
   
     ```bash
     pip uninstall torch torchvision torchaudio -y
-    conda create -n pytorch-gpu python=3.11 -y
-    conda activate pytorch-gpu
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-    python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
+    pip install torch==2.7.0+cu118 torchvision==0.22.0+cu118 torchaudio==2.7.0+cu118 --index-url https://download.pytorch.org/whl/cu118
     ```
 
 ### Manual Installation
@@ -197,10 +194,7 @@
 
     ```bash
     pip uninstall torch torchvision torchaudio -y
-    conda create -n pytorch-gpu python=3.11 -y
-    conda activate pytorch-gpu
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-    python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
+    pip install torch==2.7.0+cu118 torchvision==0.22.0+cu118 torchaudio==2.7.0+cu118 --index-url https://download.pytorch.org/whl/cu118
     ```
 
 
