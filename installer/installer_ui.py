@@ -49,7 +49,7 @@ class InstallerThread(QtCore.QThread):
             ("Installing podman-compose via pip", ["pip", "install", "podman-compose"])
         ]
         # Count total steps for progress percentage (including individual steps below)
-        total_steps = len(tasks_pre) + len(tasks_post) + 9  # +9 for repository setup, WSL enable (2), Ubuntu install, .env update, find_podman, reset, start_mcp, interactive
+        total_steps = len(tasks_pre) + len(tasks_post) + 8  # +8 for WSL enable (2), Ubuntu install, .env update, find_podman, reset, start_mcp, interactive
         
         if self.resume:
             # Skip pre-reboot steps and continue from post-reboot setup
@@ -58,29 +58,7 @@ class InstallerThread(QtCore.QThread):
             steps_done = len(tasks_pre) + 3  # pre-reboot tasks + 2 WSL feature steps + 1 Ubuntu install step
             self.progress_changed.emit(int(steps_done * 100 / total_steps))
         else:
-            # Handle repository setup first
-            status("Setting up repository...")
-            if os.path.exists(self.install_dir) and os.path.isdir(self.install_dir):
-                # Check if this appears to be a valid repository by checking for key files
-                if os.path.exists(os.path.join(self.install_dir, "README.md")) or \
-                   os.path.exists(os.path.join(self.install_dir, "milvus-podman-compose.yml")):
-                    log("✓ Using existing repository files (skipping Git clone step)")
-                else:
-                    log("⚠ Warning: Install directory exists but doesn't seem to contain repository files")
-                    log("  Continuing with installation using existing directory...")
-            else:
-                # Directory doesn't exist - would normally do a Git clone here but we'll create the dir instead
-                try:
-                    os.makedirs(self.install_dir, exist_ok=True)
-                    log("✓ Created installation directory")
-                except Exception as e:
-                    log(f"✖ Failed to create installation directory: {e}")
-                    self.completed.emit(False)
-                    return
-            
-            steps_done += 1
-            self.progress_changed.emit(int(steps_done * 100 / total_steps))
-            
+
             # Execute pre-reboot tasks
             for desc, cmd in tasks_pre:
                 status(f"{desc}...")
