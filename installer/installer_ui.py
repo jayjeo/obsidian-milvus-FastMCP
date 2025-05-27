@@ -34,12 +34,15 @@ class InstallerThread(QtCore.QThread):
         
         # Pre-installation tasks (before reboot)
         tasks_pre = [
-            ("Installing Conda base (Python & pip)", ["conda", "install", "-c", "conda-forge", "-y", "python", "pip"]),
-            ("Installing Python packages (1/2)", ["conda", "run", "-n", "base", "pip", "install",
-                                                 "pymilvus", "mcp", "fastmcp", "sentence-transformers", "torch"]),
-            ("Installing Python packages (2/2)", ["conda", "run", "-n", "base", "pip", "install",
+            ("Removing incompatible packages", ["conda", "remove", "-y", "numpy", "sentence-transformers"]),
+            ("Installing Python 3.13 via Conda", ["conda", "install", "-y", "python=3.13"]),
+            ("Installing sentence-transformers", ["conda", "install", "-c", "conda-forge", "-y", "sentence-transformers>=3.1.1"]),
+            ("Installing NumPy and dependencies", ["conda", "install", "-c", "conda-forge", "-y", "numpy>2.0.0", "tqdm", "filelock", "fsspec"]),
+            ("Installing other Python packages (1/2)", ["conda", "run", "-n", "base", "pip", "install",
+                                                 "pymilvus", "mcp", "fastmcp", "torch"]),
+            ("Installing other Python packages (2/2)", ["conda", "run", "-n", "base", "pip", "install",
                                                  "PyPDF2", "markdown", "beautifulsoup4", "python-dotenv", 
-                                                 "watchdog", "psutil", "colorama", "pyyaml", "tqdm", "requests"]),
+                                                 "watchdog", "psutil", "colorama", "pyyaml", "requests"]),
             ("Installing/Verifying Podman via winget", ["winget", "install", "-e", "--id", "RedHat.Podman", 
                                                        "--accept-package-agreements", "--accept-source-agreements"])
         ]

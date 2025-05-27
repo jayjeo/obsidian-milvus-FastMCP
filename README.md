@@ -84,15 +84,6 @@
     python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
     ```
 
-4. 🚨 NumPy compatibility error solution
-  - Run following codes in CMD:
-  
-    ```bash
-    python -m pip uninstall -y numpy sentence-transformers
-    py --version  # Check your current Python version
-    py -3.13 -m pip install tqdm filelock fsspec sentence-transformers "numpy>=1.24.0"  # If your version is 3.13, for example
-    ```
-
 ### Manual Installation
 
 1. Make sure git is installed
@@ -110,12 +101,22 @@
     ```bash
     Open Anaconda Prompt with administrator privileges
     cd to your directory
-    conda install -c conda-forge -y python pip
-    conda run -n base pip install pymilvus mcp fastmcp sentence-transformers torch
-    conda run -n base pip install PyPDF2 markdown beautifulsoup4 python-dotenv watchdog psutil colorama pyyaml tqdm requests
+    conda remove numpy sentence-transformers
+    python --version     # Check your current priority version
+    conda install python=3.13   # Use your version
+    conda install -c conda-forge "sentence-transformers>=3.1.1"
+    conda install -c conda-forge "numpy>2.0.0" tqdm filelock fsspec
+    conda run -n base pip install pymilvus mcp fastmcp torch PyPDF2 markdown beautifulsoup4 python-dotenv watchdog psutil colorama pyyaml requests
     ```
 
-4. **Install Podman**
+    - Sentence Transformers Library (sentence-transformers): The v3.1.1 release announced in September 2024 removed the numpy<2 constraint that was previously set to prevent conflicts in Windows environments on GitHub. This means that the latest version (≥3.1.1) of Sentence Transformers officially supports NumPy 2.x, allowing users to freely choose between NumPy 1.x and 2.x.
+    - In conclusion, the paraphrase-multilingual-mpnet-base-v2 model provided through the Sentence Transformers framework can operate normally in NumPy 2.x environments. This model is implemented based on Hugging Face Transformers and PyTorch, and as mentioned earlier, the combination of the latest Sentence Transformers version and PyTorch 2.5.1 has resolved compatibility issues with NumPy 2.x.
+    - In fact, since the Sentence Transformers library officially supports NumPy 2.x on GitHub, and PyTorch 2.5.1 was also built to accommodate NumPy 2.x on GitHub, embedding extraction and other operations during model inference proceed without any additional errors. No differences based on NumPy version have been reported in either CPU environments or CUDA (GPU) accelerated environments, and since NumPy 2.x itself only affects CPU operations, CUDA usage is irrelevant to compatibility.
+    - However, one thing to note is that the official requirements of the Hugging Face Transformers package still point to NumPy 1.x, which may cause warnings or conflicts during pip installation on GitHub. For example, when installing transformers via pip while NumPy 2.x is already installed, dependency conflict warnings may appear. However, this is merely an installation constraint and does not mean that the paraphrase-multilingual-mpnet-base-v2 model malfunctions due to NumPy 2.x at runtime. The model itself operates normally with the latest compatible library combinations, and there are no reports of embedding quality or accuracy changing based on NumPy version.
+    - The dependency warnings/conflicts that occur when installing Hugging Face Transformers via pip can be bypassed. First, if you attempt pip install transformers while maintaining NumPy 2.x, warnings will appear, but you can skip dependency checks using the `--no-deps` option.
+
+
+1. **Install Podman**
    - From CMD: winget install RedHat.Podman
    - Open PowerShell as Administrator and run (Enable Virtual Machine)
 
@@ -143,29 +144,29 @@
    - Restart after setting up WSL Linux system
    - `pip install podman-compose` using CMD at your path
 
-5. **Configure paths**
+2. **Configure paths**
    - Edit `config.py` and set your Obsidian vault path
    - Edit `config.py` and set your podman path
      - Find podman path using `find_podman_path.bat`
 
-6. **Initialize Podman Container**
+3. **Initialize Podman Container**
 
    ```
    complete-podman-reset.bat
    ```
 
-7. **Initialize Milvus Server**
+4. **Initialize Milvus Server**
 
    ```
    start_mcp_with_encoding_fix.bat
    ```   
 
-8. **Podman auto launch at startup**
+5. **Podman auto launch at startup**
    - Follow instructions in [Podman auto launch.md](https://share.note.sx/r6kx06pj#78CIGnxLJYkJG+ZrQKYQhU35gtl+nKa47ZllwEyfUE0)
    - When Windows starts, nothing will pop up unless there is an error
      - If you want to figure out the error, see `podman_startup.log`
 
-9.  **Milvus Server auto launch at startup**
+6.  **Milvus Server auto launch at startup**
    - Follow instructions in [Milvus auto launch.md](https://share.note.sx/y9vrzgj6#zr1aL4s1WFBK/A4WvqvkP6ETVMC4sKcAwbqAt4NyZhk)
    - When Windows starts, nothing will pop up unless there is an error
      - If you want to figure out the error, see `auto_startup_mcp.log` and `vbs_startup.log`
@@ -174,7 +175,7 @@
      - `run-main.bat`, and select option 1
      - You have to keep this CMD opened. Otherwise, the server will be terminated
 
-10.  **Interactive Setup & Testing**
+7.   **Interactive Setup & Testing**
 
    ```bash
    run-setup.bat
@@ -188,7 +189,7 @@
    - (8) **Safe Server Restart** (Preserve All Data. Use this if MCP server has launching issues)
    - (9) **Emergency: Complete Data Reset** (DELETE All Data)
 
-11. 🚨 GPU not detected issue even though my GPU exists and supports CUDA
+8.  🚨 GPU not detected issue even though my GPU exists and supports CUDA
 - If you do not have a CUDA supported GPU, you may skip this step
 - Pytorch has two different versions. One is for CPU and the other is for GPU. Make sure you have the correct version installed. 
 - If you arn't sure, follow the instruction below:
@@ -203,16 +204,6 @@
     python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
     ```
 
-12.   🚨 NumPy compatibility error solution
-  - Run following codes in CMD:
-  - The solution significantly depends on your Python and py environment. Therefore, I cannot give you a definite answer. 
-   
-    ```bash
-    python -m pip uninstall -y numpy sentence-transformers
-    pip index versions numpy   # The version has to be < 2.0.0
-    py -3.13 -m pip install tqdm filelock fsspec sentence-transformers "numpy<2.0.0"
-    Ignore the error message: "ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts."
-    ```
 
 ## 🎮 Daily Use
 
