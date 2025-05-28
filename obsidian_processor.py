@@ -680,10 +680,11 @@ class ObsidianProcessor:
         text = re.sub(r'\.{3,}', '...', text)  # 여러 점(...)을 하나로 통합
         
         # 🔧 ENHANCED: 안전을 위한 텍스트 길이 제한 (속도와 안정성 균형)
-        max_safe_length = 80000  # 8만 자로 조정 (속도 개선 위해)
-        if len(text) > max_safe_length:
-            print(f"🚨 WARNING: Text too long ({len(text)} chars), truncating to {max_safe_length} for Milvus compatibility")
-            text = text[:max_safe_length]
+        # Use safe document length from config - no truncation, just warning
+        max_document_length = config.get_max_document_length()  # 2M chars
+        if len(text) > max_document_length:
+            print(f"Warning: Document very long ({len(text)} chars), processing may take longer")
+            # Don't truncate - let chunking handle large documents
             
         # 사전 검사로 메모리 효율성 개선
         text_length = len(text)
@@ -805,25 +806,33 @@ class ObsidianProcessor:
                 max_chunks = 30   # 저성능 CPU
             
             # 하드웨어 성능이 좋더라도 최대 100개로 제한 (안정성)
-            max_chunks = min(max_chunks, 100)
+            # Use config max chunks per file - no arbitrary limits
+            max_chunks_per_file = config.get_max_chunks_per_file()  # 1000
             
-            print(f"🚀 Dynamic chunk limit based on {profile}: {max_chunks} chunks")
+            print(f"Dynamic chunk processing based on {profile}: up to {max_chunks_per_file} chunks per file")
         else:
-            # 폴백: 기본 제한
-            max_chunks = 80
-            print(f"⚠️ Using fallback chunk limit: {max_chunks} chunks")
-        if len(unique_chunks) > max_chunks:
-            print(f"🚨 WARNING: Too many chunks ({len(unique_chunks)}), limiting to {max_chunks} for Milvus stability")
-            unique_chunks = unique_chunks[:max_chunks]
+            # Fallback: use config value
+            max_chunks_per_file = config.get_max_chunks_per_file()  # 1000
+            print(f"Using config chunk limit: {max_chunks_per_file} chunks per file")
         
-        # 🔧 FINAL CHUNK SAFETY: 각 청크의 길이도 최종 확인 (속도와 안정성 균형)
+        # Process all chunks - no truncation for complete coverage
+        if len(unique_chunks) > max_chunks_per_file:
+            print(f"Large file detected: {len(unique_chunks)} chunks (will process all chunks)")
+            # Don't truncate - process all chunks for complete coverage
+        
+        # Split long chunks instead of truncating to preserve all content
         safe_chunks = []
-        max_chunk_length = 12000  # 개별 청크 최대 12K 자 (속도 개선)
+        max_chunk_length = config.get_max_chunk_length()  # 50K chars from config
+        
         for chunk in unique_chunks:
             if len(chunk) > max_chunk_length:
-                print(f"🚨 CHUNK TOO LONG: {len(chunk)} chars, truncating to {max_chunk_length}")
-                chunk = chunk[:max_chunk_length]
-            safe_chunks.append(chunk)
+                print(f"Long chunk detected: {len(chunk)} chars, splitting into smaller chunks")
+                # Split long chunk instead of truncating to preserve content
+                chunk_parts = [chunk[i:i+max_chunk_length] for i in range(0, len(chunk), max_chunk_length)]
+                safe_chunks.extend(chunk_parts)
+                print(f"Split into {len(chunk_parts)} parts to preserve all content")
+            else:
+                safe_chunks.append(chunk)
         
         unique_chunks = safe_chunks
             
@@ -1137,8 +1146,9 @@ class ObsidianProcessor:
         existing_files_info = {}
         
         try:
-            print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus (improved timestamp check)...{Style.RESET_ALL}")
-            max_limit = 16000
+            print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus (intelligent batch sizing)...{Style.RESET_ALL}")
+            # Use MilvusManager's intelligent batch sizing
+            max_limit = self.milvus_manager._get_optimal_query_limit()
             offset = 0
             
             while True:
@@ -1469,8 +1479,9 @@ class ObsidianProcessor:
             # 기존 파일 정보 가져오기
             existing_files_info = {}
             try:
-                print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus...{Style.RESET_ALL}")
-                max_limit = 16000
+                print(f"{Fore.CYAN}[DEBUG] Querying existing files from Milvus (intelligent batch sizing)...{Style.RESET_ALL}")
+                # Use MilvusManager's intelligent batch sizing
+                max_limit = self.milvus_manager._get_optimal_query_limit()
                 offset = 0
                 
                 while True:
@@ -1734,12 +1745,13 @@ class ObsidianProcessor:
         """삭제된 파일 탐지 (메모리 효율적)"""
         from colorama import Fore, Style
         
-        print(f"{Fore.CYAN}Scanning Milvus database for file paths...{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}Scanning Milvus database for file paths (intelligent batch sizing)...{Style.RESET_ALL}")
         
         # 1. Milvus에서 모든 파일 경로 조회 (페이지네이션)
         db_files = set()
+        # Use MilvusManager's intelligent batch sizing
+        max_limit = self.milvus_manager._get_optimal_query_limit()
         offset = 0
-        max_limit = 16000
         total_db_files = 0
         
         try:

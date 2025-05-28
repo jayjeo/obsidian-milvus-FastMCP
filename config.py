@@ -41,6 +41,19 @@ MILVUS_HOST = "localhost"  # Milvus server host
 MILVUS_PORT = 19530  # Milvus server port
 COLLECTION_NAME = "obsidian_notes"  # Milvus collection name
 
+# 🚨 CRITICAL: Milvus Batch Limits (DO NOT EXCEED!)
+# Milvus has a hard limit of 16384 for query windows
+# We use 16000 as safe limit to prevent query window errors
+MILVUS_MAX_QUERY_LIMIT = 16000  # Safe limit to prevent query window errors
+MILVUS_MAX_INSERT_BATCH = 1000  # Safe batch size for insertions
+MILVUS_MAX_DELETE_BATCH = 500   # Safe batch size for deletions
+
+# Text Processing Limits (Increased for complete content processing)
+MAX_TEXT_LENGTH = 500000        # 500K characters (increased from 5K)
+MAX_DOCUMENT_LENGTH = 2000000   # 2M characters for very large documents
+MAX_CHUNK_LENGTH = 50000        # 50K characters per chunk (increased from 12K)
+MAX_CHUNKS_PER_FILE = 1000      # Maximum chunks per file (increased from 500)
+
 # Search settings
 SEARCH_RESULTS_LIMIT = 100  # Limit the number of searchable notes 
 
@@ -254,6 +267,35 @@ def validate_paths():
     
     print("\n✅ All configurations are correct!")
     return True
+
+# Helper functions to get Milvus limits
+def get_milvus_max_query_limit():
+    """Get safe Milvus query limit (16000)"""
+    return MILVUS_MAX_QUERY_LIMIT
+
+def get_milvus_max_insert_batch():
+    """Get safe Milvus insert batch size (1000)"""
+    return MILVUS_MAX_INSERT_BATCH
+
+def get_milvus_max_delete_batch():
+    """Get safe Milvus delete batch size (500)"""
+    return MILVUS_MAX_DELETE_BATCH
+
+def get_max_text_length():
+    """Get maximum text length for processing (500000)"""
+    return MAX_TEXT_LENGTH
+
+def get_max_document_length():
+    """Get maximum document length (2000000)"""
+    return MAX_DOCUMENT_LENGTH
+
+def get_max_chunk_length():
+    """Get maximum chunk length (50000)"""
+    return MAX_CHUNK_LENGTH
+
+def get_max_chunks_per_file():
+    """Get maximum chunks per file (1000)"""
+    return MAX_CHUNKS_PER_FILE
 
 ########################################################## Compatibility functions
 

@@ -574,15 +574,19 @@ class DynamicBatchOptimizer:
                     else:
                         max_batch = 150
                 
+                # Apply Milvus safety limit - never exceed 16000 regardless of hardware
+                milvus_safety_limit = config.get_milvus_max_query_limit()  # 16000
+                max_batch = min(max_batch, milvus_safety_limit)
+                
                 # Apply benchmark score modifier
                 if benchmark_score > 300:
-                    max_batch = int(max_batch * 1.2)  # Boost for high-performance systems
+                    max_batch = min(int(max_batch * 1.2), milvus_safety_limit)  # Still respect Milvus limit
                 elif benchmark_score < 100:
-                    max_batch = int(max_batch * 0.8)  # Conservative for low-performance systems
+                    max_batch = int(max_batch * 0.8)  # This will be under the limit already
                 
-                # Safety bounds with GPU memory consideration
-                memory_limit = max(100, int(gpu_memory * 100))  # Memory-based upper limit
-                max_batch = max(50, min(memory_limit, max_batch))
+                # Apply Milvus safety limit for CPU systems too
+                milvus_safety_limit = config.get_milvus_max_query_limit()  # 16000
+                max_batch = min(max_batch, milvus_safety_limit)
                 
                 print(f"📈 Max batch for {gpu_name} ({tflops:.1f} TFLOPS, {tier}): {max_batch}")
                 return max_batch
@@ -597,6 +601,10 @@ class DynamicBatchOptimizer:
             
             # Dynamic CPU-based calculation
             max_batch = min(200, max(8, int(cpu_cores * 8 + ram_gb * 2)))
+            
+            # Apply Milvus safety limit for CPU systems
+            milvus_safety_limit = config.get_milvus_max_query_limit()  # 16000
+            max_batch = min(max_batch, milvus_safety_limit)
             
             print(f"💻 CPU max batch size: {max_batch} (Cores: {cpu_cores}, RAM: {ram_gb:.1f}GB)")
             return max_batch
@@ -644,6 +652,10 @@ class DynamicBatchOptimizer:
         
         # Apply advanced performance-based fine-tuning
         new_batch_size = self._apply_advanced_performance_tuning(new_batch_size)
+        
+        # Final safety check - ensure we never exceed Milvus limits
+        milvus_safety_limit = config.get_milvus_max_query_limit()  # 16000
+        new_batch_size = min(new_batch_size, milvus_safety_limit)
         
         # Safety bounds check with gradual adjustment
         new_batch_size = max(self.min_batch_size, min(self.max_batch_size, new_batch_size))
@@ -995,10 +1007,11 @@ class EmbeddingModel:
         if not text or not isinstance(text, str) or text.isspace():
             return [0] * getattr(config, 'VECTOR_DIM', 384)
         
-        # Text length limit for safety
-        max_text_length = getattr(config, 'MAX_TEXT_LENGTH', 5000)
+        # Text length limit for safety - use config value
+        max_text_length = config.get_max_text_length()
         if len(text) > max_text_length:
-            text = text[:max_text_length]
+            # Don't truncate - this will be handled by chunking
+            print(f"Warning: Text length {len(text)} exceeds limit {max_text_length}, will be processed in chunks")
         
         # Use hash for caching very long texts
         if len(text) > 1000:
@@ -1027,9 +1040,10 @@ class EmbeddingModel:
         # 🔥 AGGRESSIVE BATCH SIZE for continuous GPU utilization
         # RTX 4070을 위한 초대형 배치 크기 - 테스트 결과 반영!
         if len(texts) < 100:
-            # 작은 배치도 최소 크기 보장 - 500 → 800으로 업그레이드!
-            effective_batch_size = max(800, len(texts) * 15)  # 테스트 결과 기반 업그레이드
-            # 텍스트 복제로 배치 크기 늘리기 (GPU 활용도 극대화)
+            # Small batch optimization while respecting Milvus limits
+            milvus_limit = config.get_milvus_max_query_limit()  # 16000
+            effective_batch_size = min(max(800, len(texts) * 15), milvus_limit)
+            # Extend texts for GPU utilization while respecting limits
             extended_texts = texts * (effective_batch_size // len(texts) + 1)
             extended_texts = extended_texts[:effective_batch_size]
             
@@ -1380,9 +1394,10 @@ class EmbeddingModel:
         compute_text = original_text if original_text is not None else text
         
         # Additional safety check for text length
-        max_length = getattr(config, 'MAX_TEXT_LENGTH', 10000)
+        max_length = config.get_max_text_length()
         if len(compute_text) > max_length:
-            compute_text = compute_text[:max_length]
+            # Don't truncate - this will be handled by chunking
+            print(f"Warning: Compute text length {len(compute_text)} exceeds limit {max_length}, will be processed in chunks")
         
         try:
             with torch.no_grad():

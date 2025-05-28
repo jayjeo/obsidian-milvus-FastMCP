@@ -134,6 +134,17 @@ class MilvusManager:
         self.port = config.MILVUS_PORT
         self.collection_name = config.COLLECTION_NAME
         self.dimension = getattr(config, 'VECTOR_DIM', 768)  # 벡터 차원 추가 (768로 기본값 변경)
+        
+        # Import and initialize batch optimizer for intelligent query sizing
+        try:
+            from embeddings import HardwareProfiler, DynamicBatchOptimizer
+            self.hardware_profiler = HardwareProfiler()
+            self.batch_optimizer = DynamicBatchOptimizer(self.hardware_profiler)
+            print(f"Milvus using intelligent batch sizing: {self.batch_optimizer.current_batch_size}")
+        except ImportError:
+            # Fallback if embeddings not available
+            self.batch_optimizer = None
+            print("Using fallback batch sizing")
         self.milvus_containers = {
             'standalone': 'milvus-standalone',
             'etcd': 'milvus-etcd',
@@ -147,6 +158,18 @@ class MilvusManager:
         
         # 삭제 작업 배치 처리를 위한 추가 필드
         self.pending_deletions = set()
+        
+    def _get_optimal_query_limit(self):
+        """Get optimal query limit from batch optimizer or config fallback"""
+        if self.batch_optimizer:
+            # Use DynamicBatchOptimizer's intelligent sizing
+            optimal_limit = self.batch_optimizer.current_batch_size
+            # Ensure it doesn't exceed Milvus safety limit
+            milvus_limit = config.get_milvus_max_query_limit()  # 16000
+            return min(optimal_limit, milvus_limit)
+        else:
+            # Fallback to config value
+            return config.get_milvus_max_query_limit()  # 16000
         
         # 초기 설정 - 서비스가 이미 실행 중인 경우 스킵
         try:
@@ -1092,34 +1115,37 @@ class MilvusManager:
         failed_deletions = []
         
         try:
-            # 수정: 페이지네이션을 사용하여 대용량 데이터 처리
-            max_limit = 10000  # 한계를 조금 더 낮게 설정하여 오류 방지
+            # Use intelligent batch sizing from DynamicBatchOptimizer
+            max_limit = self._get_optimal_query_limit()  # Uses batch optimizer
             offset = 0
             all_results = []
             
             try:
-                # 페이지네이션을 통한 데이터 가져오기
+                # Pagination with intelligent batch sizing
                 while True:
                     try:
+                        # Use intelligent limit - already capped at 16000
+                        current_limit = max_limit
+                        
                         results = self.collection.query(
                             output_fields=["id", "path"],
-                            limit=max_limit,
+                            limit=current_limit,
                             offset=offset,
-                            expr="id >= 0"  # 모든 문서 조회
+                            expr="id >= 0"  # Query all documents
                         )
                         
-                        if not results:  # 결과가 없으면 중단
+                        if not results:  # No more results
                             break
                             
                         all_results.extend(results)
-                        offset += max_limit
+                        offset += current_limit
                         
-                        # 만약 결과가 한계보다 적으면 더 이상 없는 것으로 간주
-                        if len(results) < max_limit:
+                        # If results are fewer than limit, we've reached the end
+                        if len(results) < current_limit:
                             break
                     except Exception as e:
                         logger.error(f"Error during query iteration at offset {offset}: {e}")
-                        # 한계에 도달했다고 가정하고 중단
+                        # Break on any error since we're using safe limits
                         break
                         
             except Exception as e:
@@ -1147,8 +1173,8 @@ class MilvusManager:
             for path, ids in files_to_delete.items():
                 try:
                     if ids:
-                        # 대용량 삭제 시 배치 사이즈 제한
-                        batch_size = 500  # 작은 배치 사이즈로 오류 방지
+                        # Use intelligent delete batch size from config
+                        batch_size = config.get_milvus_max_delete_batch()  # 500
                         for i in range(0, len(ids), batch_size):
                             batch = ids[i:i+batch_size]
                             try:

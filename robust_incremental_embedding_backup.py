@@ -1,4 +1,4 @@
-# Enhanced incremental embedding logic with dynamic optimization - FIXED VERSION
+# Enhanced incremental embedding logic with dynamic optimization
 import os
 import math
 import time
@@ -26,8 +26,7 @@ def estimate_chunk_count_optimized(file_size, chunk_size=1000, chunk_overlap=100
     estimated_chunks = max(1, math.ceil((file_size - chunk_overlap) / stride))
     
     # Apply reasonable limits
-    # Use config value for max chunks per file
-    max_chunks_per_file = config.get_max_chunks_per_file()  # 1000 from config
+    max_chunks_per_file = 500  # Prevent excessive chunking
     return min(estimated_chunks, max_chunks_per_file)
 
 def get_system_performance_profile():
@@ -87,7 +86,7 @@ def optimize_batch_size_for_system():
     return batch_sizes.get(profile, 16)
 
 def process_incremental_embedding(processor):
-    """ENHANCED: Incremental embedding with dynamic optimization and performance monitoring - FIXED"""
+    """ENHANCED: Incremental embedding with dynamic optimization and performance monitoring"""
     print(f"\n🚀 Starting ENHANCED incremental embedding with dynamic optimization")
     
     vault_path = processor.vault_path
@@ -117,24 +116,17 @@ def process_incremental_embedding(processor):
     try:
         print("🔍 Querying existing files from Milvus database...")
         
-        # Use intelligent batch sizing from processor's MilvusManager if available
-        if hasattr(processor, 'milvus_manager') and hasattr(processor.milvus_manager, '_get_optimal_query_limit'):
-            max_limit = processor.milvus_manager._get_optimal_query_limit()
-        else:
-            max_limit = config.get_milvus_max_query_limit()  # Fallback
-        
+        # Use larger batch sizes for better performance
+        max_limit = 16000  # Milvus supports upto 16384
         offset = 0
         total_queried = 0
         
         while True:
             try:
-                # Use intelligent limit - already capped at 16000
-                current_limit = max_limit
-                
                 results = milvus.collection.query(
                     expr="id >= 0",
                     output_fields=["path", "updated_at"], 
-                    limit=current_limit,
+                    limit=max_limit,
                     offset=offset
                 )
                 
@@ -148,8 +140,8 @@ def process_incremental_embedding(processor):
                     chunk_counts[path] = chunk_counts.get(path, 0) + 1
                     total_queried += 1
                 
-                offset += current_limit
-                if len(results) < current_limit:
+                offset += max_limit
+                if len(results) < max_limit:
                     break
                 
                 # Progress feedback and memory management
@@ -159,7 +151,6 @@ def process_incremental_embedding(processor):
                     
             except Exception as e:
                 print(f"⚠️ Error in batch query (offset {offset}): {e}")
-                # Break on any error since we're using safe limits
                 break
         
         print(f"✅ Found {len(existing_files_info)} unique files in database")
