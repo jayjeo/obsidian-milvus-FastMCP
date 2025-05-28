@@ -575,7 +575,7 @@ class DynamicBatchOptimizer:
                         max_batch = 150
                 
                 # Apply Milvus safety limit - never exceed 16000 regardless of hardware
-                milvus_safety_limit = config.get_milvus_max_query_limit()  # 16000
+                milvus_safety_limit = 16000  # Use constant instead of config function
                 max_batch = min(max_batch, milvus_safety_limit)
                 
                 # Apply benchmark score modifier
@@ -585,7 +585,7 @@ class DynamicBatchOptimizer:
                     max_batch = int(max_batch * 0.8)  # This will be under the limit already
                 
                 # Apply Milvus safety limit for CPU systems too
-                milvus_safety_limit = config.get_milvus_max_query_limit()  # 16000
+                milvus_safety_limit = 16000  # Use constant instead of config function
                 max_batch = min(max_batch, milvus_safety_limit)
                 
                 print(f"📈 Max batch for {gpu_name} ({tflops:.1f} TFLOPS, {tier}): {max_batch}")
@@ -603,7 +603,7 @@ class DynamicBatchOptimizer:
             max_batch = min(200, max(8, int(cpu_cores * 8 + ram_gb * 2)))
             
             # Apply Milvus safety limit for CPU systems
-            milvus_safety_limit = config.get_milvus_max_query_limit()  # 16000
+            milvus_safety_limit = 16000  # Use constant instead of config function
             max_batch = min(max_batch, milvus_safety_limit)
             
             print(f"💻 CPU max batch size: {max_batch} (Cores: {cpu_cores}, RAM: {ram_gb:.1f}GB)")
@@ -654,7 +654,7 @@ class DynamicBatchOptimizer:
         new_batch_size = self._apply_advanced_performance_tuning(new_batch_size)
         
         # Final safety check - ensure we never exceed Milvus limits
-        milvus_safety_limit = config.get_milvus_max_query_limit()  # 16000
+        milvus_safety_limit = 16000  # Use constant instead of config function
         new_batch_size = min(new_batch_size, milvus_safety_limit)
         
         # Safety bounds check with gradual adjustment
@@ -1041,7 +1041,7 @@ class EmbeddingModel:
         # RTX 4070을 위한 초대형 배치 크기 - 테스트 결과 반영!
         if len(texts) < 100:
             # Small batch optimization while respecting Milvus limits
-            milvus_limit = config.get_milvus_max_query_limit()  # 16000
+            milvus_limit = 16000  # Use constant instead of config function
             effective_batch_size = min(max(800, len(texts) * 15), milvus_limit)
             # Extend texts for GPU utilization while respecting limits
             extended_texts = texts * (effective_batch_size // len(texts) + 1)
