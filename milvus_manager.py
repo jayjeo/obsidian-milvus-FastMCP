@@ -195,6 +195,121 @@ class MilvusManager:
         
         # 모니터링 스레드 시작
         self.start_monitoring()
+        
+    def connect(self):
+        """Milvus 서버에 연결 (스레드 안전)"""
+        with self.connection_lock:
+            try:
+                connections.connect(
+                    alias="default", 
+                    host=self.host, 
+                    port=self.port
+                )
+                logger.info(f"Connected to Milvus server at {self.host}:{self.port}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to connect to Milvus server: {e}")
+                raise
+    
+    def ensure_collection(self):
+        """컬렉션이 없으면 생성"""
+        try:
+            # 컬렉션 존재 여부 확인
+            if utility.has_collection(self.collection_name):
+                logger.info(f"Collection '{self.collection_name}' exists")
+                # 기존 컬렉션 로드
+                self.collection = Collection(self.collection_name)
+                return True
+            else:
+                # 컬렉션 생성
+                logger.info(f"Collection '{self.collection_name}' does not exist, creating it...")
+                return self.create_collection(self.collection_name, self.dimension)
+        except Exception as e:
+            logger.error(f"Error ensuring collection: {e}")
+            raise
+            
+    def create_collection(self, collection_name=None, dimension=None):
+        """컬렉션 생성 (없는 경우)"""
+        try:
+            if collection_name is None:
+                collection_name = self.collection_name
+            if dimension is None:
+                dimension = self.dimension
+                
+            # 필드 스키마 정의
+            fields = [
+                FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+                FieldSchema(name="file_path", dtype=DataType.VARCHAR, max_length=2048),
+                FieldSchema(name="chunk_index", dtype=DataType.INT64),
+                FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=65535),
+                FieldSchema(name="metadata", dtype=DataType.JSON),
+                FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=dimension)
+            ]
+            
+            # 컬렉션 스키마 생성
+            schema = CollectionSchema(fields=fields)
+            
+            # 컬렉션 생성
+            logger.info(f"Creating collection: {collection_name} with dimension {dimension}")
+            self.collection = Collection(name=collection_name, schema=schema)
+            
+            # 인덱스 생성
+            index_params = {
+                "index_type": "IVF_FLAT",
+                "metric_type": "IP",
+                "params": {"nlist": 1024}
+            }
+            
+            # GPU 사용 가능 여부에 따라 인덱스 타입 조정
+            if self._is_gpu_available() and hasattr(config, 'GPU_INDEX_TYPE'):
+                index_params["index_type"] = config.GPU_INDEX_TYPE
+                logger.info(f"Using GPU index type: {config.GPU_INDEX_TYPE}")
+            
+            self.collection.create_index("embedding", index_params)
+            logger.info(f"Index created on 'embedding' field")
+            
+            # 컬렉션 로드
+            self._load_collection()
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error creating collection: {e}")
+            raise
+            
+    def _load_collection(self, use_gpu=True, index_params=None):
+        """컬렉션을 로드하는 내부 메서드"""
+        try:
+            # GPU 사용 설정
+            search_params = {}
+            if use_gpu and self._is_gpu_available() and hasattr(config, 'GPU_DEVICE_ID'):
+                search_params = {
+                    "gpu_id": config.GPU_DEVICE_ID
+                }
+                logger.info(f"Loading collection with GPU (device_id: {config.GPU_DEVICE_ID})")
+            else:
+                logger.info("Loading collection with CPU")
+                
+            # 컬렉션 로드
+            self.collection.load(search_params=search_params)
+            logger.info(f"Collection '{self.collection_name}' loaded successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error loading collection: {e}")
+            raise
+            
+    def _is_gpu_available(self):
+        """시스템에 GPU가 사용 가능한지 확인"""
+        try:
+            if not hasattr(config, 'USE_GPU') or not config.USE_GPU:
+                return False
+                
+            # PyTorch를 통한 GPU 확인
+            if torch.cuda.is_available():
+                return True
+            return False
+        except Exception as e:
+            logger.warning(f"GPU availability check failed: {e}")
+            return False
     
     def wait_for_milvus_ready(self, max_wait_time=120):
         """

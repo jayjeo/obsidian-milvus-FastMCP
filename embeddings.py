@@ -1008,7 +1008,7 @@ class EmbeddingModel:
             return [0] * getattr(config, 'VECTOR_DIM', 384)
         
         # Text length limit for safety - use config value
-        max_text_length = config.get_max_text_length()
+        max_text_length = config.MAX_TEXT_LENGTH
         if len(text) > max_text_length:
             # Don't truncate - this will be handled by chunking
             print(f"Warning: Text length {len(text)} exceeds limit {max_text_length}, will be processed in chunks")
