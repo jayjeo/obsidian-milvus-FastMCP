@@ -854,9 +854,16 @@ class MilvusManager:
             self.create_collection()
         else:
             self.collection = Collection(self.collection_name)
-            # Ensure collection is loaded
-            if not self.collection.is_loaded:
+            # Ensure collection is loaded - use proper Milvus method
+            try:
+                # Try a simple operation that requires the collection to be loaded
+                self.collection.num_entities
+                logger.debug(f"Collection '{self.collection_name}' is already loaded")
+            except Exception as e:
+                # Collection is not loaded, so load it
+                logger.info(f"Loading collection '{self.collection_name}'...")
                 self.collection.load()
+                logger.info(f"Collection '{self.collection_name}' loaded successfully")
         
         # Ensure collection attribute is set
         if self.collection is None:
@@ -1203,7 +1210,12 @@ class MilvusManager:
                 return False
             
             # 컬렉션 로드 확인
-            if not self.collection.is_loaded:
+            # Ensure collection is loaded
+            try:
+                self.collection.num_entities  # Test if loaded
+                logger.debug("Collection is loaded")
+            except Exception:
+                logger.info("Loading collection for delete operation...")
                 self.collection.load()
             
             # 전체 데이터 삭제 (모든 엔티티 삭제)
@@ -1412,7 +1424,9 @@ class MilvusManager:
         if self.collection is None:
             if utility.has_collection(self.collection_name):
                 self.collection = Collection(self.collection_name)
-                if not self.collection.is_loaded:
+                try:
+                    self.collection.num_entities  # Test if loaded
+                except Exception:
                     self.collection.load()
             else:
                 logger.error(f"Collection '{self.collection_name}' does not exist")
@@ -1607,7 +1621,9 @@ class MilvusManager:
         if self.collection is None:
             if utility.has_collection(self.collection_name):
                 self.collection = Collection(self.collection_name)
-                if not self.collection.is_loaded:
+                try:
+                    self.collection.num_entities  # Test if loaded
+                except Exception:
                     self.collection.load()
             else:
                 logger.error(f"Collection '{self.collection_name}' does not exist")
