@@ -1008,7 +1008,7 @@ class EmbeddingModel:
             return [0] * getattr(config, 'VECTOR_DIM', 384)
         
         # Text length limit for safety - use config value
-        max_text_length = config.MAX_TEXT_LENGTH
+        max_text_length = getattr(config, 'MAX_TEXT_LENGTH', 500000)
         if len(text) > max_text_length:
             # Don't truncate - this will be handled by chunking
             print(f"Warning: Text length {len(text)} exceeds limit {max_text_length}, will be processed in chunks")
@@ -1097,7 +1097,7 @@ class EmbeddingModel:
         results = [[0] * getattr(config, 'VECTOR_DIM', 384) for _ in range(len(texts))]
         text_mapping = []
         
-        max_text_length = getattr(config, 'MAX_TEXT_LENGTH', 5000)
+        max_text_length = getattr(config, 'MAX_TEXT_LENGTH', 500000)
         
         for i, text in enumerate(texts):
             if isinstance(text, str) and text and not text.isspace():
@@ -1272,7 +1272,7 @@ class EmbeddingModel:
         results = [[0] * getattr(config, 'VECTOR_DIM', 384) for _ in range(len(texts))]
         text_mapping = []
         
-        max_text_length = getattr(config, 'MAX_TEXT_LENGTH', 5000)
+        max_text_length = getattr(config, 'MAX_TEXT_LENGTH', 500000)
         
         for i, text in enumerate(texts):
             if isinstance(text, str) and text and not text.isspace():
