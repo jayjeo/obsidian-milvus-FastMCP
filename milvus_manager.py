@@ -134,6 +134,7 @@ class MilvusManager:
         self.port = config.MILVUS_PORT
         self.collection_name = config.COLLECTION_NAME
         self.dimension = getattr(config, 'VECTOR_DIM', 768)  # 벡터 차원 추가 (768로 기본값 변경)
+        self.collection = None  # Initialize collection attribute
         
         # Import and initialize batch optimizer for intelligent query sizing
         try:
@@ -159,18 +160,6 @@ class MilvusManager:
         # 삭제 작업 배치 처리를 위한 추가 필드
         self.pending_deletions = set()
         
-    def _get_optimal_query_limit(self):
-        """Get optimal query limit from batch optimizer or config fallback"""
-        if self.batch_optimizer:
-            # Use DynamicBatchOptimizer's intelligent sizing
-            optimal_limit = self.batch_optimizer.current_batch_size
-            # Ensure it doesn't exceed Milvus safety limit
-            milvus_limit = config.get_milvus_max_query_limit()  # 16000
-            return min(optimal_limit, milvus_limit)
-        else:
-            # Fallback to config value
-            return config.get_milvus_max_query_limit()  # 16000
-        
         # 초기 설정 - 서비스가 이미 실행 중인 경우 스킵
         try:
             if not self.is_port_in_use(self.port):
@@ -195,6 +184,18 @@ class MilvusManager:
         
         # 모니터링 스레드 시작
         self.start_monitoring()
+        
+    def _get_optimal_query_limit(self):
+        """Get optimal query limit from batch optimizer or config fallback"""
+        if self.batch_optimizer:
+            # Use DynamicBatchOptimizer's intelligent sizing
+            optimal_limit = self.batch_optimizer.current_batch_size
+            # Ensure it doesn't exceed Milvus safety limit
+            milvus_limit = config.get_milvus_max_query_limit()  # 16000
+            return min(optimal_limit, milvus_limit)
+        else:
+            # Fallback to config value
+            return config.get_milvus_max_query_limit()  # 16000
         
     def connect(self):
         """Milvus 서버에 연결 (스레드 안전)"""
@@ -853,8 +854,15 @@ class MilvusManager:
             self.create_collection()
         else:
             self.collection = Collection(self.collection_name)
-            self.collection.load()
+            # Ensure collection is loaded
+            if not self.collection.is_loaded:
+                self.collection.load()
         
+        # Ensure collection attribute is set
+        if self.collection is None:
+            logger.error("Failed to set collection attribute")
+            raise RuntimeError("Collection could not be initialized properly")
+            
         logger.info(f"Collection '{self.collection_name}' is ready")
         
     def count_entities(self):
@@ -1400,6 +1408,16 @@ class MilvusManager:
     
     def search(self, vector, limit=5, filter_expr=None):
         """벡터 유사도 검색 수행 (GPU 검색 추가)"""
+        # Ensure collection exists
+        if self.collection is None:
+            if utility.has_collection(self.collection_name):
+                self.collection = Collection(self.collection_name)
+                if not self.collection.is_loaded:
+                    self.collection.load()
+            else:
+                logger.error(f"Collection '{self.collection_name}' does not exist")
+                return []
+                
         # GPU 사용 여부 확인
         use_gpu = getattr(config, 'USE_GPU', False)
         gpu_index_type = getattr(config, 'GPU_INDEX_TYPE', 'GPU_IVF_FLAT')
@@ -1585,6 +1603,16 @@ class MilvusManager:
         """Milvus에서 쿼리 실행 (페이지네이션 지원)
         한글과 특수문자가 포함된 쿼리를 안전하게 처리합니다.
         """
+        # Ensure collection exists
+        if self.collection is None:
+            if utility.has_collection(self.collection_name):
+                self.collection = Collection(self.collection_name)
+                if not self.collection.is_loaded:
+                    self.collection.load()
+            else:
+                logger.error(f"Collection '{self.collection_name}' does not exist")
+                return []
+                
         if output_fields is None:
             # 스키마에 존재하는 필드만 요청
             output_fields = ["id", "path", "title", "content", "chunk_text", "chunk_index", "file_type", "tags", "created_at", "updated_at"]
