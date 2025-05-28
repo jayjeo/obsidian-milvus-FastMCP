@@ -297,7 +297,8 @@ class InstallerThread(QtCore.QThread):
             # Launch in a new console (detached) so it continues running
             subprocess.Popen(f'start "" "{os.path.join(self.install_dir, "start_mcp_with_encoding_fix.bat")}"', shell=True, cwd=self.install_dir)
             log("✓ Milvus MCP server started (encoding fix applied)")
-            log("Note: NumPy version warning can be ignored or fixed with fix_numpy_compatibility.bat")        except Exception as e:
+            log("Note: NumPy version warning can be ignored or fixed with fix_numpy_compatibility.bat")
+        except Exception as e:
             log(f"✖ Failed to start MCP server ({e}) – you may start it manually later.")
         steps_done += 1
         self.progress_changed.emit(int(steps_done * 100 / total_steps))
