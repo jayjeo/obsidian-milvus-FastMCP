@@ -186,16 +186,16 @@ class MilvusManager:
         self.start_monitoring()
         
     def _get_optimal_query_limit(self):
-        """Get optimal query limit from batch optimizer or config fallback"""
+        """Get optimal query limit from DynamicBatchOptimizer or config fallback"""
         if self.batch_optimizer:
-            # Use DynamicBatchOptimizer's intelligent sizing
+            # Use DynamicBatchOptimizer's intelligent sizing - apply Milvus limit from start
             optimal_limit = self.batch_optimizer.current_batch_size
-            # Ensure it doesn't exceed Milvus safety limit
-            milvus_limit = config.get_milvus_max_query_limit()  # 16000
+            # Ensure it doesn't exceed Milvus safety limit from the start
+            milvus_limit = 16000  # Hard limit - never exceed this
             return min(optimal_limit, milvus_limit)
         else:
-            # Fallback to config value
-            return config.get_milvus_max_query_limit()  # 16000
+            # Fallback to safe limit
+            return 16000  # Safe fallback
         
     def connect(self):
         """Milvus 서버에 연결 (스레드 안전)"""
@@ -1308,8 +1308,11 @@ class MilvusManager:
             for path, ids in files_to_delete.items():
                 try:
                     if ids:
-                        # Use intelligent delete batch size from config
-                        batch_size = config.get_milvus_max_delete_batch()  # 500
+                        # Use intelligent delete batch size from DynamicBatchOptimizer
+                        if hasattr(self, 'batch_optimizer') and self.batch_optimizer:
+                            batch_size = min(self.batch_optimizer.current_batch_size // 4, 500)  # Conservative for deletes
+                        else:
+                            batch_size = 500  # Safe fallback for deletes
                         for i in range(0, len(ids), batch_size):
                             batch = ids[i:i+batch_size]
                             try:

@@ -681,7 +681,7 @@ class ObsidianProcessor:
         
         # 🔧 ENHANCED: 안전을 위한 텍스트 길이 제한 (속도와 안정성 균형)
         # Use safe document length from config - no truncation, just warning
-        max_document_length = config.get_max_document_length()  # 2M chars
+        max_document_length = getattr(config, 'MAX_DOCUMENT_LENGTH', 2000000)  # 2M chars
         if len(text) > max_document_length:
             print(f"Warning: Document very long ({len(text)} chars), processing may take longer")
             # Don't truncate - let chunking handle large documents
@@ -807,12 +807,12 @@ class ObsidianProcessor:
             
             # 하드웨어 성능이 좋더라도 최대 100개로 제한 (안정성)
             # Use config max chunks per file - no arbitrary limits
-            max_chunks_per_file = config.get_max_chunks_per_file()  # 1000
+            max_chunks_per_file = getattr(config, 'MAX_CHUNKS_PER_FILE', 1000)  # 1000
             
             print(f"Dynamic chunk processing based on {profile}: up to {max_chunks_per_file} chunks per file")
         else:
             # Fallback: use config value
-            max_chunks_per_file = config.get_max_chunks_per_file()  # 1000
+            max_chunks_per_file = getattr(config, 'MAX_CHUNKS_PER_FILE', 1000)  # 1000
             print(f"Using config chunk limit: {max_chunks_per_file} chunks per file")
         
         # Process all chunks - no truncation for complete coverage
@@ -822,7 +822,7 @@ class ObsidianProcessor:
         
         # Split long chunks instead of truncating to preserve all content
         safe_chunks = []
-        max_chunk_length = config.get_max_chunk_length()  # 50K chars from config
+        max_chunk_length = getattr(config, 'MAX_CHUNK_LENGTH', 50000)  # 50K chars from config
         
         for chunk in unique_chunks:
             if len(chunk) > max_chunk_length:

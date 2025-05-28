@@ -27,7 +27,7 @@ def estimate_chunk_count_optimized(file_size, chunk_size=1000, chunk_overlap=100
     
     # Apply reasonable limits
     # Use config value for max chunks per file
-    max_chunks_per_file = config.get_max_chunks_per_file()  # 1000 from config
+    max_chunks_per_file = getattr(config, 'MAX_CHUNKS_PER_FILE', 1000)  # 1000 from config
     return min(estimated_chunks, max_chunks_per_file)
 
 def get_system_performance_profile():
@@ -117,11 +117,11 @@ def process_incremental_embedding(processor):
     try:
         print("🔍 Querying existing files from Milvus database...")
         
-        # Use intelligent batch sizing from processor's MilvusManager if available
+        # Use intelligent batch sizing from processor's DynamicBatchOptimizer if available
         if hasattr(processor, 'milvus_manager') and hasattr(processor.milvus_manager, '_get_optimal_query_limit'):
             max_limit = processor.milvus_manager._get_optimal_query_limit()
         else:
-            max_limit = config.get_milvus_max_query_limit()  # Fallback
+            max_limit = 16000  # Safe fallback - never exceed Milvus limit
         
         offset = 0
         total_queried = 0
