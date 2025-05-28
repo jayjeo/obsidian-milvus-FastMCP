@@ -102,7 +102,7 @@
     pip install "numpy>2.0.0"
     pip install --no-deps transformers==4.52.3
     pip install sentence-transformers==4.1.0 tqdm filelock fsspec
-    pip install PyPDF2 markdown beautifulsoup4 python-dotenv watchdog psutil colorama pyyaml tqdm requests pymilvus mcp fastmcp torch
+    pip install PyPDF2 markdown beautifulsoup4 python-dotenv watchdog psutil colorama pyyaml tqdm requests pymilvus mcp fastmcp torch nvidia-ml-py 
     ```
 
     - Sentence Transformers Library (sentence-transformers): The v3.1.1 release announced in September 2024 removed the numpy<2 constraint that was previously set to prevent conflicts in Windows environments on GitHub. This means that the latest version (≥3.1.1) of Sentence Transformers officially supports NumPy 2.x, allowing users to freely choose between NumPy 1.x and 2.x.

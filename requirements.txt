@@ -26,3 +26,6 @@ pyyaml>=6.0.1
 
 # GPU acceleration (optional)
 torch>=2.0.0
+# For accurate GPU monitoring (choose one):
+# nvidia-ml-py>=12.560.30  # Official NVIDIA package (recommended)
+# pynvml>=12.0.0          # Alternative (deprecated but works)

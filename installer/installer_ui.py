@@ -40,7 +40,7 @@ class InstallerThread(QtCore.QThread):
             ("Installing transformers with no-deps", ["pip", "install", "--no-deps", "transformers==4.52.3"]),
             ("Installing sentence-transformers and dependencies", ["pip", "install", "sentence-transformers==4.1.0", "tqdm", "filelock", "fsspec"]),
             ("Installing Python packages", ["pip", "install", "PyPDF2", "markdown", "beautifulsoup4", "python-dotenv", 
-                                           "watchdog", "psutil", "colorama", "pyyaml", "tqdm", "requests", "pymilvus", "mcp", "fastmcp", "torch"]),
+                                           "watchdog", "psutil", "colorama", "pyyaml", "tqdm", "requests", "pymilvus", "mcp", "fastmcp", "torch", "nvidia-ml-py"]),
             ("Installing/Verifying Podman via winget", ["winget", "install", "-e", "--id", "RedHat.Podman", 
                                                        "--accept-package-agreements", "--accept-source-agreements"])
         ]
