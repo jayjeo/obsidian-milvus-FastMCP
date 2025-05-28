@@ -1394,7 +1394,7 @@ class EmbeddingModel:
         compute_text = original_text if original_text is not None else text
         
         # Additional safety check for text length
-        max_length = config.get_max_text_length()
+        max_length = getattr(config, 'MAX_TEXT_LENGTH', 500000)
         if len(compute_text) > max_length:
             # Don't truncate - this will be handled by chunking
             print(f"Warning: Compute text length {len(compute_text)} exceeds limit {max_length}, will be processed in chunks")
