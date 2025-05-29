@@ -1177,12 +1177,60 @@ class MilvusManager:
             logger.info(f"Fallback: Collection '{self.collection_name}' created with CPU index")
     
     def insert_data(self, data):
-        """데이터를 Milvus에 삽입 (배치 처리 지원)"""
+        """데이터를 Milvus에 삽입 (배치 처리 지원)
+        오류 로깅 및 예외 처리 개선
+        """
+        # 컴파일 시점에 기본 값 설정
+        vector_dimension = getattr(self, 'dimension', 768)  # 기본값 768
+        
         try:
-            # 데이터 형식 검증
-            if not data or not isinstance(data, dict):
-                print("Warning: Invalid data format for insert")
-                return None
+            # 1. 콜렉션 객체 초기화 여부 확인
+            if self.collection is None:
+                if not utility.has_collection(self.collection_name):
+                    error_msg = f"Collection '{self.collection_name}' does not exist"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+                
+                # 콜렉션 로드 시도
+                try:
+                    self.collection = Collection(self.collection_name)
+                    logger.info(f"Collection '{self.collection_name}' loaded successfully")
+                except Exception as coll_error:
+                    error_msg = f"Failed to load collection '{self.collection_name}': {coll_error}"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+            
+            # 2. 데이터 형식 검증 (상세한 오류 로깅 추가)
+            if not data:
+                error_msg = "Empty data provided for insertion"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+                
+            if not isinstance(data, dict):
+                error_msg = f"Invalid data format: expected dict, got {type(data)}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            # 3. 데이터의 필수 필드 확인
+            required_fields = ["path", "vector"]
+            missing_fields = [field for field in required_fields if field not in data]
+            if missing_fields:
+                error_msg = f"Missing required fields for insertion: {missing_fields}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            # 4. 벡터 형식 및 차원 확인
+            vector_data = data.get("vector")
+            if not isinstance(vector_data, list):
+                error_msg = f"Vector data must be a list, got {type(vector_data)}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            actual_dimension = len(vector_data)
+            if actual_dimension != vector_dimension:
+                error_msg = f"Vector dimension mismatch: expected {vector_dimension}, got {actual_dimension}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
                 
             # auto_id=True로 설정되어 있으므로 'id' 필드 제거
             if 'id' in data:
@@ -1190,14 +1238,28 @@ class MilvusManager:
                 del data_copy['id']
             else:
                 data_copy = data
+            
+            # 5. 삽입 시도
+            try:
+                result = self.collection.insert(data_copy)
+                return result
+            except Exception as insert_error:
+                # 삽입 오류에 대한 자세한 로깅
+                error_msg = f"Failed to insert data: {insert_error}"
+                logger.error(error_msg, exc_info=True)
                 
-            # 대용량 데이터 처리를 위한 성능 최적화
-            result = self.collection.insert(data_copy)
-            # flush는 호출자가 관리 (배치마다 한 번만 호출)
-            return result
+                # 데이터 삽입 상태 로깅 (디버깅용)
+                logger.debug(f"Data path being inserted: {data_copy.get('path', 'N/A')}")
+                logger.debug(f"Vector dimension: {len(data_copy.get('vector', []))}")
+                
+                raise insert_error
+                
         except Exception as e:
-            print(f"Error inserting data: {e}")
-            return None
+            # 총괄적인 오류 처리
+            error_msg = f"Error inserting data: {e}"
+            logger.error(error_msg, exc_info=True)
+            # 예외를 상위로 전파하여 정확한 오류 파악
+            raise
     
     # 삭제 작업을 위한 메모리 효율적인 작업 관리
         
@@ -1512,7 +1574,9 @@ class MilvusManager:
         return results[0]  # 첫 번째 쿼리의 결과
     
     def _sanitize_query_expr(self, expr):
-        """쿼리 표현식에서 특수문자와 경로를 안전하게 처리"""
+        """쿼리 표현식에서 특수문자와 경로를 안전하게 처리
+        영어와 한글 파일명에 있는 특수문자를 모두 처리합니다.
+        """
         import re
         
         # 이미 안전한 쿼리인 경우 그대로 반환
@@ -1520,70 +1584,112 @@ class MilvusManager:
             return expr
         
         try:
-            # 안전한 기본 쿼리로 대체하여 오류 방지
-            if "path" in expr and ("=" in expr or "like" in expr):
-                # 오류 발생 가능성이 있는 경우 안전한 쿼리로 대체
-                logger.warning(f"Potentially unsafe query detected: {expr}. Using safe alternative.")
-                return "id >= 0"
-                
-            # 'path = 'value'' 또는 'path like 'value%'' 패턴 감지
-            path_equals_pattern = re.compile(r"(path\s*=\s*['\"])(.*?)(['\"])")
-            path_like_pattern = re.compile(r"(path\s+like\s+['\"])(.*?)(['\"])")
-            title_equals_pattern = re.compile(r"(title\s*=\s*['\"])(.*?)(['\"])")
-            title_like_pattern = re.compile(r"(title\s+like\s+['\"])(.*?)(['\"])")
-        except Exception as e:
-            logger.error(f"Error in sanitize query expression: {e}")
-            return "id >= 0"  # 오류 발생시 안전한 쿼리 반환
-        
-        # 한글이나 특수문자가 포함된 경우 처리
-        if re.search(r'[가-힣\(\)\s]', expr):
-            # 'path = 'value'' 패턴 처리
-            if path_equals_pattern.search(expr):
-                logger.debug(f"한글/특수문자 포함된 path = 쿼리 감지: {expr}")
-                # id >= 0으로 대체하고 후처리에서 필터링
-                return "id >= 0"
-                
-            # 'path like 'value%'' 패턴 처리
-            elif path_like_pattern.search(expr):
-                match = path_like_pattern.search(expr)
-                if match:
-                    prefix = match.group(2).rstrip('%')
-                    # 접두사에 한글이 포함된 경우
-                    if re.search(r'[가-힣]', prefix):
-                        logger.debug(f"한글 포함된 path like 쿼리 감지: {expr}")
-                        # 접두사 검색은 지원하지만 한글이 포함된 경우 주의 필요
-                        if prefix.endswith('%'):
-                            # 와일드카드가 접두사 내에 있으면 id >= 0으로 대체
-                            return "id >= 0"
-                        else:
-                            # 접두사 검색은 유지 (path like 'prefix%')
-                            return expr
+            # 문제가 될 수 있는 특수 문자 정의
+            problem_chars = ",'\"()[]{},;" 
             
-            # title 관련 쿼리도 유사하게 처리
-            elif title_equals_pattern.search(expr) or title_like_pattern.search(expr):
-                logger.debug(f"한글/특수문자 포함된 title 쿼리 감지: {expr}")
-                return "id >= 0"  # id >= 0으로 대체하고 후처리에서 필터링
+            # 1. 파일 경로 제이터 필드 쿼리 처리 (path, file_path)
+            path_patterns = [
+                r"path\s*=\s*['\"](.+?)['\"]",  # path = 'value'
+                r"path\s+==\s*['\"](.+?)['\"]",  # path == 'value'
+                r"path\s+like\s+['\"](.+?)['\"]",  # path like 'value%'
+                r"file_path\s*=\s*['\"](.+?)['\"]",  # file_path = 'value'
+                r"file_path\s+==\s*['\"](.+?)['\"]",  # file_path == 'value'
+            ]
+            
+            for pattern in path_patterns:
+                match = re.search(pattern, expr)
+                if match:
+                    path_value = match.group(1)
+                    
+                    # 한글 포함 확인
+                    has_korean = bool(re.search(r'[가-힣]', path_value))
+                    # 특수 문자 포함 확인
+                    has_special_chars = any(c in path_value for c in problem_chars) or " " in path_value
+                    
+                    # 한글이나 특수 문자가 포함된 경우
+                    if has_korean or has_special_chars:
+                        logger.debug(f"특수 문자 또는 한글이 포함된 경로 쿼리 감지: {expr}")
+                        
+                        try:
+                            # 파일명만 추출하여 부분 일치 검색으로 대체
+                            import os
+                            file_name = os.path.basename(path_value)
+                            
+                            # 파일명에 특수 문자가 많으면 안전한 쿼리로 대체
+                            special_char_count = sum(1 for c in file_name if c in problem_chars)
+                            
+                            # 특수 문자의 수에 따라 처리 방식 결정
+                            if special_char_count > 2 or len(file_name) < 3:
+                                logger.debug(f"다수의 특수 문자 발견 또는 짧은 파일명, 안전한 쿼리로 대체: {file_name}")
+                                return "id >= 0"  # 후처리에서 필터링할 수 있도록 모든 항목 조회
+                            else:
+                                # 특수 문자가 적은 경우 파일명으로 부분 일치 검색
+                                # SQL 인정부호 이스케이프 처리
+                                safe_file_name = file_name.replace("'", "\\'")
+                                new_expr = f"path like '%{safe_file_name}%'"
+                                logger.debug(f"쿼리 변환: {expr} -> {new_expr}")
+                                return new_expr
+                        except Exception as e:
+                            logger.warning(f"파일명 추출 중 오류: {e}, 안전한 쿼리 사용")
+                            return "id >= 0"
+            
+            # 2. 제목 필드 쿼리 처리 (title)
+            title_patterns = [
+                r"title\s*=\s*['\"](.+?)['\"]",  # title = 'value'
+                r"title\s+==\s*['\"](.+?)['\"]",  # title == 'value'
+                r"title\s+like\s+['\"](.+?)['\"]",  # title like 'value%'
+            ]
+            
+            for pattern in title_patterns:
+                match = re.search(pattern, expr)
+                if match:
+                    title_value = match.group(1)
+                    
+                    # 한글 포함 확인
+                    has_korean = bool(re.search(r'[가-힣]', title_value))
+                    # 특수 문자 포함 확인
+                    has_special_chars = any(c in title_value for c in problem_chars)
+                    
+                    # 한글이나 특수 문자가 포함된 경우
+                    if has_korean or has_special_chars:
+                        logger.debug(f"특수 문자 또는 한글이 포함된 제목 쿼리 감지: {expr}")
+                        
+                        # 특수 문자의 수에 따라 처리 방식 결정
+                        special_char_count = sum(1 for c in title_value if c in problem_chars)
+                        if special_char_count > 2 or len(title_value) < 3:
+                            logger.debug(f"다수의 특수 문자 발견 또는 짧은 제목, 안전한 쿼리로 대체: {title_value}")
+                            return "id >= 0"  # 후처리에서 필터링
+                        else:
+                            # 특수 문자가 적은 경우 부분 일치 검색
+                            # SQL 인정부호 이스케이프 처리
+                            safe_title = title_value.replace("'", "\\'")
+                            new_expr = f"title like '%{safe_title}%'"
+                            logger.debug(f"쿼리 변환: {expr} -> {new_expr}")
+                            return new_expr
+                            
+        except Exception as e:
+            logger.error(f"쿼리 표현식 정제 중 오류: {e}")
+            return "id >= 0"  # 오류 발생시 안전한 쿼리 반환
         
         # 변경이 필요 없는 경우 원래 표현식 반환
         return expr
     
     def _post_filter_results(self, results, original_expr):
         """쿼리 결과를 원래 표현식에 맞게 후처리"""
-        import re
-        
-        # 원래 표현식이 없거나 결과가 없으면 그대로 반환
-        if not original_expr or not results or original_expr == "id >= 0":
+        # 원본 표현식이 경로 비교인 경우, 정확히 일치하는 경로만 반환
+        if not results or not original_expr:
             return results
-            
-        # 'path = 'value'' 패턴 감지
-        path_equals_pattern = re.compile(r"path\s*=\s*['\"](.+?)['\"]")
-        path_match = path_equals_pattern.search(original_expr)
         
-        if path_match:
-            path_value = path_match.group(1)
-            # 정확한 경로 일치 필터링
-            filtered_results = [r for r in results if r.get('path') == path_value]
-            logger.debug(f"경로 정확 일치 필터링: {len(filtered_results)}/{len(results)} 결과 남음")
+        # 'path == 'value'' 패턴 감지
+        import re
+        path_eq_pattern = re.compile(r"path\s*==\s*['\"](.+?)['\"]")
+        path_eq_match = path_eq_pattern.search(original_expr)
+        
+        if path_eq_match:
+            eq_value = path_eq_match.group(1)
+            # 정확히 일치하는 경로만 필터링
+            filtered_results = [r for r in results if r.get('path') == eq_value]
+            logger.debug(f"경로 일치 필터링: {len(filtered_results)}/{len(results)} 결과 남음")
             return filtered_results
             
         # 'title = 'value'' 패턴 감지
@@ -1712,11 +1818,26 @@ class MilvusManager:
             
         try:
             # 방법 1: 직접 해당 경로를 쿼리하여 처리 속도 개선
-            # 경로에 특수 문자가 있을 수 있으므로 안전하게 처리
+            # 경로에 특수 문자나 한글이 있을 수 있으므로 안전하게 처리
             try:
-                # 특수 문자 이스케이핑을 위해 따옴표 처리 
-                escaped_path = file_path.replace("'", "\\'").replace("\\", "\\\\")
-                expr = f"path == '{escaped_path}'"
+                # 한글 및 특수 문자 안전 처리 향상
+                # 1. Base64 인코딩 방식으로 경로 비교 (가장 안전한 방법)
+                import base64
+                import re
+                
+                # 경로에 특수 문자나 한글이 포함되어 있는지 확인
+                has_special_chars = bool(re.search(r'[^a-zA-Z0-9_\-\./]', file_path))
+                
+                if has_special_chars:
+                    # 특수 문자나 한글이 포함된 경우: ID 기반 우회 검색
+                    # 파일명만 추출해서 더 간단한 쿼리 구성
+                    file_name = os.path.basename(file_path)
+                    # 다른 방식으로 시도 - 파일명 부분 일치 검색
+                    expr = f"path like '%{file_name}%'"  # 파일명 부분 일치 검색
+                else:
+                    # 특수 문자가 없는 경우: 일반 경로 이스케이핑
+                    escaped_path = file_path.replace("'", "\\'").replace("\\", "\\\\")
+                    expr = f"path == '{escaped_path}'"
                 count_results = self.collection.query(
                     output_fields=["count(*) as count"],
                     limit=1,

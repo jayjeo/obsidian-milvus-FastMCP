@@ -107,11 +107,41 @@ class ObsidianProcessor:
         self.FAST_PROCESS_THRESHOLD = 2.0  # Files with time diff > 2.0s are definitely changed
         
     def _get_next_id(self):
-        """다음 ID 값 가져오기"""
-        results = self.milvus_manager.query("id >= 0", output_fields=["id"], limit=1)
-        if not results:
+        """다음 ID 값 가져오기 (강화된 오류 처리)"""
+        try:
+            # 쿼리 결과 가져오기
+            results = self.milvus_manager.query("id >= 0", output_fields=["id"], limit=1)
+            
+            # 결과가 없거나 비어 있으면 1로 시작
+            if not results or len(results) == 0:
+                logger.debug("No existing IDs found, starting with ID 1")
+                return 1
+            
+            # 결과에서 ID 추출 (안전하게)
+            valid_ids = []
+            for r in results:
+                try:
+                    # ID가 실제 정수인지 확인
+                    if 'id' in r and r['id'] is not None and isinstance(r['id'], (int, float)):
+                        valid_ids.append(int(r['id']))
+                    else:
+                        logger.warning(f"Skipping invalid ID format: {r}")
+                except Exception as id_err:
+                    logger.warning(f"Error processing ID entry: {r}, error: {id_err}")
+            
+            # 유효한 ID가 있으면 최대값 + 1 반환
+            if valid_ids:
+                next_id = max(valid_ids) + 1
+                logger.debug(f"Found valid IDs, next ID will be: {next_id}")
+                return next_id
+            else:
+                logger.warning("No valid IDs found, starting with ID 1")
+                return 1
+                
+        except Exception as e:
+            # 모든 예외 처리하고 안전하게 1 반환
+            logger.error(f"Error getting next ID: {e}, using default ID 1")
             return 1
-        return max([r['id'] for r in results]) + 1
         
     def _create_ascii_bar(self, percent, width=20):
         """퍼센트 값을 받아 ASCII 그래프 바 생성"""
@@ -1056,24 +1086,29 @@ class ObsidianProcessor:
         return unique_chunks
     
     def _save_vectors_to_milvus(self, vectors, chunks, chunk_file_map):
-        """벡터와 청크 데이터를 Milvus에 저장하는 최적화된 메소드 (문자열 길이 제한 강화)"""
+        """벡터와 청크 데이터를 Milvus에 저장하는 최적화된 메소드 (문자열 길이 제한 강화)
+        개별 청크 삽입 실패 시에도 계속 진행하며, 일정 수준의 성공만으로도 전체 처리를 성공으로 간주합니다.
+        """
         if not vectors or not chunks or not chunk_file_map or len(vectors) != len(chunks):
             return False
             
-        try:
-            # 각 청크와 벡터를 개별적으로 처리하여 Milvus에 삽입
-            # 파일별 청크 인덱스 추적
-            file_chunk_indices = {}
+        # 총 항목 수와 성공/실패 카운트 추적
+        total_items = len(vectors)
+        success_count = 0
+        failed_count = 0
+        file_chunk_indices = {}  # 파일별 청크 인덱스 추적
+        
+        # 처리 시작 로깅
+        logger.info(f"Starting to save {total_items} vectors to Milvus")
+        
+        # 각 청크와 벡터 처리
+        for i, (vector, chunk, metadata) in enumerate(zip(vectors, chunks, chunk_file_map)):
+            # 메모리 모니터링 (더 자주 체크)
+            if i > 0 and i % 10 == 0:
+                self._check_memory_usage(f"Milvus insertion {i}/{total_items}")
+                logger.info(f"Progress: {i}/{total_items} items processed. Success: {success_count}, Failed: {failed_count}")
             
-            # 성공적으로 삽입된 항목 수 추적
-            success_count = 0
-            
-            # 각 청크와 벡터 처리
-            for i, (vector, chunk, metadata) in enumerate(zip(vectors, chunks, chunk_file_map)):
-                # 메모리 모니터링
-                if i > 0 and i % 20 == 0:
-                    self._check_memory_usage(f"Milvus insertion {i}/{len(chunks)}")
-                
+            try:
                 rel_path = metadata["rel_path"]
                 
                 # 파일별 청크 인덱스 추적
@@ -1085,43 +1120,49 @@ class ObsidianProcessor:
                 # 태그 JSON 변환 (안전한 형식으로)
                 try:
                     tags_json = json.dumps(metadata["tags"]) if metadata["tags"] else "[]"
-                except:
+                except Exception as json_error:
+                    logger.warning(f"Error converting tags to JSON: {json_error}, using empty array")
                     tags_json = "[]"
                 
-                # 🔧 FIXED: 최대 문자열 길이 (더 안전한 마진)
+                # 최대 문자열 길이 (더 안전한 마진)
                 MAX_STRING_LENGTH = 32000  # Milvus 제한 65535보다 충분히 안전하게 설정
                 MAX_CONTENT_LENGTH = 16000  # content 필드는 더 짧게
                 MAX_CHUNK_LENGTH = 16000    # chunk_text 필드도 더 짧게
                 
-                # 🔧 ENHANCED: 강화된 문자열 안전 자르기 함수
+                # 강화된 문자열 안전 자르기 함수
                 def safe_truncate(text, max_len=MAX_STRING_LENGTH):
                     if not isinstance(text, str):
                         return str(text) if text is not None else ""
                     if not text:
                         return ""
                     # UTF-8 바이트 기준으로도 확인
-                    text_bytes = text.encode('utf-8', errors='ignore')[:max_len//2]
-                    truncated = text_bytes.decode('utf-8', errors='ignore')
-                    # 최종적으로 문자 길이도 확인
-                    return truncated[:max_len] if len(truncated) > max_len else truncated
+                    try:
+                        text_bytes = text.encode('utf-8', errors='ignore')[:max_len//2]
+                        truncated = text_bytes.decode('utf-8', errors='ignore')
+                        # 최종적으로 문자 길이도 확인
+                        return truncated[:max_len] if len(truncated) > max_len else truncated
+                    except Exception as enc_error:
+                        logger.warning(f"Encoding error in safe_truncate: {enc_error}, returning empty string")
+                        return ""
                 
-                # 각 항목을 개별적으로 삽입
+                # 각 항목을 개별적으로 삽입 (안전한 딕셔너리 접근 방식 사용)
                 single_data = {
                     "id": self.next_id,
                     "path": safe_truncate(rel_path, 500),
-                    "title": safe_truncate(metadata["title"], 500) if metadata["title"] else "",
+                    "title": safe_truncate(metadata.get("title", ""), 500),
                     # 첫 번째 청크일 때만 전체 내용 저장, 나머지는 빈 문자열
-                    "content": safe_truncate(metadata["content"], MAX_CONTENT_LENGTH) if chunk_index == 0 else "",  # content 길이 제한
+                    # 안전한 방식으로 content 키에 접근 (기본값 빈 문자열 사용)
+                    "content": safe_truncate(metadata.get("content", ""), MAX_CONTENT_LENGTH) if chunk_index == 0 else "",
                     "chunk_text": safe_truncate(chunk, MAX_CHUNK_LENGTH),  # chunk_text 길이 제한 강화
                     "chunk_index": chunk_index,
-                    "file_type": safe_truncate(metadata["file_ext"], 10),
+                    "file_type": safe_truncate(metadata.get("file_ext", ""), 10),
                     "tags": safe_truncate(tags_json, 1000),
-                    "created_at": safe_truncate(metadata["created_at"], 30),
-                    "updated_at": safe_truncate(metadata["updated_at"], 30),
+                    "created_at": safe_truncate(metadata.get("created_at", ""), 30),
+                    "updated_at": safe_truncate(metadata.get("updated_at", ""), 30),
                     "vector": vector
                 }
                 
-                # 🔧 ENHANCED: 강화된 데이터 유효성 검사 (안전 장치)
+                # 강화된 데이터 유효성 검사 (안전 장치)
                 valid_data = True
                 for key, value in single_data.items():
                     if key != "vector" and isinstance(value, str):
@@ -1134,36 +1175,101 @@ class ObsidianProcessor:
                             max_field_len = MAX_STRING_LENGTH
                         
                         if len(value) > max_field_len:
-                            print(f"🚨 CRITICAL: Field {key} too long ({len(value)} chars), forcing truncation to {max_field_len}")
+                            logger.warning(f"Field {key} too long ({len(value)} chars), forcing truncation to {max_field_len}")
                             single_data[key] = value[:max_field_len]
                 
-                # 🔧 FINAL SAFETY: 모든 문자열이 안전한 길이인지 최종 확인
+                # FINAL SAFETY: 모든 문자열이 안전한 길이인지 최종 확인
                 for key, value in single_data.items():
                     if key != "vector" and isinstance(value, str) and len(value) > 16000:
-                        print(f"🚨 EMERGENCY: Field {key} still too long after all checks ({len(value)} chars), emergency truncation")
+                        logger.warning(f"EMERGENCY: Field {key} still too long after all checks ({len(value)} chars), emergency truncation")
                         single_data[key] = value[:10000]  # 응급 처치 - 매우 보수적으로 10K로 제한
                 
-                # 단일 항목 삽입
-                try:
-                    if valid_data:
-                        self.milvus_manager.insert_data(single_data)
-                        success_count += 1
-                        # 10개 항목마다 flush - 메모리 관리
-                        if success_count % 10 == 0:
-                            self.milvus_manager.collection.flush()
-                except Exception as e:
-                    print(f"Error inserting item {self.next_id}: {e}")
+                # 특수 문자 처리 개선 (콤마, 괴호, 인용부호 등)
+                sanitized_data = {}
+                for key, value in single_data.items():
+                    if key == "vector":
+                        sanitized_data[key] = value
+                    elif isinstance(value, str):
+                        # 문자열 필드의 경우 특수 문자 처리
+                        if key == "path" or key == "title":
+                            # 경로와 제목은 중요하므로 인코딩 문제 확인
+                            try:
+                                # Milvus에서 사용하는 표현식에 중요한 특수 문자 이스케이핑
+                                escaped_value = value.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
+                                sanitized_data[key] = escaped_value
+                            except Exception as esc_error:
+                                logger.warning(f"Error escaping special chars in {key}: {esc_error}, using original value")
+                                sanitized_data[key] = value
+                        else:
+                            # 다른 문자열 필드는 기본 처리
+                            sanitized_data[key] = value
+                    else:
+                        sanitized_data[key] = value
                 
+                # 안전하게 처리된 데이터 삽입
+                try:
+                    # 단일 항목 삽입 시도
+                    if valid_data:
+                        self.milvus_manager.insert_data(sanitized_data)
+                        success_count += 1
+                        
+                        # 일정 개수마다 flush - 메모리 관리
+                        if success_count % 10 == 0:
+                            try:
+                                self.milvus_manager.collection.flush()
+                                logger.debug(f"Successfully flushed after {success_count} insertions")
+                            except Exception as flush_error:
+                                logger.warning(f"Non-critical flush error (continuing): {flush_error}")
+                    else:
+                        failed_count += 1
+                        logger.warning(f"Skipping invalid data for item {self.next_id}")
+                        
+                except Exception as insert_error:
+                    # 삽입 오류 발생 시 이 항목은 건너뛰고 계속 진행
+                    failed_count += 1
+                    logger.error(f"Failed to insert data for path: {sanitized_data.get('path', 'unknown')}, error: {insert_error}")
+                    
+                    # 주요 필드 로깅 (디버깅용)
+                    for field_name in ['path', 'title', 'file_type']:
+                        field_value = sanitized_data.get(field_name, '')
+                        if isinstance(field_value, str) and field_value:
+                            logger.debug(f"Field {field_name}: '{field_value[:50]}...'")
+                    
+                    # 오류 정보 자세히 기록하지만 전체 프로세스는 계속 진행
+                    logger.debug(f"Continuing with next item despite insertion error for item {self.next_id}")
+                
+                # ID 증가 (항상 증가해야 중복 ID 방지)
                 self.next_id += 1
-            
-            # 최종 flush
+                
+            except Exception as item_error:
+                # 항목 자체 처리 중 오류 발생해도 다음 항목으로 계속 진행
+                failed_count += 1
+                logger.error(f"Error processing item {i}/{total_items}: {item_error}", exc_info=True)
+                # ID는 항상 증가 (안전장치)
+                self.next_id += 1
+        
+        # 최종 flush 시도
+        try:
             self.milvus_manager.collection.flush()
-            
-            print(f"Successfully inserted {success_count} out of {len(chunks)} items")
-            return success_count > 0
-            
-        except Exception as e:
-            print(f"Error saving vectors to Milvus: {e}")
+            logger.info("Final flush completed successfully")
+        except Exception as final_flush_error:
+            logger.warning(f"Error during final flush (non-critical): {final_flush_error}")
+        
+        # 최종 결과 로깅
+        success_rate = (success_count / total_items) * 100 if total_items > 0 else 0
+        logger.info(f"Vector insertion complete. Total: {total_items}, Success: {success_count}, Failed: {failed_count}, Success Rate: {success_rate:.1f}%")
+        
+        # 성공률 50% 이상이면 성공으로 간주
+        # 또는 적어도 하나의 항목이 성공했고 실패가 적으면 성공으로 간주
+        success_threshold = 0.5  # 50% 성공률 임계값
+        min_success_count = 1    # 최소 성공 항목 수
+        
+        if (total_items > 0 and success_count / total_items >= success_threshold) or \
+           (success_count >= min_success_count and success_count > failed_count):
+            logger.info(f"Vector insertion considered successful with {success_rate:.1f}% success rate")
+            return True
+        else:
+            logger.warning(f"Vector insertion considered failed with only {success_rate:.1f}% success rate")
             return False
     
     def _fast_decision_engine(self, file_path, file_mtime, existing_mtime, file_size):
