@@ -303,49 +303,280 @@ complete-reset.bat  # Windows
 ```
 
 
-## Project Tree Structure
+## Obsidian-Milvus-FastMCP Project Structure and Module Descriptions
+##### Project Dependency Tree
+📁 obsidian-milvus-FastMCP/
+│
+├── 🎯 main.py (Core Entry Point #1)
+│   ├── logger.py ← Centralized logging system
+│   ├── config.py ← Configuration management
+│   ├── milvus_manager.py ← Milvus database operations
+│   │   ├── logger.py (reused)
+│   │   ├── config.py (reused)
+│   │   └── embeddings.py ← AI embedding model management
+│   │       ├── warning_suppressor.py ← Warning suppression utility
+│   │       └── config.py (reused)
+│   ├── obsidian_processor.py ← Obsidian note processing
+│   │   ├── logger.py (reused)
+│   │   ├── config.py (reused)
+│   │   ├── embeddings.py (reused)
+│   │   └── progress_monitor_cmd.py ← Progress monitoring for CLI
+│   ├── watcher.py ← File system monitoring
+│   │   ├── logger.py (reused)
+│   │   └── config.py (reused)
+│   └── robust_incremental_embedding.py ← Incremental embedding processing
+│       ├── logger.py (reused)
+│       └── config.py (reused)
+│
+├── 🔧 setup.py (Core Entry Point #2 - Testing & Configuration)
+│   └── config.py (reused)
+│
+├── 📦 installer/installer_ui.py (Core Entry Point #3 - Windows Installer)
+│   └── (PyQt5-based GUI installer)
+│
+├── 🌐 mcp_server.py ← MCP Server for Claude Desktop integration
+│   ├── mcp_server_helpers.py ← Helper functions for MCP
+│   ├── config.py (reused)
+│   ├── milvus_manager.py (reused)
+│   ├── obsidian_processor.py (reused)
+│   ├── enhanced_search_engine.py ← Advanced search functionality
+│   │   ├── embeddings.py (reused)
+│   │   └── config.py (reused)
+│   └── search_engine.py ← Basic search functionality
+│       ├── embeddings.py (reused)
+│       └── config.py (reused)
+│
+├── 🚀 Startup Scripts
+│   ├── run-main.py ← Python wrapper for main.py
+│   ├── run-main.bat ← Windows batch launcher
+│   ├── auto_start_mcp_server.vbs ← Windows auto-startup script
+│   ├── start-milvus.bat ← Milvus container startup
+│   └── Various other .bat/.vbs startup utilities
+│
+└── 📄 Configuration Files
+    ├── .env / .env.example ← Environment variables
+    ├── requirements.txt ← Python dependencies
+    ├── milvus-podman-compose.yml ← Podman container configuration
+    └── milvus-docker-compose.yml ← Docker container configuration
+
+##### Module Descriptions
+- Core Entry Points
+1. main.py - Primary Application Entry
+
 ```
-obsidian-milvus-FastMCP/
-├── Main Application Files
-│   ├── main.py                           # Main entry point with CLI menu system
-│   ├── mcp_server.py                     # FastMCP server with advanced search tools
-│   ├── config.py                         # Central configuration settings
-│   ├── milvus_manager.py                 # Milvus database operations manager  
-│   ├── obsidian_processor.py             # Obsidian file processing and embedding
-│   ├── search_engine.py                  # Basic hybrid search engine
-│   └── embeddings.py                     # Advanced embedding model with GPU optimization
-│
-├── Advanced Search Components
-│   ├── enhanced_search_engine.py         # Advanced semantic and contextual search
-│   ├── advanced_rag.py                   # RAG engine with knowledge graphs
-│   ├── hnsw_optimizer.py                 # HNSW index optimization
-│   └── watcher.py                        # Real-time file monitoring
-│
-├── Setup and Utilities
-│   ├── setup.py                          # Interactive setup and testing system
-│   ├── requirements.txt                  # Python dependencies
-│   ├── README.md                         # Comprehensive documentation
-│   └── LICENSE                           # MIT license file
-│
-├── Batch Scripts (Windows)
-│   ├── run-main.bat                      # Launch main application
-│   ├── run-setup.bat                     # Interactive setup wizard
-│   ├── start-milvus.bat                  # Start Milvus containers
-│   ├── stop-milvus.bat                   # Stop Milvus containers
-│   └── [20+ other utility scripts]       # Various management and utility scripts
-│
-├── Container Configuration
-│   ├── milvus-podman-compose.yml         # Podman compose for Milvus
-│   └── milvus-docker-compose.yml         # Docker compose alternative
-│
-├── Data Directories (Created at runtime)
-│   ├── MilvusData/                       # Persistent embedding data
-│   └── volumes/                          # Container runtime data
-│
-└── Support Files
-    ├── .env.example                      # Environment variables template
-    ├── .gitignore                        # Git ignore patterns
-    └── [Various helper scripts]          # Additional utilities
+Purpose: Main command-line interface for the Obsidian-Milvus integration
+Key Functions:
+
+Initializes the entire system (Milvus connection, Obsidian processor)
+Provides interactive menu for operations:
+
+Start MCP Server for Claude Desktop
+Full embedding (reindex all files)
+Incremental embedding with cleanup
+Cleanup deleted files
+
+
+Manages embedding progress and monitoring
+Handles system resource management
+```
+
+
+2. setup.py - Interactive Test & Configuration Tool
+
+```
+Purpose: System setup, testing, and troubleshooting
+Key Functions:
+
+Tests Milvus connection and operations
+Manages Podman/Docker containers
+Configures Claude Desktop integration
+Provides safe server restart functionality
+Handles auto-startup configuration
+```
+
+
+3. installer/installer_ui.py - Windows GUI Installer
+
+```
+Purpose: Automated installation wizard for Windows users
+Key Functions:
+
+PyQt5-based graphical interface
+Clones repository from GitHub
+Installs Python dependencies
+Sets up Podman and WSL
+Configures system for first use
+```
+
+
+- Core Modules
+4. config.py - Configuration Management
+
+```
+Purpose: Central configuration hub for all settings
+Key Functions:
+
+Manages paths (Obsidian vault, storage, Podman)
+Sets embedding model parameters
+Configures batch sizes and performance limits
+Handles GPU/CPU settings
+Auto-detects system paths
+```
+
+
+5. logger.py - Centralized Logging System
+
+```
+Purpose: Unified logging across all modules
+Key Functions:
+
+Module-specific loggers with consistent formatting
+File and console output
+Log rotation and size management
+Error tracking and debugging support
+```
+
+
+6. milvus_manager.py - Milvus Database Interface
+
+```
+Purpose: Manages all interactions with Milvus vector database
+Key Functions:
+
+Connection management and health checking
+Collection creation and management
+Vector insertion and deletion
+Search operations (with GPU optimization)
+Container lifecycle management
+Batch operations with intelligent sizing
+```
+
+
+7. obsidian_processor.py - Document Processing Engine
+
+```
+Purpose: Processes Obsidian notes for embedding
+Key Functions:
+
+Extracts text from Markdown and PDF files
+Chunks documents intelligently
+Manages embedding generation with batch optimization
+Tracks processing progress
+Handles incremental updates
+Cleans up deleted files
+```
+
+
+8. embeddings.py - AI Embedding Model Management
+
+```
+Purpose: Manages sentence transformer models for text embeddings
+Key Features:
+
+Hardware profiling and optimization
+Dynamic batch size optimization
+GPU/CPU automatic selection
+Memory management and caching
+Support for multiple embedding models
+Performance monitoring
+```
+
+
+9. watcher.py - File System Monitor
+
+```
+Purpose: Monitors Obsidian vault for changes
+Key Functions:
+
+Real-time file change detection
+Triggers incremental processing
+Handles file creation, modification, deletion
+Efficient directory watching
+```
+
+
+10. mcp_server.py - MCP Server for Claude Desktop
+
+```
+Purpose: Provides search interface for Claude Desktop
+Key Functions:
+
+FastMCP-based server implementation
+Multiple search tools exposed to Claude
+Document retrieval and content access
+Advanced search with metadata filtering
+```
+
+
+- Helper Modules
+11. enhanced_search_engine.py - Advanced Search Features
+
+```
+Purpose: Provides sophisticated search capabilities
+Key Functions:
+
+Intelligent search with context expansion
+Multi-query fusion search
+Knowledge graph exploration
+Performance optimization analysis
+```
+
+
+12. search_engine.py - Basic Search Implementation
+
+```
+Purpose: Core search functionality
+Key Functions:
+
+Vector similarity search
+Metadata filtering
+Result ranking and formatting
+```
+
+
+13. progress_monitor_cmd.py - CLI Progress Display
+
+```
+Purpose: Real-time progress monitoring in terminal
+Key Functions:
+
+Live progress bars and statistics
+System resource monitoring
+Error logging display
+ETA calculations
+```
+
+
+14. robust_incremental_embedding.py - Incremental Processing
+
+```
+Purpose: Handles incremental updates efficiently
+Key Functions:
+
+Detects changed files
+Processes only updates
+Maintains consistency
+```
+
+
+- Utility Scripts
+15. warning_suppressor.py - Warning Management
+
+```
+Purpose: Suppresses unnecessary warnings from libraries
+Key Functions:
+
+Filters TensorFlow/PyTorch warnings
+Cleans console output
+```
+
+##### Data Flow
+
+```
+Initialization: main.py → config.py → milvus_manager.py → obsidian_processor.py
+File Processing: watcher.py detects changes → obsidian_processor.py → embeddings.py → milvus_manager.py
+Search Operations: mcp_server.py → enhanced_search_engine.py → milvus_manager.py
+Progress Monitoring: All operations → progress_monitor_cmd.py → Terminal display
 ```
 
 

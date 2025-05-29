@@ -712,23 +712,25 @@ class ObsidianProcessor:
                 frontmatter_text = re.sub(r'[^\w\s\-\[\]:#\'",._{\}]+', ' ', frontmatter_text)
                 
                 try:
-                    try:
-                        # YAML 파싱 시도
-                        frontmatter = yaml.safe_load(frontmatter_text)
-                        if isinstance(frontmatter, dict):
-{{ ... }}
+                    # YAML 파싱 시도
+                    frontmatter = yaml.safe_load(frontmatter_text)
+                    if isinstance(frontmatter, dict):
+                        # 태그 추출
+                        if 'tags' in frontmatter:
+                            tags_data = frontmatter['tags']
+                            if isinstance(tags_data, list):
+                                tags = [str(tag).strip() for tag in tags_data if tag]
+                            elif isinstance(tags_data, str):
+                                tags = [tags_data.strip()]
+                            logger.debug(f"Extracted {len(tags)} tags from frontmatter for {rel_path}")
                 except yaml.YAMLError as yaml_err:
-                    logger.error(f"YAML parsing error: {yaml_err}")
-                            # 태그 추출
-                            if 'tags' in frontmatter:
-                                tags_data = frontmatter['tags']
-                                if isinstance(tags_data, list):
-                                    tags = [str(tag).strip() for tag in tags_data if tag]
-                                elif isinstance(tags_data, str):
-                                    tags = [tags_data.strip()]
-                    except Exception as yaml_err:
-                        # Special handling for files with special characters
-                        if has_special_chars:
+                    logger.error(f"YAML parsing error in {rel_path}: {yaml_err}")
+                except Exception as e:
+                    # Special handling for files with special characters
+                    if has_special_chars:
+                        logger.warning(f"Special character handling for frontmatter in {rel_path}: {e}")
+                    else:
+                        logger.error(f"Error processing frontmatter in {rel_path}: {e}")
                             logger.warning(f"YAML parsing error in file with special characters: {rel_path}: {yaml_err}")
                         elif is_excalidraw:
                             logger.warning(f"YAML parsing error in Excalidraw file: {rel_path}: {yaml_err}")

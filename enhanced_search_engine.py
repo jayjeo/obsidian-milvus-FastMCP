@@ -294,34 +294,65 @@ class EnhancedSearchEngine(SearchEngine):
                 search_time_total += vector_search_time
                 logger.debug(f"Vector {i+1} search completed in {vector_search_time:.3f}s with {len(results)} results")
                 
+                # 특수 문자가 포함된 경로 처리
+                special_char_paths = []
+                excalidraw_files = []
+                for r in results:
+                    if hasattr(r, 'entity') and 'path' in r.entity:
+                        path = r.entity['path']
+                        if any(c in path for c in "'\"()[]{},;"): 
+                            special_char_paths.append(path)
+                        if "excalidraw" in path.lower():
+                            excalidraw_files.append(path)
+                
+                if special_char_paths:
+                    logger.debug(f"Vector {i+1} search returned {len(special_char_paths)} results with special characters in paths")
+                if excalidraw_files:
+                    logger.debug(f"Vector {i+1} search returned {len(excalidraw_files)} Excalidraw files")
+                    
                 all_results.extend(results)
             
             # 중복 제거 및 컨텍스트 점수 계산
+            logger.debug(f"Starting deduplication and context scoring for {len(all_results)} total results")
+            dedup_start = time.time()
             unique_results = self._deduplicate_and_score_context(all_results, query)
+            logger.debug(f"Deduplication and scoring completed in {time.time() - dedup_start:.3f}s, {len(unique_results)}/{len(all_results)} unique results")
             
-            if expand_context:
-                # 관련 문서들의 주변 청크 포함
+            # 컨텍스트 확장
+            if expand_context and hasattr(self, '_expand_context_chunks'):
+                logger.debug("Expanding context results")
+                expand_start = time.time()
                 expanded_results = self._expand_context_chunks(unique_results)
-                return expanded_results
+                logger.debug(f"Context expansion completed in {time.time() - expand_start:.3f}s, expanded from {len(unique_results)} to {len(expanded_results)} results")
+                unique_results = expanded_results
             
+            total_time = time.time() - search_start
+            logger.info(f"Contextual search completed in {total_time:.3f}s with {len(unique_results)} final results")
             return unique_results
             
         except Exception as e:
-            logger.error(f"컨텍스트 검색 오류: {e}")
+            total_time = time.time() - search_start
+            logger.error(f"컨텍스트 검색 오류 ({total_time:.3f}s 후 실패): {e}", exc_info=True)
+            logger.debug("Search context information: " + 
+                       f"query='{query}', context_docs={context_docs}, expand_context={expand_context}")
             return []
-    
+            
     def _get_document_vector(self, doc_id):
         """문서 ID로 벡터 조회"""
         try:
+            logger.debug(f"Getting vector for document ID: {doc_id}")
             results = self.milvus_manager.query(
                 expr=f"id == {doc_id}",
                 output_fields=["vector"],
                 limit=1
             )
             if results and "vector" in results[0]:
+                logger.debug(f"Found vector for document ID: {doc_id}")
                 return results[0]["vector"]
+            else:
+                logger.warning(f"No vector found for document ID: {doc_id}")
         except Exception as e:
-            logger.error(f"문서 벡터 조회 오류: {e}")
+            logger.error(f"문서 벡터 조회 오류: {e}", exc_info=True)
         return None
     
     def _deduplicate_and_score_context(self, all_results, query):
