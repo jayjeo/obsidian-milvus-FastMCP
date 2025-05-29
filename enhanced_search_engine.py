@@ -242,27 +242,57 @@ class EnhancedSearchEngine(SearchEngine):
     
     def contextual_search(self, query, context_docs=None, expand_context=True):
         """컨텍스트 기반 확장 검색"""
+        search_start = time.time()
+        logger.info(f"Starting contextual search for query: '{query}' with {len(context_docs or [])} context documents")
+        
         try:
-            search_vectors = [self.embedding_model.get_embedding(query)]
+            # 코어 쿼리 벡터 생성
+            embedding_start = time.time()
+            query_vector = self.embedding_model.get_embedding(query)
+            search_vectors = [query_vector]
+            logger.debug(f"Generated query embedding in {time.time() - embedding_start:.3f}s")
             
             # 컨텍스트 문서들의 벡터 추가
             if context_docs:
+                logger.debug(f"Processing {len(context_docs)} context documents")
+                context_start = time.time()
+                context_added = 0
+                
                 for doc_id in context_docs:
+                    logger.debug(f"Retrieving vector for document ID: {doc_id}")
                     doc_vector = self._get_document_vector(doc_id)
                     if doc_vector:
                         search_vectors.append(doc_vector)
+                        context_added += 1
+                    else:
+                        logger.warning(f"Could not retrieve vector for document ID: {doc_id}")
+                        
+                logger.debug(f"Added {context_added}/{len(context_docs)} context vectors in {time.time() - context_start:.3f}s")
             
             # 멀티 벡터 검색
+            logger.debug(f"Performing multi-vector search with {len(search_vectors)} vectors")
             all_results = []
-            for vector in search_vectors:
+            search_time_total = 0
+            
+            for i, vector in enumerate(search_vectors):
+                vector_search_start = time.time()
+                vector_source = "query" if i == 0 else f"context_{i}"
+                logger.debug(f"Searching with vector {i+1}/{len(search_vectors)} (source: {vector_source})")
+                
                 if hasattr(self.milvus_manager, 'search_with_params'):
+                    logger.debug("Using search_with_params method with COSINE metric")
                     results = self.milvus_manager.search_with_params(
                         vector=vector,
                         limit=50,
                         search_params={"metric_type": "COSINE", "params": {"ef": 128}}
                     )
                 else:
+                    logger.debug("Using standard search method")
                     results = self.milvus_manager.search(vector, 50)
+                    
+                vector_search_time = time.time() - vector_search_start
+                search_time_total += vector_search_time
+                logger.debug(f"Vector {i+1} search completed in {vector_search_time:.3f}s with {len(results)} results")
                 
                 all_results.extend(results)
             
