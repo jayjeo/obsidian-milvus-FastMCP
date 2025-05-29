@@ -729,30 +729,30 @@ class ObsidianProcessor:
                     # Special handling for files with special characters
                     if has_special_chars:
                         logger.warning(f"Special character handling for frontmatter in {rel_path}: {e}")
+                        logger.warning(f"YAML parsing error in file with special characters: {rel_path}")
+                    elif is_excalidraw:
+                        logger.warning(f"YAML parsing error in Excalidraw file: {rel_path}")
                     else:
                         logger.error(f"Error processing frontmatter in {rel_path}: {e}")
-                            logger.warning(f"YAML parsing error in file with special characters: {rel_path}: {yaml_err}")
-                        elif is_excalidraw:
-                            logger.warning(f"YAML parsing error in Excalidraw file: {rel_path}: {yaml_err}")
-                        else:
-                            logger.warning(f"YAML parsing error: {yaml_err}, falling back to regex for {rel_path}")
-                            
-                        error_msg = f"YAML parsing error: {yaml_err}, falling back to regex for {os.path.basename(file_path)}"
-                        print(error_msg)
-                        if hasattr(self, 'monitor') and hasattr(self.monitor, 'add_error_log'):
-                            self.monitor.add_error_log(error_msg)
-                        # YAML 파싱 실패 시 정규식으로 폴백
-                        tag_match = re.search(r'tags:\s*\[(.*?)\]', frontmatter_text, re.DOTALL)
-                        if tag_match:
-                            tags_str = tag_match.group(1)
-                            tags = [tag.strip().strip("'\"") for tag in tags_str.split(',') if tag.strip()]
-                        else:
-                            tag_lines = re.findall(r'tags:\s*\n((?:\s*-\s*.+\n)+)', frontmatter_text)
-                                # YAML 형식의 태그 처리 (리스트 형식)
-                                for line in tag_lines[0].split('\n'):
-                                    tag_item = re.match(r'\s*-\s*(.+)', line)
-                                    if tag_item:
-                                        tags.append(tag_item.group(1).strip().strip("'\""))
+                        logger.warning(f"YAML parsing error: falling back to regex for {rel_path}")
+                        
+                    error_msg = f"YAML parsing error: falling back to regex for {os.path.basename(file_path)}"
+                    print(error_msg)
+                    if hasattr(self, 'monitor') and hasattr(self.monitor, 'add_error_log'):
+                        self.monitor.add_error_log(error_msg)
+                    # YAML 파싱 실패 시 정규식으로 폴백
+                    tag_match = re.search(r'tags:\s*\[(.*?)\]', frontmatter_text, re.DOTALL)
+                    if tag_match:
+                        tags_str = tag_match.group(1)
+                        tags = [tag.strip().strip("'\"") for tag in tags_str.split(',') if tag.strip()]
+                    else:
+                        tag_lines = re.findall(r'tags:\s*\n((?:\s*-\s*.+\n)+)', frontmatter_text)
+                        if tag_lines:
+                            # YAML 형식의 태그 처리 (리스트 형식)
+                            for line in tag_lines[0].split('\n'):
+                                tag_item = re.match(r'\s*-\s*(.+)', line)
+                                if tag_item:
+                                    tags.append(tag_item.group(1).strip().strip("'\""))
                 
                 # $~$ 같은 수식 기호를 일반 텍스트로 변환
                 content = re.sub(r'\$~\$', ' ', content)
