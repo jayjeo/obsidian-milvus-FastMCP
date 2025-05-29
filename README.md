@@ -201,7 +201,7 @@
 ## 🎮 Daily Use
 
 ##### Once setup is complete:
-- **Wait for the server to start**: You should have followed the instructions to automaticallystart the server when Windows starts. The server takes approximately 5~7 minites depending on your PC performance. Wait for it to finish before you start anything below
+- **Wait for the server to start**: You should have followed the instructions to automaticallystart the server when Windows starts. The server takes approximately 3~7 minites depending on your PC performance. Wait for it to finish before you start anything below
 - **Start Embedding (Indexing) your Obsidian vault**: Run `run-main.bat` and select option 2 or 3 
 - **Open Claude Desktop**: Your Obsidian vault is now searchable
 - **Start Searching**: Use natural language queries in Claude Desktop
