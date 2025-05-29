@@ -770,6 +770,56 @@ class ObsidianProcessor:
         logger.info(f"Successfully extracted markdown from {rel_path}: {len(content)} chars, {len(tags)} tags")
         return content, title, tags
         
+    def _extract_pdf(self, file_path):
+        """PDF 파일에서 텍스트 및 메타데이터 추출"""
+        rel_path = os.path.relpath(file_path, self.vault_path) if hasattr(self, 'vault_path') else file_path
+        has_special_chars = any(c in file_path for c in "'\"()[]{},;")
+        
+        if has_special_chars:
+            logger.debug(f"Extracting content from PDF file with special characters: {rel_path}")
+            
+        try:
+            # Log file open operation for tracking potential file access issues
+            logger.debug(f"Opening PDF file: {rel_path}")
+            
+            # Extract text from PDF using PyPDF2
+            content = ""
+            with open(file_path, 'rb') as file:
+                try:
+                    pdf_reader = PyPDF2.PdfReader(file)
+                    num_pages = len(pdf_reader.pages)
+                    
+                    # Extract text from each page
+                    for page_num in range(num_pages):
+                        page = pdf_reader.pages[page_num]
+                        page_text = page.extract_text()
+                        if page_text:
+                            content += page_text + "\n\n"
+                        
+                    # Clean up the content
+                    content = content.strip()
+                    # Remove excessive newlines
+                    content = re.sub(r'\n{3,}', '\n\n', content)
+                    
+                except Exception as pdf_err:
+                    logger.error(f"PyPDF2 error processing {rel_path}: {pdf_err}")
+                    raise pdf_err
+            
+            # Use filename as title (remove extension)
+            title = os.path.basename(file_path)
+            if title.lower().endswith('.pdf'):
+                title = title[:-4]
+                
+            # PDFs don't have tags in our system, so return empty list
+            tags = []
+            
+            logger.info(f"Successfully extracted content from PDF {rel_path}: {len(content)} chars")
+            return content, title, tags
+            
+        except Exception as e:
+            logger.error(f"Error processing PDF file {os.path.basename(file_path)}: {e}")
+            raise e
+        
     def _extract_pdf_content(self, file_path):
         """PDF 파일에서 내용 추출"""
         content = ""

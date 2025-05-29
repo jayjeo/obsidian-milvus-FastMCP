@@ -305,6 +305,8 @@ complete-reset.bat  # Windows
 
 ## Obsidian-Milvus-FastMCP Project Structure and Module Descriptions
 ##### Project Dependency Tree
+
+```
 📁 obsidian-milvus-FastMCP/
 │
 ├── 🎯 main.py (Core Entry Point #1)
@@ -358,6 +360,7 @@ complete-reset.bat  # Windows
     ├── requirements.txt ← Python dependencies
     ├── milvus-podman-compose.yml ← Podman container configuration
     └── milvus-docker-compose.yml ← Docker container configuration
+```
 
 ##### Module Descriptions
 - Core Entry Points
