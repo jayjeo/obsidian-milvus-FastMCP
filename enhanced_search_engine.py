@@ -10,9 +10,12 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from search_engine import SearchEngine
 import config
-import logging
 
-logger = logging.getLogger('EnhancedSearchEngine')
+# Import centralized logger
+from logger import get_logger
+
+# Initialize module logger
+logger = get_logger(__name__)
 
 class EnhancedSearchEngine(SearchEngine):
     def __init__(self, milvus_manager):
@@ -21,149 +24,220 @@ class EnhancedSearchEngine(SearchEngine):
         
     def advanced_filter_search(self, query, **filters):
         """고급 메타데이터 필터 검색 - milvus_manager의 고급 기능 활용"""
+        search_start = time.time()
+        logger.info(f"Starting advanced filter search for query: '{query}' with {len(filters)} filters")
+        logger.debug(f"Filter parameters: {filters}")
+        
         try:
             # milvus_manager의 고급 메타데이터 검색 기능 사용
+            embedding_start = time.time()
             query_vector = self.embedding_model.get_embedding(query)
+            logger.debug(f"Generated query embedding in {time.time() - embedding_start:.3f}s")
             
             if hasattr(self.milvus_manager, 'advanced_metadata_search'):
                 # 기존 고급 메타데이터 검색 사용
+                logger.debug("Using advanced_metadata_search method")
+                search_start_time = time.time()
                 raw_results = self.milvus_manager.advanced_metadata_search(query_vector, filters)
+                logger.debug(f"Advanced metadata search completed in {time.time() - search_start_time:.3f}s")
             else:
                 # 폴백: 일반 검색으로 대체
+                logger.debug("Falling back to standard search with filter expression")
                 filter_expr = self._build_complex_filter_expr(filters)
+                limit = filters.get('limit', 20)
+                
+                search_start_time = time.time()
                 if hasattr(self.milvus_manager, 'search_with_params'):
+                    logger.debug(f"Using search_with_params method with limit {limit}")
                     raw_results = self.milvus_manager.search_with_params(
                         vector=query_vector,
-                        limit=filters.get('limit', 20),
+                        limit=limit,
                         filter_expr=filter_expr
                     )
                 else:
+                    logger.debug(f"Using standard search method with limit {limit}")
                     raw_results = self.milvus_manager.search(
                         query_vector,
-                        filters.get('limit', 20),
+                        limit,
                         filter_expr
                     )
+                logger.debug(f"Search completed in {time.time() - search_start_time:.3f}s")
             
-            return self._format_enhanced_results(raw_results, query)
+            format_start = time.time()
+            results = self._format_enhanced_results(raw_results, query)
+            logger.debug(f"Formatted {len(results)} results in {time.time() - format_start:.3f}s")
+            
+            total_time = time.time() - search_start
+            logger.info(f"Advanced filter search completed in {total_time:.3f}s with {len(results)} results")
+            return results
             
         except Exception as e:
-            logger.error(f"고급 필터 검색 오류: {e}")
+            logger.error(f"고급 필터 검색 오류: {e}", exc_info=True)
             return []
     
     def _build_complex_filter_expr(self, filters):
         """복잡한 필터 조건을 Milvus 표현식으로 변환"""
+        logger.debug(f"Building complex filter expression from {len(filters)} filter parameters")
         filter_expressions = []
         
         # 시간 기반 필터링
         if filters.get('time_range'):
             start, end = filters['time_range']
-            filter_expressions.append(f"created_at >= {start} && created_at <= {end}")
+            time_expr = f"created_at >= {start} && created_at <= {end}"
+            filter_expressions.append(time_expr)
+            logger.debug(f"Added time range filter: {time_expr}")
         
         # 파일 크기 필터링
         if filters.get('file_size_range'):
             min_size, max_size = filters['file_size_range']
-            filter_expressions.append(f"file_size >= {min_size} && file_size <= {max_size}")
+            size_expr = f"file_size >= {min_size} && file_size <= {max_size}"
+            filter_expressions.append(size_expr)
+            logger.debug(f"Added file size filter: {size_expr}")
         
         # 콘텐츠 품질 필터링
         if filters.get('min_content_quality'):
             quality = filters['min_content_quality']
-            filter_expressions.append(f"content_quality >= {quality}")
+            quality_expr = f"content_quality >= {quality}"
+            filter_expressions.append(quality_expr)
+            logger.debug(f"Added content quality filter: {quality_expr}")
         
         # 관련성 점수 필터링
         if filters.get('min_relevance_score'):
             score = filters['min_relevance_score']
-            filter_expressions.append(f"user_relevance_score >= {score}")
+            score_expr = f"user_relevance_score >= {score}"
+            filter_expressions.append(score_expr)
+            logger.debug(f"Added relevance score filter: {score_expr}")
         
         # 복합 태그 필터링
         if filters.get('tag_logic'):
+            logger.debug("Building complex tag filter expression")
             tag_expr = self._build_complex_tag_filter(filters['tag_logic'])
             if tag_expr:
                 filter_expressions.append(tag_expr)
+                logger.debug(f"Added tag logic filter: {tag_expr}")
         
-        return " && ".join(filter_expressions) if filter_expressions else None
+        final_expr = " && ".join(filter_expressions) if filter_expressions else None
+        logger.info(f"Built filter expression with {len(filter_expressions)} conditions: {final_expr}")
+        return final_expr
     
     def _build_complex_tag_filter(self, tag_logic):
         """복잡한 태그 로직 구성"""
+        logger.debug(f"Building complex tag filter from tag logic: {tag_logic}")
+        
         if not tag_logic:
+            logger.debug("Empty tag logic provided, returning None")
             return None
         
         expressions = []
         
         # AND 조건
         if tag_logic.get('and'):
+            and_tags = tag_logic['and']
+            logger.debug(f"Processing AND condition with {len(and_tags)} tags: {and_tags}")
             and_expressions = []
-            for tag in tag_logic['and']:
+            for tag in and_tags:
                 and_expressions.append(f"tags like '%{tag}%'")
             if and_expressions:
-                expressions.append(f"({' && '.join(and_expressions)})")
+                and_expr = f"({' && '.join(and_expressions)})"
+                expressions.append(and_expr)
+                logger.debug(f"Added AND expression: {and_expr}")
         
         # OR 조건
         if tag_logic.get('or'):
+            or_tags = tag_logic['or']
+            logger.debug(f"Processing OR condition with {len(or_tags)} tags: {or_tags}")
             or_expressions = []
-            for tag in tag_logic['or']:
+            for tag in or_tags:
                 or_expressions.append(f"tags like '%{tag}%'")
             if or_expressions:
-                expressions.append(f"({' || '.join(or_expressions)})")
+                or_expr = f"({' || '.join(or_expressions)})"
+                expressions.append(or_expr)
+                logger.debug(f"Added OR expression: {or_expr}")
         
         # NOT 조건
         if tag_logic.get('not'):
+            not_tags = tag_logic['not']
+            logger.debug(f"Processing NOT condition with {len(not_tags)} tags: {not_tags}")
             not_expressions = []
-            for tag in tag_logic['not']:
+            for tag in not_tags:
                 not_expressions.append(f"!(tags like '%{tag}%')")
             if not_expressions:
-                expressions.append(f"({' && '.join(not_expressions)})")
+                not_expr = f"({' && '.join(not_expressions)})"
+                expressions.append(not_expr)
+                logger.debug(f"Added NOT expression: {not_expr}")
         
-        return " && ".join(expressions) if expressions else None
+        final_expr = " && ".join(expressions) if expressions else None
+        logger.info(f"Built tag filter expression with {len(expressions)} conditions: {final_expr}")
+        return final_expr
     
     def multi_modal_search(self, query, include_attachments=True):
         """다중 모달 검색 (텍스트 + 첨부파일)"""
+        search_start = time.time()
+        logger.info(f"Starting multi-modal search for query: '{query}' with include_attachments={include_attachments}")
+        
         try:
             # 기본 하이브리드 검색
-            text_results, _ = self.hybrid_search(query)
+            logger.debug("Performing base hybrid text search")
+            hybrid_start = time.time()
+            text_results, stats = self.hybrid_search(query)
+            logger.debug(f"Hybrid text search completed in {time.time() - hybrid_start:.3f}s with {len(text_results)} results")
+            logger.debug(f"Hybrid search stats: {stats}")
             
             if include_attachments:
                 # 첨부파일 필터링
+                logger.debug("Performing attachment search")
                 attachment_filter = "file_type in ['pdf', 'docx', 'pptx', 'xlsx']"
-                query_vector = self.embedding_model.get_embedding(query)
+                logger.debug(f"Using attachment filter: {attachment_filter}")
                 
+                embedding_start = time.time()
+                query_vector = self.embedding_model.get_embedding(query)
+                logger.debug(f"Generated attachment query embedding in {time.time() - embedding_start:.3f}s")
+                
+                attach_search_start = time.time()
                 if hasattr(self.milvus_manager, 'search_with_params'):
+                    logger.debug("Using search_with_params method for attachment search")
                     attachment_results = self.milvus_manager.search_with_params(
                         vector=query_vector,
                         limit=20,
                         filter_expr=attachment_filter
                     )
                 else:
+                    logger.debug("Using standard search method for attachment search")
                     attachment_results = self.milvus_manager.search(
                         query_vector, 20, attachment_filter
                     )
+                logger.debug(f"Attachment search completed in {time.time() - attach_search_start:.3f}s")
                 
-                # 첨부파일 결과 포맷팅
-                formatted_attachment_results = []
-                for hit in attachment_results:
-                    result = {
-                        "id": hit.id,
-                        "path": hit.entity.get('path', ''),
-                        "title": hit.entity.get('title', '제목 없음'),
-                        "chunk_text": hit.entity.get('chunk_text', ''),
-                        "score": float(hit.score),
-                        "source": "attachment",
-                        "file_type": hit.entity.get('file_type', ''),
-                        "tags": hit.entity.get('tags', []),
-                        "created_at": hit.entity.get('created_at', ''),
-                        "updated_at": hit.entity.get('updated_at', '')
-                    }
-                    formatted_attachment_results.append(result)
+                # 첨부파일 결과 변환
+                format_start = time.time()
+                attachment_results = self._format_enhanced_results(attachment_results, query)
+                logger.debug(f"Formatted {len(attachment_results)} attachment results in {time.time() - format_start:.3f}s")
                 
-                # 결과 병합
-                combined_results = self._merge_multimodal_results(
-                    text_results, formatted_attachment_results
-                )
+                # 첨부파일 결과에 태그 붙이기
+                for result in attachment_results:
+                    result['source'] = 'attachment'
+                logger.debug(f"Tagged {len(attachment_results)} results as 'attachment'")
+                
+                # 텍스트와 첨부파일 결과 합치기
+                combined_results = text_results + attachment_results
+                logger.debug(f"Combined {len(text_results)} text results with {len(attachment_results)} attachment results")
+                
+                # 점수순 정렬
+                sort_start = time.time()
+                combined_results.sort(key=lambda x: x['score'], reverse=True)
+                logger.debug(f"Sorted {len(combined_results)} combined results in {time.time() - sort_start:.3f}s")
+                
+                total_time = time.time() - search_start
+                logger.info(f"Multi-modal search completed in {total_time:.3f}s with {len(combined_results)} total results ({len(text_results)} text, {len(attachment_results)} attachments)")
                 return combined_results
             
+            total_time = time.time() - search_start
+            logger.info(f"Text-only search completed in {total_time:.3f}s with {len(text_results)} results")
             return text_results
             
         except Exception as e:
-            logger.error(f"다중 모달 검색 오류: {e}")
+            total_time = time.time() - search_start
+            logger.error(f"다중 모달 검색 오류 ({total_time:.3f}s 후 실패): {e}", exc_info=True)
             return []
     
     def contextual_search(self, query, context_docs=None, expand_context=True):

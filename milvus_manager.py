@@ -11,11 +11,11 @@ import shutil
 import torch
 import psutil
 
-# 로깅 설정
-log_level_str = getattr(config, 'LOG_LEVEL', 'INFO')
-log_level = getattr(logging, log_level_str, logging.INFO)
-logging.basicConfig(level=log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('MilvusManager')
+# Import centralized logger
+from logger import get_logger
+
+# Initialize module logger
+logger = get_logger(__name__)
 
 
 class SystemMonitor:
@@ -141,10 +141,12 @@ class MilvusManager:
             from embeddings import HardwareProfiler, DynamicBatchOptimizer
             self.hardware_profiler = HardwareProfiler()
             self.batch_optimizer = DynamicBatchOptimizer(self.hardware_profiler)
+            logger.info(f"Milvus using intelligent batch sizing: {self.batch_optimizer.current_batch_size}")
             print(f"Milvus using intelligent batch sizing: {self.batch_optimizer.current_batch_size}")
         except ImportError:
             # Fallback if embeddings not available
             self.batch_optimizer = None
+            logger.warning("Failed to load embeddings module. Using fallback batch sizing")
             print("Using fallback batch sizing")
         self.milvus_containers = {
             'standalone': 'milvus-standalone',
@@ -1119,11 +1121,14 @@ class MilvusManager:
             }
         
         # 인덱스 생성
+        logger.info(f"Creating index on 'vector' field with params: {index_params}")
         collection.create_index(field_name="vector", index_params=index_params)
         
         # 컬렉션 로드
+        logger.info(f"Loading collection '{collection_name}'")
         collection.load()
         
+        logger.info(f"Collection '{collection_name}' created and loaded successfully")
         print(f"Collection '{collection_name}' created and loaded successfully.")
         
     def recreate_collection(self, collection_name=None, dimension=None):
@@ -1136,11 +1141,14 @@ class MilvusManager:
         # 컬렉션이 존재하는지 확인
         if utility.has_collection(collection_name):
             # 컬렉션 삭제
+            logger.info(f"Dropping existing collection '{collection_name}'")
             utility.drop_collection(collection_name)
             print(f"Collection '{collection_name}' has been dropped.")
         
         # 새 컬렉션 생성
+        logger.info(f"Creating new collection '{collection_name}' with dimension {dimension}")
         self.create_collection(collection_name, dimension)
+        logger.info(f"Collection '{collection_name}' has been recreated")
         print(f"Collection '{collection_name}' has been recreated.")
         return True
             
@@ -1242,8 +1250,8 @@ class MilvusManager:
         if not self.pending_deletions:
             return
             
+        logger.info(f"Executing batch deletion for {len(self.pending_deletions)} files")
         print(f"Executing batch deletion for {len(self.pending_deletions)} files...")
-        logger.info(f"Batch deletion for {len(self.pending_deletions)} files started")
         
         # 성공적으로 삭제된 파일들을 추적
         successful_deletions = []
@@ -1328,6 +1336,7 @@ class MilvusManager:
                                         pass
                         
                         successful_deletions.append(path)
+                        logger.info(f"Deleted {len(ids)} chunks for file {path}")
                         print(f"Deleted {len(ids)} chunks for file {path}")
                     else:
                         logger.warning(f"No chunks found for file {path}")
@@ -1339,15 +1348,22 @@ class MilvusManager:
             # 요약 출력
             if successful_deletions:
                 logger.info(f"Successfully deleted chunks from {len(successful_deletions)} files")
-                print(f"\n\u2714 Successfully removed: {len(successful_deletions)} files")
+                print(f"\n✔ Successfully removed: {len(successful_deletions)} files")
             
             if failed_deletions:
                 logger.warning(f"Failed to delete {len(failed_deletions)} files")
-                print(f"\n\u26a0 Failed to remove: {len(failed_deletions)} files")
+                print(f"\n⚠ Failed to remove: {len(failed_deletions)} files")
                 print("Files that could not be deleted:")
+                
+                # Log all failed deletions but only display first 10 to the user
+                for f in failed_deletions:
+                    logger.warning(f"Failed to delete file: {f}")
+                    
                 for f in failed_deletions[:10]:  # 처음 10개만 표시
                     print(f"- {f}")
+                    
                 if len(failed_deletions) > 10:
+                    logger.warning(f"...and {len(failed_deletions) - 10} more files could not be deleted")
                     print(f"...and {len(failed_deletions) - 10} more files")
             
             # 성공적으로 삭제된 파일만 대기열에서 제거
@@ -1371,38 +1387,45 @@ class MilvusManager:
             # ✅ 변경 사항을 확실히 반영하기 위해 flush 추가
             try:
                 self.collection.flush()
+                logger.info("Milvus collection flushed after deletions")
                 print("✓ Milvus collection flushed after deletions.")
             except Exception as e:
+                logger.error(f"Flush failed: {e}")
                 print(f"⚠️ Flush failed: {e}")
         
         except Exception as e:
+            logger.error(f"Error in batch deletion: {e}", exc_info=True)
             print(f"Warning: Error in batch deletion: {e}")
-            logger.error(f"Error in batch deletion: {e}")
-            import traceback
-            logger.error(f"Deletion traceback: {traceback.format_exc()}")
             
-        except Exception as e:
-            print(f"Warning: Error in batch deletion: {e}")
+        finally:
+            logger.info(f"Batch deletion complete. Successful: {len(successful_deletions)}, Failed: {len(failed_deletions)}")
+            logger.info(f"Remaining in pending queue: {len(self.pending_deletions)}")
+
     
     def delete_by_path(self, file_path):
         """파일 경로로 데이터 삭제 (레거시 지원)"""
         # 파일 경로가 None이면 바로 리턴
         if file_path is None:
+            logger.warning("Attempted to delete with a None file path")
             print("Warning: Attempted to delete with a None file path")
             return
             
         try:
             # 메모리 효율성 개선을 위해 필터링 최적화
             # path에 대한 직접 필터링 시도
+            logger.debug(f"Attempting to delete file by path: {file_path}")
             expr = f"path == '{file_path}'"
             count = self.collection.query(expr=expr, output_fields=["count(*)"]).get("count")
             
             if count and count > 0:
+                logger.info(f"Deleting {count} chunks for file {file_path} using direct path filter")
                 self.collection.delete(expr)
                 print(f"Deleted {count} chunks for file {file_path}")
                 return
                 
             # 직접 필터링이 실패한 경우 백업 방법 사용
+            logger.info(f"Direct path filter failed for {file_path}, using backup method")
+
             results = self.collection.query(
                 output_fields=["id", "path"],
                 limit=1000,
@@ -1412,12 +1435,15 @@ class MilvusManager:
             ids_to_delete = [doc.get("id") for doc in results if doc.get("path") == file_path and doc.get("id") is not None]
             
             if ids_to_delete:
+                logger.info(f"Deleting {len(ids_to_delete)} chunks for file {file_path} using backup method")
                 self.collection.delete(f"id in {ids_to_delete}")
                 print(f"Deleted {len(ids_to_delete)} chunks for file {file_path}")
             else:
+                logger.warning(f"No documents found for path: {file_path}")
                 print(f"No documents found for path: {file_path}")
                 
         except Exception as e:
+            logger.error(f"Error deleting file {file_path}: {e}", exc_info=True)
             print(f"Warning: Error deleting file {file_path}: {e}")
             # 오류가 발생해도 계속 진행
     

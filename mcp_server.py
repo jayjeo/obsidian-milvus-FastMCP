@@ -32,11 +32,8 @@ import math
 from typing import List, Dict, Any, Optional, Tuple, Generator
 from datetime import datetime
 
-# Configure basic logging
-logging.basicConfig(
-    level=logging.ERROR,  # Use ERROR level by default
-    format='%(message)s'
-)
+# Import centralized logging system
+from logger import get_logger
 
 # Import other modules
 from mcp.server.fastmcp import FastMCP
@@ -49,18 +46,16 @@ from enhanced_search_engine import EnhancedSearchEngine
 from hnsw_optimizer import HNSWOptimizer
 from advanced_rag import AdvancedRAGEngine
 
-# Set up logging level from config
-log_level_str = getattr(config, 'LOG_LEVEL', 'ERROR')
-log_level = getattr(logging, log_level_str, logging.ERROR)
-logging.getLogger().setLevel(log_level)
-
 # Get logger for this module
-logger = logging.getLogger('OptimizedMCP')
-logger.setLevel(log_level)
+logger = get_logger('mcp_server')
 
-# Helper function to safely print messages
+# Helper function to safely print messages with both console output and logging
 def safe_print(message, level="info"):
-    """Print a message safely using the logger"""
+    """Print a message safely using the logger and console output"""
+    # Console output for immediate feedback
+    print(message)
+    
+    # Log to centralized logging system
     if level.lower() == "error":
         logger.error(message)
     elif level.lower() == "warning":
@@ -109,43 +104,68 @@ def initialize_components():
 
 def analyze_query_complexity(query: str) -> Dict[str, Any]:
     """쿼리 복잡도 분석하여 최적 검색 모드 결정"""
+    logger.debug(f"Analyzing query complexity: '{query}'")
+    
     words = query.split()
     word_count = len(words)
+    logger.debug(f"Query word count: {word_count}")
     
     # 키워드 기반 복잡도 분석
     complex_keywords = ['분석', 'analyze', '비교', 'compare', '관계', 'relation', '연결', 'connection']
     semantic_keywords = ['의미', 'meaning', '개념', 'concept', '이해', 'understand']
-    specific_keywords = ['정확히', 'exact', '특정', 'specific', '찾아줘', 'find']
+    specific_keywords = ['정확히', 'exact', '특정', 'specific', '찾아줄', 'find']
     
     complexity_score = 0
     
     # 단어 수 기반 점수
     if word_count <= 2:
         complexity_score += 1  # 단순
+        logger.debug("Query classified as simple based on word count")
     elif word_count <= 5:
         complexity_score += 2  # 보통
+        logger.debug("Query classified as moderate based on word count")
     else:
         complexity_score += 3  # 복잡
+        logger.debug("Query classified as complex based on word count")
     
     # 키워드 기반 점수
     query_lower = query.lower()
+    keyword_matches = []
+    
     if any(keyword in query_lower for keyword in complex_keywords):
         complexity_score += 2
+        matching_keywords = [k for k in complex_keywords if k in query_lower]
+        keyword_matches.append(f"complex keywords: {matching_keywords}")
+        logger.debug(f"Complex keywords detected: {matching_keywords}")
+        
     if any(keyword in query_lower for keyword in semantic_keywords):
         complexity_score += 1
+        matching_keywords = [k for k in semantic_keywords if k in query_lower]
+        keyword_matches.append(f"semantic keywords: {matching_keywords}")
+        logger.debug(f"Semantic keywords detected: {matching_keywords}")
+        
     if any(keyword in query_lower for keyword in specific_keywords):
         complexity_score += 1
+        matching_keywords = [k for k in specific_keywords if k in query_lower]
+        keyword_matches.append(f"specific keywords: {matching_keywords}")
+        logger.debug(f"Specific keywords detected: {matching_keywords}")
     
     # 검색 모드 결정
     if complexity_score <= 2:
         search_mode = "fast"
         search_strategy = "keyword"
+        logger.info(f"Query complexity analysis result: FAST mode (score={complexity_score})")
     elif complexity_score <= 4:
         search_mode = "balanced"
         search_strategy = "hybrid"
+        logger.info(f"Query complexity analysis result: BALANCED mode (score={complexity_score})")
     else:
         search_mode = "comprehensive"
         search_strategy = "semantic_graph"
+        logger.info(f"Query complexity analysis result: COMPREHENSIVE mode (score={complexity_score})")
+    
+    if keyword_matches:
+        logger.debug(f"Keyword matches that affected score: {', '.join(keyword_matches)}")
     
     return {
         "complexity_score": complexity_score,
@@ -162,65 +182,93 @@ async def auto_search_mode_decision(
     limit: Optional[int] = None
 ) -> Dict[str, Any]:
     """쿼리를 분석하여 최적의 검색 모드를 자동으로 결정하고 실행"""
+    logger.info(f"Auto search mode decision initiated for query: '{query}'")
     global search_engine, enhanced_search, rag_engine
     
     if not search_engine:
+        logger.error("Search engine not initialized when attempting auto search mode decision")
         return {"error": "Search engine not initialized.", "query": query}
     
     try:
         start_time = time.time()
+        logger.debug("Starting query analysis for auto search mode decision")
         
         # 쿼리 분석
         analysis = analyze_query_complexity(query)
         recommended_mode = analysis["recommended_mode"]
         recommended_strategy = analysis["recommended_strategy"]
+        logger.debug(f"Analysis complete. Recommended mode: {recommended_mode}, strategy: {recommended_strategy}")
         
         # limit 자동 결정
+        original_limit = limit
         if limit is None:
             if recommended_mode == "fast":
                 limit = 100
+                logger.debug(f"Auto-selected limit for FAST mode: {limit}")
             elif recommended_mode == "balanced":
                 limit = 300
+                logger.debug(f"Auto-selected limit for BALANCED mode: {limit}")
             else:  # comprehensive
                 limit = 500
+                logger.debug(f"Auto-selected limit for COMPREHENSIVE mode: {limit}")
         
         results = []
         search_info = {}
         
         if execute_search:
+            logger.info(f"Executing search with strategy: {recommended_strategy}, limit: {limit}")
+            search_start_time = time.time()
+            
             # 추천된 모드로 검색 실행
             if recommended_strategy == "keyword":
+                logger.debug(f"Using keyword search strategy for query: '{query}'")
                 results = search_engine._keyword_search(query=query, limit=limit)
                 search_info = {"type": "keyword", "mode": "fast"}
+                logger.info(f"Keyword search completed with {len(results)} results")
                 
             elif recommended_strategy == "hybrid":
+                logger.debug(f"Using hybrid search strategy for query: '{query}'")
                 results, search_info = search_engine.hybrid_search(
                     query=query, limit=limit
                 )
+                logger.info(f"Hybrid search completed with {len(results)} results")
                 
             elif recommended_strategy == "semantic_graph" and rag_engine:
+                logger.debug(f"Using semantic graph retrieval for query: '{query}'")
                 try:
                     results = rag_engine.semantic_graph_retrieval(query, max_hops=2)
+                    logger.debug(f"Semantic graph retrieval returned {type(results)} type result")
+                    
                     if isinstance(results, dict) and "primary_chunks" in results:
+                        logger.debug(f"Processing dictionary result with {len(results.get('primary_chunks', []))} primary chunks")
                         results = results["primary_chunks"][:limit]
+                    
                     # Ensure all data is JSON serializable
                     results = [{k: (str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v) 
                               for k, v in item.items()} for item in results]
                     search_info = {"type": "semantic_graph", "mode": "comprehensive"}
+                    logger.info(f"Semantic graph search completed with {len(results)} results")
+                    
                 except Exception as e:
-                    logger.error(f"Semantic graph retrieval error: {e}")
+                    logger.error(f"Semantic graph retrieval error: {e}", exc_info=True)
+                    logger.warning("Falling back to hybrid search due to semantic graph error")
                     # Fallback to hybrid search if semantic graph fails
                     results, search_info = search_engine.hybrid_search(query=query, limit=limit)
+                    logger.info(f"Fallback hybrid search completed with {len(results)} results")
                 
             else:
                 # 폴백: 하이브리드 검색
+                logger.debug(f"Using fallback hybrid search for query: '{query}'")
                 results, search_info = search_engine.hybrid_search(
                     query=query, limit=limit
                 )
+                logger.info(f"Fallback hybrid search completed with {len(results)} results")
         
         analysis_time = time.time() - start_time
+        logger.info(f"Query analysis completed in {analysis_time:.3f} seconds")
         
         # Ensure all data is JSON serializable
+        logger.debug("Ensuring all results are JSON serializable")
         def ensure_json_serializable(obj):
             if isinstance(obj, dict):
                 return {k: ensure_json_serializable(v) for k, v in obj.items()}
@@ -232,6 +280,9 @@ async def auto_search_mode_decision(
                 return str(obj)
         
         # Create response with serializable data
+        result_count = len(results) if execute_search else 0
+        logger.debug(f"Creating response with {result_count} results")
+        
         response = {
             "query": query,
             "query_analysis": ensure_json_serializable(analysis),
@@ -242,15 +293,16 @@ async def auto_search_mode_decision(
             "search_info": ensure_json_serializable(search_info) if execute_search else {},
             "performance": {
                 "analysis_time_ms": round(analysis_time * 1000, 2),
-                "total_results": len(results) if execute_search else 0,
+                "total_results": result_count,
                 "mode_effectiveness": "optimal" if results else "needs_adjustment"
             }
         }
         
+        logger.info(f"Auto search completed in {analysis_time:.3f} seconds with {result_count} results")
         return response
         
     except Exception as e:
-        logger.error(f"Auto search mode decision error: {e}")
+        logger.error(f"Auto search mode decision error: {e}", exc_info=True)
         return {"error": str(e), "query": query}
 
 @mcp.tool()
@@ -261,9 +313,11 @@ async def comprehensive_search_all(
     similarity_threshold: float = 0.3
 ) -> Dict[str, Any]:
     """전체 컬렉션을 대상으로 한 종합 검색 (limit 제한 없음)"""
+    logger.info(f"Starting comprehensive search for query: '{query}' (batch_size={batch_size})")
     global milvus_manager, search_engine
     
     if not milvus_manager or not search_engine:
+        logger.error("Required components not initialized for comprehensive search")
         return {"error": "Required components not initialized.", "query": query}
     
     try:
@@ -271,14 +325,20 @@ async def comprehensive_search_all(
         
         # 전체 컬렉션 크기 확인
         total_entities = milvus_manager.count_entities()
+        logger.info(f"Comprehensive search across {total_entities} documents")
         print(f"🔍 Comprehensive search across {total_entities} documents...")
         
         all_results = []
         processed_batches = 0
+        batch_start_time = time.time()
+        logger.debug(f"Starting batch processing with batch size {batch_size}")
         
         # 배치별로 전체 컬렉션 검색
         for offset in range(0, total_entities, batch_size):
             try:
+                logger.debug(f"Processing batch at offset {offset} (items {offset} to {min(offset+batch_size, total_entities)})")
+                batch_start = time.time()
+                
                 batch_results = milvus_manager.query(
                     expr="id >= 0",
                     output_fields=["id", "path", "title", "chunk_text", "content", "file_type", "tags", "created_at", "updated_at"],
@@ -286,10 +346,16 @@ async def comprehensive_search_all(
                     offset=offset
                 )
                 
+                logger.debug(f"Retrieved {len(batch_results)} documents from Milvus in {time.time() - batch_start:.3f} seconds")
+                
                 # 각 문서에 대해 유사도 계산
                 if include_similarity_scores:
+                    logger.debug("Calculating similarity scores for batch results")
+                    embedding_start = time.time()
                     query_embedding = search_engine.embedding_model.get_embedding(query)
+                    logger.debug(f"Query embedding generated in {time.time() - embedding_start:.3f} seconds")
                     
+                    docs_above_threshold = 0
                     for doc in batch_results:
                         doc_text = f"{doc.get('title', '')} {doc.get('chunk_text', '')}"
                         if doc_text.strip():
@@ -300,31 +366,52 @@ async def comprehensive_search_all(
                                 doc['similarity_score'] = float(similarity)
                                 doc['search_relevance'] = 'high' if similarity > 0.7 else 'medium' if similarity > 0.5 else 'low'
                                 all_results.append(doc)
+                                docs_above_threshold += 1
+                    
+                    logger.debug(f"Processed batch: {docs_above_threshold} documents above similarity threshold {similarity_threshold}")
+                    logger.debug(f"Similarity calculation completed in {time.time() - embedding_start:.3f} seconds")
                 else:
                     # 키워드 기반 필터링
+                    logger.debug("Using keyword-based filtering for batch results")
+                    keyword_start = time.time()
                     query_words = set(query.lower().split())
+                    logger.debug(f"Query keywords: {query_words}")
+                    
+                    keyword_matches = 0
                     for doc in batch_results:
                         doc_text = f"{doc.get('title', '')} {doc.get('chunk_text', '')}".lower()
                         if any(word in doc_text for word in query_words):
                             doc['similarity_score'] = 0.5  # 기본값
                             doc['search_relevance'] = 'keyword_match'
                             all_results.append(doc)
+                            keyword_matches += 1
+                            
+                    logger.debug(f"Keyword filtering found {keyword_matches} matching documents in {time.time() - keyword_start:.3f} seconds")
                 
                 processed_batches += 1
+                batch_time = time.time() - batch_start
+                logger.info(f"Batch {processed_batches} completed: processed {len(batch_results)} docs in {batch_time:.3f} seconds")
                 
                 # 진행 상황 출력
                 if processed_batches % 5 == 0:
-                    print(f"📊 Processed {processed_batches * batch_size}/{total_entities} documents...")
+                    progress = processed_batches * batch_size
+                    logger.info(f"Search progress: {progress}/{total_entities} documents processed ({(progress/total_entities*100):.1f}%)")
+                    print(f"📊 Processed {progress}/{total_entities} documents...")
                 
             except Exception as batch_error:
-                logger.error(f"Batch processing error at offset {offset}: {batch_error}")
+                logger.error(f"Batch processing error at offset {offset}: {batch_error}", exc_info=True)
                 continue
         
         # 결과 정렬 (유사도 순)
+        sort_start = time.time()
         if include_similarity_scores:
+            logger.debug("Sorting results by similarity score")
             all_results.sort(key=lambda x: x.get('similarity_score', 0), reverse=True)
+            logger.debug(f"Results sorted in {time.time() - sort_start:.3f} seconds")
         
         search_time = time.time() - start_time
+        logger.info(f"Comprehensive search completed in {search_time:.3f} seconds with {len(all_results)} results")
+        logger.info(f"Processing rate: {total_entities/search_time:.1f} documents per second")
         
         # Ensure all data is JSON serializable
         def ensure_json_serializable(obj):

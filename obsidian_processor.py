@@ -19,25 +19,39 @@ from tqdm import tqdm
 from functools import lru_cache
 from progress_monitor_cmd import ProgressMonitor
 
+# Import centralized logger
+from logger import get_logger
+
+# Initialize module logger
+logger = get_logger(__name__)
+
 # Windows에서 색상 표시를 위한 colorama 초기화
 colorama.init()
 
 class ObsidianProcessor:
     def __init__(self, milvus_manager):
+        logger.info("Initializing ObsidianProcessor")
+        
         self.vault_path = config.OBSIDIAN_VAULT_PATH
+        logger.info(f"Using Obsidian vault path: {self.vault_path}")
+        
         self.milvus_manager = milvus_manager
         self.embedding_model = EmbeddingModel()
         self.next_id = self._get_next_id()
+        logger.debug(f"Next ID initialized to: {self.next_id}")
         
         # GPU 사용 설정
         self.use_gpu = config.USE_GPU
         self.device_idx = config.GPU_DEVICE_ID if hasattr(config, 'GPU_DEVICE_ID') else 0
+        logger.info(f"GPU settings - Use GPU: {self.use_gpu}, Device index: {self.device_idx}")
         
         # 처리 타임아웃 설정 (초 단위)
         self.processing_timeout = 300  # 기본값: 5분
+        logger.debug(f"Processing timeout set to: {self.processing_timeout} seconds")
         
         # 임베딩 진행 상태 추적을 위한 변수
         self.embedding_in_progress = False
+        logger.info("ObsidianProcessor initialization complete")
         self.embedding_progress = {
             "total_files": 0,
             "processed_files": 0,
@@ -305,12 +319,19 @@ class ObsidianProcessor:
                     self._check_memory_usage("Before embedding generation")
                     
                     # ENHANCED: 청크에 대한 배치 임베딩 생성 (속도 대폭 개선!)
+                    logger.info(f"Processing {len(chunks)} chunks with batch embedding for file: {file_name}")
                     print(f"🚀 Processing {len(chunks)} chunks with FORCED batch embedding...")
+                    
+                    # Check for special characters in file path that might need careful handling
+                    has_special_chars = any(c in file_path for c in "'\"()[]{},;")
+                    if has_special_chars:
+                        logger.debug(f"File path contains special characters: {file_path}")
                     
                     # STEP 1: 배치 크기 확인 및 최적화
                     optimal_batch_size = self._check_system_resources()
                     if hasattr(self.embedding_model, 'batch_optimizer'):
                         current_batch_size = self.embedding_model.batch_optimizer.current_batch_size
+                        logger.debug(f"Current optimal batch size: {current_batch_size} for {len(chunks)} chunks")
                         print(f"📦 Current optimal batch size: {current_batch_size}")
                     
                     vectors = []
@@ -318,6 +339,7 @@ class ObsidianProcessor:
                     
                     try:
                         # STEP 2: 강제 배치 처리 (폴백 없이)
+                        logger.debug(f"Starting batch processing for {len(chunks)} chunks")
                         print(f"🔥 FORCING batch processing for {len(chunks)} chunks...")
                         start_time = time.time()
                         
@@ -325,60 +347,96 @@ class ObsidianProcessor:
                         vectors = self.embedding_model.get_embeddings_batch_adaptive(chunks)
                         
                         batch_time = time.time() - start_time
+                        logger.debug(f"Batch processing completed in {batch_time:.2f} seconds")
                         
                         # 결과 검증
                         if vectors and len(vectors) == len(chunks):
                             batch_success = True
+                            logger.info(f"Batch processing succeeded: {len(chunks)} chunks in {batch_time:.2f}s ({len(chunks)/batch_time:.1f} chunks/sec)")
                             print(f"✅ BATCH SUCCESS: {len(chunks)} chunks in {batch_time:.2f}s ({len(chunks)/batch_time:.1f} chunks/sec)")
-                            print(f"🎯 GPU utilization should be HIGH during this process")
+                            print(f"🎥 GPU utilization should be HIGH during this process")
                         else:
+                            logger.warning(f"Batch processing failed: Expected {len(chunks)} vectors, got {len(vectors) if vectors else 0}")
                             print(f"❌ BATCH FAILED: Expected {len(chunks)} vectors, got {len(vectors) if vectors else 0}")
                             
                     except Exception as e:
+                        # Check if timeout-related error (handling the processing_timeout attribute)
+                        if "timeout" in str(e).lower():
+                            logger.error(f"Batch processing timed out after {self.processing_timeout} seconds: {e}", exc_info=True)
+                        else:
+                            logger.error(f"Batch processing error: {e}", exc_info=True)
+                            
                         print(f"❌ BATCH PROCESSING ERROR: {e}")
                         import traceback
                         print(f"📍 Error details: {traceback.format_exc()}")
                     
                     # STEP 3: 배치가 실패한 경우에만 개별 처리
                     if not batch_success:
+                        logger.warning(f"Falling back to individual processing for {len(chunks)} chunks")
                         print(f"⚠️ Falling back to individual processing (this should be rare)...")
                         vectors = []
                         individual_start = time.time()
+                        
+                        successful_chunks = 0
+                        failed_chunks = 0
                         
                         for i, chunk in enumerate(chunks):
                             try:
                                 vector = self.embedding_model.get_embedding(chunk)
                                 vectors.append(vector)
+                                successful_chunks += 1
                             except Exception as e:
+                                logger.error(f"Error embedding chunk {i} in individual processing: {e}")
                                 print(f"Error embedding chunk {i}: {e}")
+                                # Use zero vector as fallback
                                 vectors.append([0] * config.VECTOR_DIM)
+                                failed_chunks += 1
                         
                         individual_time = time.time() - individual_start
+                        logger.info(f"Individual processing completed: {successful_chunks} succeeded, {failed_chunks} failed, took {individual_time:.2f}s")
                         print(f"🐌 Individual processing completed in {individual_time:.2f}s ({len(chunks)/individual_time:.1f} chunks/sec)")
                     
                     # STEP 4: 성능 통계 출력
                     if batch_success:
+                        logger.info(f"Performance: Batch processing achieved {len(chunks)/batch_time:.1f} chunks/second")
                         print(f"🏆 PERFORMANCE: Batch processing achieved {len(chunks)/batch_time:.1f} chunks/second")
                         print(f"💪 Expected GPU usage: HIGH during batch processing")
                     else:
-                        print(f"🚨 WARNING: Batch processing failed - investigating...")
+                        logger.warning("Batch processing failed - review logs for details")
+                        print(f"🔨 WARNING: Batch processing failed - investigating...")
+                    
+                    # Check for special characters in file path before Milvus operations
+                    if has_special_chars:
+                        logger.info(f"Preparing to insert file with special characters into Milvus: {file_path}")
                     
                     # 메타데이터 매핑 준비
                     chunk_file_map = [metadata] * len(chunks)
+                    logger.debug(f"Prepared {len(chunks)} chunk-file mappings with metadata")
                     
                     # 메모리 사용량 확인
                     self._check_memory_usage("Before saving to Milvus")
                     
                     # 벡터 저장
-                    success = self._save_vectors_to_milvus(vectors, chunks, chunk_file_map)
+                    logger.info(f"Saving {len(vectors)} vectors to Milvus for file: {file_name}")
+                    try:
+                        success = self._save_vectors_to_milvus(vectors, chunks, chunk_file_map)
+                        if success:
+                            logger.info(f"Successfully saved vectors to Milvus for file: {file_name}")
+                        else:
+                            logger.error(f"Failed to save vectors to Milvus for file: {file_name}")
+                    except Exception as e:
+                        logger.error(f"Error saving vectors to Milvus: {e}", exc_info=True)
+                        success = False
                     
                     # 메모리 효율성을 위한 명시적 변수 해제
+                    logger.debug("Explicitly releasing memory for large variables")
                     del chunks
                     del vectors
                     del chunk_file_map
                     del metadata
                     
                     # 메모리 정리
+                    logger.debug("Running garbage collection and clearing GPU cache")
                     gc.collect()
                     if 'torch' in sys.modules:
                         import torch
@@ -390,17 +448,29 @@ class ObsidianProcessor:
                     
                     # 성공/실패 상태 업데이트
                     if success:
+                        logger.info(f"Successfully processed file: {file_path}")
                         self.monitor.last_processed_status = f"{Fore.GREEN}Success{Fore.RESET}"
                     else:
+                        logger.warning(f"Failed to process file: {file_path}")
                         self.monitor.last_processed_status = f"{Fore.RED}Fail{Fore.RESET}"
                     
                 except Exception as e:
+                    # Check if it's a timeout issue
+                    if "timeout" in str(e).lower():
+                        logger.error(f"Processing timed out for file: {file_path} after {self.processing_timeout} seconds", exc_info=True)
+                    # Check if it's related to special characters in the path
+                    elif any(c in file_path for c in "'\"()[]{},;"):
+                        logger.error(f"Error processing file with special characters: {file_path}: {e}", exc_info=True)
+                    else:
+                        logger.error(f"Error processing file {file_name}: {e}", exc_info=True)
+                        
                     print(f"Error processing file {file_name}: {e}")
                     processing_result["success"] = False
                     # 모니터링은 finally 블록에서 중지됨
                 
             finally:
                 # 리소스 모니터링 중지
+                logger.debug("Stopping resource monitoring")
                 self.stop_monitoring()
 
                 # 임베딩 진행 상태 완료
@@ -408,6 +478,7 @@ class ObsidianProcessor:
                 if "total_size" in self.embedding_progress and file_size > 0:
                     # 이미 추가되지 않았다면 처리된 크기 추가
                     if not hasattr(self, '_processed_this_file') or not self._processed_this_file:
+                        logger.debug(f"Updating processed size: +{file_size} bytes")
                         self.embedding_progress["processed_size"] += file_size
                         self._processed_this_file = True
                     
@@ -430,14 +501,25 @@ class ObsidianProcessor:
         self._processed_this_file = False
         
         # 타임아웃 적용
+        logger.debug(f"Waiting for processing to complete with timeout of {self.processing_timeout} seconds")
         completed = processing_completed.wait(timeout=self.processing_timeout)
         
         if not completed:
+            # Check if this file has special characters in its path
+            has_special_chars = any(c in file_path for c in "'\"()[]{},;")
+            if has_special_chars:
+                logger.error(f"Processing timed out for file with special characters: {file_path} after {self.processing_timeout} seconds")
+            else:
+                logger.error(f"Processing timed out after {self.processing_timeout} seconds for file: {file_path}")
+                
             print(f"Error: Processing timed out after {self.processing_timeout} seconds")
             # 리소스 모니터링 중지 (타임아웃 발생 시)
+            logger.debug("Stopping resource monitoring due to timeout")
             self.stop_monitoring()
             self.embedding_in_progress = False
             return False
+        
+        logger.debug(f"Processing completed successfully within timeout period ({self.processing_timeout}s)")
         
         return processing_result["success"]
     
@@ -466,6 +548,7 @@ class ObsidianProcessor:
         """파일에서 청크와 메타데이터를 추출하는 최적화된 메소드"""
         # 파일 경로 검증
         if not os.path.exists(file_path) or not os.path.isfile(file_path):
+            logger.warning(f"File does not exist or is not a file: {file_path}")
             return None, None
             
         try:
@@ -473,12 +556,21 @@ class ObsidianProcessor:
             file_name = os.path.basename(file_path)
             file_ext = os.path.splitext(file_path)[1].lower()[1:] if '.' in file_path else ''
             
+            # Check for special characters in file path that might need careful handling
+            has_special_chars = any(c in file_path for c in "'\"()[]{},;")
+            if has_special_chars:
+                logger.debug(f"Extracting chunks from file with special characters in path: {rel_path}")
+            
+            logger.debug(f"Extracting chunks from file: {rel_path} (extension: {file_ext})")
+            
             # 파일명 검증 - 비어있거나 특수 문자만 있는 경우 처리
             if not file_name or file_name.startswith('.'):
+                logger.warning(f"Invalid filename detected: {file_name}")
                 return None, None
             
             # 마크다운과 PDF만 처리 (다른 파일은 벡터 임베딩 제외)
             if file_ext.lower() not in ['pdf', 'md']:
+                logger.info(f"Skipping non-supported file type: {file_ext} - {rel_path}")
                 print(f"Skipping non-supported file type: {file_ext} - {file_path}")
                 return None, None
                 
@@ -486,74 +578,147 @@ class ObsidianProcessor:
             file_stats = os.stat(file_path)
             created_at = str(file_stats.st_ctime)
             updated_at = str(file_stats.st_mtime)
+            logger.debug(f"File stats: created={created_at}, updated={updated_at} for {rel_path}")
             
             # 파일 타입에 따라 텍스트 추출
             try:
+                # Log special attention for files with special characters
+                if has_special_chars:
+                    logger.info(f"Attempting to extract content from file with special characters: {rel_path}")
+                    
                 if file_ext == 'pdf':
+                    logger.debug(f"Extracting content from PDF file: {rel_path}")
                     content, title, tags = self._extract_pdf(file_path)
                 elif file_ext == 'md':
+                    logger.debug(f"Extracting content from Markdown file: {rel_path}")
                     content, title, tags = self._extract_markdown(file_path)
                 else:
                     return None, None
+                    
+                # Log successful extraction
+                logger.debug(f"Successfully extracted content from {rel_path}, title: '{title}', tags: {tags}")
+                
             except Exception as e:
+                # Check if it's an Excalidraw file (known to have special characters)
+                if "excalidraw" in file_path.lower():
+                    logger.error(f"Error extracting content from Excalidraw file: {rel_path}: {e}", exc_info=True)
+                elif has_special_chars:
+                    logger.error(f"Error extracting content from file with special characters: {rel_path}: {e}", exc_info=True)
+                else:
+                    logger.error(f"Error extracting content from {rel_path}: {e}", exc_info=True)
+                    
                 print(f"Error extracting content from {file_path}: {e}")
                 return None, None
             
             # 내용이 비어있는지 확인
             if not content or not content.strip():
+                logger.warning(f"Empty content extracted from {rel_path}")
                 return None, None
             
             # 청크로 분할
-            chunks = self._split_into_chunks(content)
-            if not chunks:
+            logger.debug(f"Splitting content into chunks for {rel_path}")
+            try:
+                chunks = self._split_into_chunks(content)
+                if not chunks:
+                    logger.warning(f"No chunks generated from {rel_path}")
+                    return None, None
+                    
+                logger.info(f"Successfully generated {len(chunks)} chunks from {rel_path}")
+                
+            except Exception as e:
+                logger.error(f"Error splitting content into chunks for {rel_path}: {e}", exc_info=True)
                 return None, None
                 
             # 파일 메타데이터 준비 - content는 첫 번째 청크에만 저장
-            metadata = {
-                "rel_path": rel_path,
-                "title": title,
-                "content": content,  # 청크 처리 후 메모리에서 제거됨
-                "file_ext": file_ext,
-                "is_pdf": file_ext.lower() == 'pdf',
-                "tags": tags,
-                "created_at": created_at,
-                "updated_at": updated_at
-            }
-            
-            return chunks, metadata
+            try:
+                # Check if we need to handle special characters in paths for Milvus
+                path_for_milvus = rel_path
+                
+                # Add logging for special character detection in path that might affect Milvus
+                if has_special_chars:
+                    logger.debug(f"Preparing metadata for file with special characters: {rel_path}")
+                
+                metadata = {
+                    "rel_path": path_for_milvus,  # Use the potentially sanitized path
+                    "title": title,
+                    "content": content,  # 청크 처리 후 메모리에서 제거됨
+                    "file_ext": file_ext,
+                    "is_pdf": file_ext.lower() == 'pdf',
+                    "tags": tags,
+                    "created_at": created_at,
+                    "updated_at": updated_at,
+                    "path": rel_path  # Store the original path as well
+                }
+                
+                logger.debug(f"Created metadata for {rel_path} with {len(chunks)} chunks")
+                
+                # 2차 처리용 임시저장 제거
+                metadata.pop('content', None)
+                
+                return chunks, metadata
+                
+            except Exception as e:
+                logger.error(f"Error preparing metadata for {rel_path}: {e}", exc_info=True)
+                return None, None
             
         except Exception as e:
-            error_msg = f"Error processing file {file_path}: {e}"
-            print(error_msg)
-            if hasattr(self, 'monitor') and hasattr(self.monitor, 'add_error_log'):
-                self.monitor.add_error_log(error_msg)
+            # Check if it's an Excalidraw file or has special characters
+            if "excalidraw" in file_path.lower():
+                logger.error(f"Error extracting chunks from Excalidraw file: {file_path}: {e}", exc_info=True)
+            elif has_special_chars and 'has_special_chars' in locals():
+                logger.error(f"Error extracting chunks from file with special characters: {file_path}: {e}", exc_info=True)
+            else:
+                logger.error(f"Error extracting chunks from {file_path}: {e}", exc_info=True)
+                
+            print(f"Error extracting chunks from {file_path}: {e}")
             return None, None
     
     def _extract_markdown(self, file_path):
         """마크다운 파일에서 텍스트 및 메타데이터 추출 (최적화)"""
+        # Check for special characters in the file path
+        rel_path = os.path.relpath(file_path, self.vault_path) if hasattr(self, 'vault_path') else file_path
+        has_special_chars = any(c in file_path for c in "'\"()[]{},;")
+        is_excalidraw = "excalidraw" in file_path.lower()
+        
+        if has_special_chars:
+            logger.debug(f"Extracting markdown from file with special characters: {rel_path}")
+        if is_excalidraw:
+            logger.debug(f"Processing Excalidraw file: {rel_path}")
+            
         try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-                
+            # Log file open operation for tracking potential file access issues
+            logger.debug(f"Opening markdown file: {rel_path}")
+            try:
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    content = file.read()
+            except UnicodeDecodeError:
+                logger.warning(f"UTF-8 decode error for {rel_path}, trying with alternative encodings")
+                with open(file_path, 'r', encoding='latin-1') as file:
+                    content = file.read()
+                    
             # 제목 추출 (첫 번째 # 헤딩 또는 파일명)
             title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
             title = title_match.group(1) if title_match else os.path.basename(file_path).replace('.md', '')
+            logger.debug(f"Extracted title: '{title}' from {rel_path}")
             
             # YAML 프론트매터 및 태그 추출 (개선된 방식)
             tags = []
             yaml_match = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
             
             if yaml_match:
+                # 안전한 YAML 파싱
+                frontmatter_text = yaml_match.group(1)
+                # 특수 문자 및 악성 문자열 제거 (security)
+                frontmatter_text = re.sub(r'[^\w\s\-\[\]:#\'",._{\}]+', ' ', frontmatter_text)
+                
                 try:
-                    # 안전한 YAML 파싱
-                    frontmatter_text = yaml_match.group(1)
-                    # 특수 문자 및 악성 문자열 제거 (security)
-                    frontmatter_text = re.sub(r'[^\w\s\-\[\]:#\'",._{}]+', ' ', frontmatter_text)
-                    
                     try:
                         # YAML 파싱 시도
                         frontmatter = yaml.safe_load(frontmatter_text)
                         if isinstance(frontmatter, dict):
+{{ ... }}
+                except yaml.YAMLError as yaml_err:
+                    logger.error(f"YAML parsing error: {yaml_err}")
                             # 태그 추출
                             if 'tags' in frontmatter:
                                 tags_data = frontmatter['tags']
@@ -562,6 +727,14 @@ class ObsidianProcessor:
                                 elif isinstance(tags_data, str):
                                     tags = [tags_data.strip()]
                     except Exception as yaml_err:
+                        # Special handling for files with special characters
+                        if has_special_chars:
+                            logger.warning(f"YAML parsing error in file with special characters: {rel_path}: {yaml_err}")
+                        elif is_excalidraw:
+                            logger.warning(f"YAML parsing error in Excalidraw file: {rel_path}: {yaml_err}")
+                        else:
+                            logger.warning(f"YAML parsing error: {yaml_err}, falling back to regex for {rel_path}")
+                            
                         error_msg = f"YAML parsing error: {yaml_err}, falling back to regex for {os.path.basename(file_path)}"
                         print(error_msg)
                         if hasattr(self, 'monitor') and hasattr(self.monitor, 'add_error_log'):
@@ -573,44 +746,33 @@ class ObsidianProcessor:
                             tags = [tag.strip().strip("'\"") for tag in tags_str.split(',') if tag.strip()]
                         else:
                             tag_lines = re.findall(r'tags:\s*\n((?:\s*-\s*.+\n)+)', frontmatter_text)
-                            if tag_lines:
+                                # YAML 형식의 태그 처리 (리스트 형식)
                                 for line in tag_lines[0].split('\n'):
-                                    tag_match = re.match(r'\s*-\s*(.+)', line)
-                                    if tag_match:
-                                        tags.append(tag_match.group(1).strip().strip("'\""))
-                except Exception as e:
-                    print(f"Error processing frontmatter: {e}")
-            
-            # 인라인 태그 추출 (#태그)
-            inline_tags = re.findall(r'#([a-zA-Z0-9_-]+)', content)
-            tags.extend(inline_tags)
-            
-            # 중복 태그 제거
-            tags = list(set([tag for tag in tags if tag and isinstance(tag, str)]))
-            
-            # 특수 문자 처리 (LaTeX 수식 등 처리)
-            # $~$ 같은 수식 기호를 일반 텍스트로 변환
-            content = re.sub(r'\$~\$', ' ', content)
-            content = re.sub(r'\${2}.*?\${2}', ' ', content, flags=re.DOTALL)  # 블록 수식 처리
-            content = re.sub(r'\$.*?\$', ' ', content)  # 인라인 수식 처리
+                                    tag_item = re.match(r'\s*-\s*(.+)', line)
+                                    if tag_item:
+                                        tags.append(tag_item.group(1).strip().strip("'\""))
+                
+                # $~$ 같은 수식 기호를 일반 텍스트로 변환
+                content = re.sub(r'\$~\$', ' ', content)
+                content = re.sub(r'\${2}.*?\${2}', ' ', content, flags=re.DOTALL)  # 블록 수식 처리
+                content = re.sub(r'\$.*?\$', ' ', content)  # 인라인 수식 처리
             
             # 불필요한 여러 줄 공백 제거
             content = re.sub(r'\n{3,}', '\n\n', content)
             
             # 후행 공백 제거
             content = content.rstrip()
-            
-            return content, title, tags
-            
         except Exception as e:
-            print(f"Error in _extract_markdown: {e}")
-            # 오류 발생 시 기본값 반환
-            return "", os.path.basename(file_path).replace('.md', ''), []
-    
-    def _extract_pdf(self, file_path):
-        """PDF 파일에서 텍스트 추출 (메모리 효율성 개선)"""
-        title = os.path.basename(file_path).replace('.pdf', '')
+            logger.warning(f"Error during content cleanup for {rel_path}: {e}")
+        
+        logger.info(f"Successfully extracted markdown from {rel_path}: {len(content)} chars, {len(tags)} tags")
+        return content, title, tags
+        
+    def _extract_pdf_content(self, file_path):
+        """PDF 파일에서 내용 추출"""
         content = ""
+        title = os.path.basename(file_path).replace('.pdf', '')
+        rel_path = os.path.relpath(file_path, self.vault_path)
         
         try:
             with open(file_path, 'rb') as file:
@@ -622,30 +784,33 @@ class ObsidianProcessor:
                     metadata = reader.metadata
                     if metadata and '/Title' in metadata and metadata['/Title']:
                         title = metadata['/Title']
+                        logger.debug(f"Extracted title '{title}' from PDF metadata for {rel_path}")
                     
                     # 페이지 별로 내용 추출 (메모리 효율성 개선)
+                    logger.debug(f"Extracting text from {len(reader.pages)} pages in {rel_path}")
                     for i, page in enumerate(reader.pages):
                         # 메모리 관리를 위해 10페이지마다 정리
                         if i > 0 and i % 10 == 0:
                             gc.collect()
+                            logger.debug(f"Garbage collection performed after processing {i} pages")
                             
                         try:
                             page_text = page.extract_text()
                             if page_text:
                                 content += page_text + "\n\n"
                         except Exception as e:
-                            print(f"Error extracting text from page {i}: {e}")
+                            logger.warning(f"Error extracting text from page {i} in {rel_path}: {e}")
                 
                 except Exception as e:
-                    print(f"Error reading PDF: {e}")
+                    logger.error(f"Error reading PDF {rel_path}: {e}", exc_info=True)
         
         except Exception as e:
-            print(f"Error opening PDF file: {e}")
+            logger.error(f"Error opening PDF file {rel_path}: {e}", exc_info=True)
         
         # 빈 내용인 경우 확인
         if not content.strip():
-            error_msg = f"Warning: No content extracted from PDF {file_path} - likely a scanned document"
-            print(f"\n{Fore.YELLOW}{error_msg}{Style.RESET_ALL}")
+            error_msg = f"Warning: No content extracted from PDF {rel_path} - likely a scanned document"
+            logger.warning(error_msg)
             if hasattr(self, 'monitor') and hasattr(self.monitor, 'add_error_log'):
                 self.monitor.add_error_log(error_msg)
             # 스캔본으로 판단되는 PDF는 처리하지 않음
@@ -1695,17 +1860,24 @@ class ObsidianProcessor:
         self.embedding_in_progress = True
         
         # 파일 목록 출력 (처음 5개만)
-        print(f"{Fore.CYAN}[DEBUG] First 5 files in batch: {[os.path.basename(fp) for fp, _ in files_to_process[:5]]}{Style.RESET_ALL}")
+        first_5_files = [os.path.basename(fp) for fp, _ in files_to_process[:5]]
+        logger.debug(f"First 5 files in batch: {first_5_files}")
+        print(f"{Fore.CYAN}[DEBUG] First 5 files in batch: {first_5_files}{Style.RESET_ALL}")
         
         # 배치 처리
         total_size_mb = total_size / (1024 * 1024)
+        logger.info(f"Starting batch processing of {total_files} files (total size: {total_size_mb:.2f} MB)")
         with tqdm(total=total_size_mb, desc="Indexing files", unit="MB", ncols=100) as pbar:
             # 메모리 효율을 위한 배치 처리
             for i in range(0, total_files, batch_size):
                 batch = files_to_process[i:i+batch_size]
+                batch_number = i//batch_size+1
+                total_batches = (total_files+batch_size-1)//batch_size
+                
+                logger.debug(f"Processing batch {batch_number}/{total_batches} with {len(batch)} files")
                 
                 # 메모리 사용량 확인
-                self._check_memory_usage(f"Before processing batch {i//batch_size+1}/{(total_files+batch_size-1)//batch_size}")
+                self._check_memory_usage(f"Before processing batch {batch_number}/{total_batches}")
                 
                 # 배치 처리
                 for file_item in batch:
@@ -1715,6 +1887,7 @@ class ObsidianProcessor:
                         
                         # 현재 처리중인 파일 표시
                         rel_path = os.path.relpath(file_path, self.vault_path)
+                        logger.debug(f"Processing file: {rel_path}")
                         self.embedding_progress["current_file"] = rel_path
                         self.embedding_progress["processed_files"] += 1
                         
@@ -1726,16 +1899,21 @@ class ObsidianProcessor:
                         # 단일 파일 처리
                         success = self.process_file(file_path)
                         if success:
+                            logger.debug(f"Successfully processed file: {rel_path}")
                             processed_count += 1
+                        else:
+                            logger.warning(f"Failed to process file: {rel_path}")
                             
                         # 진행률 업데이트
                         file_size_mb = file_size / (1024 * 1024)
                         pbar.update(file_size_mb)
                         
                     except Exception as e:
+                        logger.error(f"Error processing file in batch: {rel_path}: {e}", exc_info=True)
                         print(f"Error processing file in batch: {e}")
                 
                 # 메모리 정리
+                logger.debug("Running garbage collection and clearing model cache")
                 gc.collect()
                 self.embedding_model.clear_cache()
         
@@ -1745,17 +1923,21 @@ class ObsidianProcessor:
         """삭제된 파일 탐지 (메모리 효율적)"""
         from colorama import Fore, Style
         
+        logger.info("Starting deleted files detection with intelligent batch sizing")
         print(f"{Fore.CYAN}Scanning Milvus database for file paths (intelligent batch sizing)...{Style.RESET_ALL}")
         
         # 1. Milvus에서 모든 파일 경로 조회 (페이지네이션)
         db_files = set()
         # Use MilvusManager's intelligent batch sizing
         max_limit = self.milvus_manager._get_optimal_query_limit()
+        logger.debug(f"Using optimal query limit of {max_limit} for batch queries")
         offset = 0
         total_db_files = 0
         
         try:
+            logger.info("Starting pagination query of Milvus database for file paths")
             while True:
+                logger.debug(f"Querying batch with offset {offset}, limit {max_limit}")
                 results = self.milvus_manager.query(
                     expr="id >= 0",
                     output_fields=["path"],
@@ -1764,40 +1946,62 @@ class ObsidianProcessor:
                 )
                 
                 if not results:
+                    logger.debug("No more results returned from query")
                     break
                     
+                # Check for paths with special characters
+                paths_with_special_chars = 0
+                
                 for doc in results:
                     path = doc.get("path")
                     if path and path not in db_files:
+                        # Check for special characters that might cause issues
+                        has_special_chars = any(c in path for c in "'\"()[]{},;")
+                        if has_special_chars:
+                            logger.debug(f"Found path with special characters: {path}")
+                            paths_with_special_chars += 1
+                            
                         db_files.add(path)
                         total_db_files += 1
                 
+                if paths_with_special_chars > 0:
+                    logger.info(f"Batch contains {paths_with_special_chars} paths with special characters")
+                        
                 offset += max_limit
                 if len(results) < max_limit:
+                    logger.debug(f"Received {len(results)} results, which is less than limit {max_limit}. Pagination complete.")
                     break
                     
                 # 진행상황 표시
                 if total_db_files % 1000 == 0 and total_db_files > 0:
+                    logger.info(f"Found {total_db_files} files in database so far")
                     print(f"{Fore.CYAN}Found {total_db_files} files in database so far...{Style.RESET_ALL}")
                 
                 # 메모리 관리
-                gc.collect()
+                if total_db_files % 5000 == 0:
+                    logger.debug("Running garbage collection for memory management")
+                    gc.collect()
                 
         except Exception as e:
+            logger.error(f"Error querying Milvus database: {e}", exc_info=True)
             print(f"{Fore.RED}Error querying Milvus database: {e}{Style.RESET_ALL}")
             return []
-        
+            
+        logger.info(f"Found {len(db_files)} unique files in Milvus database")
         print(f"{Fore.GREEN}Found {len(db_files)} unique files in Milvus database{Style.RESET_ALL}")
         
         # 2. 현재 파일 시스템 스캔
+        logger.info("Starting file system scan for comparison with database")
         print(f"{Fore.CYAN}Scanning file system...{Style.RESET_ALL}")
         fs_files = set()
         total_fs_files = 0
+        special_char_files = 0
         
         try:
             for root, _, files in os.walk(self.vault_path):
                 # 숨겨진 폴더 건너뛰기
                 if os.path.basename(root).startswith(('.', '_')):
+                    logger.debug(f"Skipping hidden directory: {root}")
                     continue
                     
                 for file in files:
@@ -1805,25 +2009,53 @@ class ObsidianProcessor:
                     if file.endswith(('.md', '.pdf')) and not file.startswith('.'):
                         full_path = os.path.join(root, file)
                         rel_path = os.path.relpath(full_path, self.vault_path)
+                        
+                        # Check for special characters that might cause issues
+                        has_special_chars = any(c in rel_path for c in "'\"()[]{},;")
+                        if has_special_chars:
+                            logger.debug(f"Found file system path with special characters: {rel_path}")
+                            special_char_files += 1
+                            
                         fs_files.add(rel_path)
                         total_fs_files += 1
                         
                         # 진행상황 표시
                         if total_fs_files % 1000 == 0:
+                            logger.info(f"Found {total_fs_files} files in file system so far")
                             print(f"{Fore.CYAN}Scanned {total_fs_files} files in file system...{Style.RESET_ALL}")
-        
+                            
+                # Occasional garbage collection
+                if total_fs_files % 10000 == 0 and total_fs_files > 0:
+                    logger.debug("Running garbage collection during file system scan")
+                    gc.collect()
+                            
         except Exception as e:
+            logger.error(f"Error scanning file system: {e}", exc_info=True)
             print(f"{Fore.RED}Error scanning file system: {e}{Style.RESET_ALL}")
             return []
-        
+            
+        if special_char_files > 0:
+            logger.info(f"Found {special_char_files} files with special characters in file system")
+            
+        logger.info(f"File system scan complete - found {total_fs_files} files")
         print(f"{Fore.GREEN}Found {len(fs_files)} files in file system{Style.RESET_ALL}")
         
         # 3. 삭제된 파일 찾기
+        logger.info("Comparing database files with file system to identify deleted files")
         deleted_files = db_files - fs_files
         
         if deleted_files:
+            logger.info(f"Found {len(deleted_files)} files that exist in database but not in file system")
+            
+            # Check for special characters in deleted files paths
+            special_chars_in_deleted = [p for p in deleted_files if any(c in p for c in "'\"()[]{},;")]
+            if special_chars_in_deleted:
+                logger.info(f"Deleted files include {len(special_chars_in_deleted)} paths with special characters")
+                logger.debug(f"Sample of deleted files with special characters: {special_chars_in_deleted[:5]}")
+                
             print(f"{Fore.YELLOW}Found {len(deleted_files)} deleted files{Style.RESET_ALL}")
         else:
+            logger.info("No deleted files found")
             print(f"{Fore.GREEN}No deleted files found{Style.RESET_ALL}")
         
         return list(deleted_files)
@@ -1833,67 +2065,114 @@ class ObsidianProcessor:
         from colorama import Fore, Style
         
         if not deleted_files:
+            logger.info("No files to clean up")
             print(f"{Fore.GREEN}No files to clean up{Style.RESET_ALL}")
             return 0
         
+        # Check for files with special characters that might need careful handling
+        special_char_files = [p for p in deleted_files if any(c in p for c in "'\"()[]{},;")]
+        if special_char_files:
+            logger.info(f"Cleanup includes {len(special_char_files)} files with special characters")
+            logger.debug(f"Sample of files with special characters: {special_char_files[:5]}")
+            
+        logger.info(f"Starting cleanup of {len(deleted_files)} deleted files")
         print(f"{Fore.CYAN}Starting cleanup of {len(deleted_files)} deleted files...{Style.RESET_ALL}")
         
         success_count = 0
         error_count = 0
         
         try:
+            logger.debug("Marking files for deletion")
             # 배치 삭제를 위해 pending_deletions에 추가
             for file_path in deleted_files:
-                self.milvus_manager.mark_for_deletion(file_path)
+                try:
+                    self.milvus_manager.mark_for_deletion(file_path)
+                except Exception as e:
+                    logger.warning(f"Error marking file for deletion: {file_path}: {e}")
             
+            logger.info("Executing batch deletion of marked files")
             print(f"{Fore.CYAN}Executing batch deletion...{Style.RESET_ALL}")
             
             # 배치 삭제 실행
             self.milvus_manager.execute_pending_deletions()
             
             # 삭제 결과 확인
+            logger.info("Verifying deletion results")
             print(f"{Fore.CYAN}Verifying deletion results...{Style.RESET_ALL}")
             
             # 삭제 후 검증
             remaining_files = []
-            for file_path in deleted_files:
-                try:
-                    # 파일이 여전히 DB에 있는지 확인
-                    results = self.milvus_manager.query(
-                        expr=f"path == '{file_path}'",
-                        output_fields=["path"],
-                        limit=1
-                    )
-                    
-                    if results:
-                        remaining_files.append(file_path)
-                        error_count += 1
-                    else:
-                        success_count += 1
+            verification_batch_size = 100  # Smaller batch size for verification to prevent query issues
+            
+            # Process verification in smaller batches to avoid query issues with special characters
+            for i in range(0, len(deleted_files), verification_batch_size):
+                batch = deleted_files[i:i+verification_batch_size]
+                logger.debug(f"Verifying deletion batch {i//verification_batch_size + 1}/{(len(deleted_files)+verification_batch_size-1)//verification_batch_size}")
+                
+                for file_path in batch:
+                    try:
+                        # Check for special characters that might cause issues with query expressions
+                        has_special_chars = any(c in file_path for c in "'\"()[]{},;")
+                        if has_special_chars:
+                            logger.debug(f"Using safe query for file with special characters: {file_path}")
+                            # Use a safer query approach for files with special characters
+                            expr = self.milvus_manager._sanitize_query_expr(f"path == '{file_path}'")
+                        else:
+                            expr = f"path == '{file_path}'"
+                            
+                        # 파일이 여전히 DB에 있는지 확인
+                        results = self.milvus_manager.query(
+                            expr=expr,
+                            output_fields=["path"],
+                            limit=1
+                        )
                         
-                except Exception as e:
-                    print(f"{Fore.YELLOW}Warning: Could not verify deletion of {file_path}: {e}{Style.RESET_ALL}")
-                    error_count += 1
+                        if results:
+                            logger.warning(f"File still exists after deletion attempt: {file_path}")
+                            remaining_files.append(file_path)
+                            error_count += 1
+                        else:
+                            logger.debug(f"Successfully deleted: {file_path}")
+                            success_count += 1
+                    except Exception as e:
+                        logger.error(f"Error verifying deletion of {file_path}: {e}", exc_info=True)
+                        print(f"{Fore.YELLOW}Warning: Could not verify deletion of {file_path}: {e}{Style.RESET_ALL}")
+                        error_count += 1
             
             # 결과 보고
+            logger.info(f"Cleanup results: {success_count} files successfully removed, {error_count} files failed")
             print(f"\n{Fore.GREEN}Cleanup Results:{Style.RESET_ALL}")
             print(f"{Fore.GREEN}✅ Successfully removed: {success_count} files{Style.RESET_ALL}")
             
             if error_count > 0:
+                logger.warning(f"Failed to remove {error_count} files")
                 print(f"{Fore.YELLOW}⚠️ Failed to remove: {error_count} files{Style.RESET_ALL}")
+                
                 if remaining_files:
+                    # Log all remaining files at debug level, but show only a sample to the user
+                    logger.debug(f"Files that could not be deleted: {remaining_files}")
+                    
+                    # Check for special characters in remaining files
+                    special_chars_in_remaining = [p for p in remaining_files if any(c in p for c in "'\"()[]{},;")]
+                    if special_chars_in_remaining:
+                        logger.warning(f"{len(special_chars_in_remaining)} of the failed files contain special characters")
+                    
                     print(f"{Fore.YELLOW}Files that could not be deleted:{Style.RESET_ALL}")
                     for file_path in remaining_files[:5]:  # 최대 5개만 표시
                         print(f"{Fore.YELLOW}  - {file_path}{Style.RESET_ALL}")
                     if len(remaining_files) > 5:
+                        logger.debug(f"Additional failed files: {remaining_files[5:]}")
                         print(f"{Fore.YELLOW}  ... and {len(remaining_files) - 5} more{Style.RESET_ALL}")
             
             # 메모리 정리
+            logger.debug("Running garbage collection after cleanup operation")
             gc.collect()
             
+            logger.info(f"Cleanup operation completed: {success_count} files successfully removed")
             return success_count
             
         except Exception as e:
+            logger.error(f"Critical error during cleanup operation: {e}", exc_info=True)
             print(f"{Fore.RED}Error during cleanup: {e}{Style.RESET_ALL}")
             import traceback
             print(f"{Fore.RED}Stack trace: {traceback.format_exc()}{Style.RESET_ALL}")
