@@ -454,8 +454,30 @@ class ObsidianProcessor:
                             logger.info(f"Successfully saved vectors to Milvus for file: {file_name}")
                         else:
                             logger.error(f"Failed to save vectors to Milvus for file: {file_name}")
+                            # 추가 진단 정보 로깅
+                            logger.error(f"  File details - Size: {os.path.getsize(file_path) if os.path.exists(file_path) else 'N/A'} bytes")
+                            logger.error(f"  Path characteristics - Has special chars: {any(c in file_path for c in '[](){}#$%^&*')}")
+                            logger.error(f"  Path starts with number: {bool(re.match(r'^\d', os.path.basename(file_path)))}")
+                            logger.error(f"  Current memory usage: {psutil.Process().memory_info().rss / (1024 * 1024):.1f} MB")
                     except Exception as e:
-                        logger.error(f"Error saving vectors to Milvus: {e}", exc_info=True)
+                        error_type = type(e).__name__
+                        error_msg = str(e)
+                        logger.error(f"Error saving vectors to Milvus for file: {file_name}")
+                        logger.error(f"  Error type: {error_type}, Message: {error_msg}")
+                        
+                        # 상세한 오류 정보 추가
+                        logger.error(f"  File details - Path: {file_path}")
+                        logger.error(f"  Chunks: {len(chunks) if chunks else 0}, Vectors: {len(vectors) if vectors else 0}")
+                        
+                        # 문제가 발생할 수 있는 특별한 조건 검사
+                        if "DataNotMatchException" in error_type or "schema" in error_msg.lower():
+                            logger.error("  Possible schema mismatch issue - Check collection fields")
+                        elif "timeout" in error_msg.lower():
+                            logger.error("  Possible timeout issue - Check network or increase processing_timeout")
+                        elif "memory" in error_msg.lower():
+                            logger.error("  Possible memory issue - Check available system resources")
+                            
+                        logger.error(f"  Stack trace:", exc_info=True)
                         success = False
                     
                     # 메모리 효율성을 위한 명시적 변수 해제
