@@ -472,6 +472,21 @@ class ObsidianProcessor:
                         # 문제가 발생할 수 있는 특별한 조건 검사
                         if "DataNotMatchException" in error_type or "schema" in error_msg.lower():
                             logger.error("  Possible schema mismatch issue - Check collection fields")
+                            
+                            # 상세 진단 - 숫자로 시작하는 파일명 문제 확인
+                            base_name = os.path.basename(file_path)
+                            if re.match(r'^\d', base_name):
+                                logger.error(f"  CRITICAL: File '{base_name}' starts with a number - this is likely causing the schema issue")
+                                logger.error("  SOLUTION: Add 'file_' prefix to filenames and 'Title_' prefix to titles starting with numbers")
+                                
+                            # 'id' 필드 관련 문제 확인
+                            if "id" in error_msg.lower():
+                                logger.error("  'id' field issue detected in error message - verify schema compatibility")
+                                # 첫번째 청크 데이터 구조 확인
+                                if chunk_file_map and len(chunk_file_map) > 0:
+                                    first_chunk = chunk_file_map[0] if chunk_file_map else None
+                                    if first_chunk:
+                                        logger.error(f"  First chunk metadata keys: {list(first_chunk.keys() if first_chunk else [])}")
                         elif "timeout" in error_msg.lower():
                             logger.error("  Possible timeout issue - Check network or increase processing_timeout")
                         elif "memory" in error_msg.lower():

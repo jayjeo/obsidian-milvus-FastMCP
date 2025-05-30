@@ -1234,12 +1234,31 @@ class MilvusManager:
                 logger.error(error_msg)
                 raise ValueError(error_msg)
                 
-            # auto_id=True로 설정되어 있으므로 'id' 필드 제거
-            if 'id' in data:
-                data_copy = data.copy()
+            # auto_id=True로 설정되어 있으므로 항상 'id' 필드 제거
+            data_copy = data.copy()
+            if 'id' in data_copy:
                 del data_copy['id']
-            else:
-                data_copy = data
+                logger.debug(f"Removed 'id' field from data as auto_id=True is enabled")
+            
+            # 파일 경로 확인 및 추가 진단
+            if 'path' in data_copy:
+                path = data_copy['path']
+                file_name = os.path.basename(path) if path else ''
+                
+                # 파일명 관련 진단 정보 로깅
+                if file_name:
+                    import re
+                    starts_with_number = bool(re.match(r'^\d', file_name))
+                    has_special_chars = any(c in file_name for c in '[](){}#$%^&*;:<>?/|\\=')
+                    
+                    if starts_with_number:
+                        logger.warning(f"File '{file_name}' starts with a number - may cause schema issues")
+                    
+                    if has_special_chars:
+                        logger.warning(f"File '{file_name}' contains special characters - may cause issues")
+                        
+                    # 로깅에만 사용하기 위한 진단 정보
+                    logger.debug(f"File diagnostics - Starts with number: {starts_with_number}, Has special chars: {has_special_chars}")
             
             # 5. 스키마 호환성 검사 및 필드 자동 처리
             try:
@@ -1270,6 +1289,17 @@ class MilvusManager:
                 # 최종 데이터 필드 로깅
                 logger.debug(f"Final fields for insertion: {[k for k in data_copy.keys() if k != 'vector']}")
                 
+                # 데이터 구조 추가 진단
+                has_id_field = 'id' in data_copy
+                if has_id_field:
+                    logger.warning("'id' field still present in data_copy after removal attempt - this will cause DataNotMatchException")
+                
+                # 중요 필드 존재 여부 확인
+                required_fields = ['path', 'content', 'vector']
+                missing_fields = [field for field in required_fields if field not in data_copy]
+                if missing_fields:
+                    logger.warning(f"Missing required fields: {missing_fields}")
+                
                 # 6. 삽입 시도
                 try:
                     result = self.collection.insert(data_copy)
@@ -1294,8 +1324,35 @@ class MilvusManager:
                     # 실패 시 상세 로깅
                     logger.error(f"Failed to insert data: {insert_error}")
                     logger.debug(f"Failed data fields: {[k for k in data_copy.keys() if k != 'vector']}")
+                    
+                    # 'id' 필드 관련 문제 확인 
+                    if "id" in str(insert_error).lower():
+                        logger.error("'id' field error detected in insert operation")
+                        # 'id' 키가 있는지 다시 확인
+                        if 'id' in data_copy:
+                            logger.error("CRITICAL: 'id' field is still present in data_copy - this will cause schema errors")
+                        # schema 구조 확인
+                        try:
+                            schema_fields = [field.name for field in schema.fields]
+                            logger.error(f"Collection schema fields: {schema_fields}")
+                        except Exception as schema_err:
+                            logger.error(f"Could not retrieve schema fields: {schema_err}")
+                    
+                    # 파일 경로 상세 진단
                     if 'path' in data_copy:
-                        logger.debug(f"Path value: {data_copy['path'][:100]}")
+                        path_value = data_copy['path']
+                        logger.debug(f"Path value: {path_value[:100]}")
+                        
+                        # 파일명 추가 진단
+                        file_name = os.path.basename(path_value) if path_value else ''
+                        if file_name:
+                            import re
+                            if bool(re.match(r'^\d', file_name)):
+                                logger.error(f"File '{file_name}' starts with a number - recommend adding 'file_' prefix")
+                            
+                            special_chars = [c for c in '[](){}#$%^&*;:<>?/|\\=' if c in file_name]
+                            if special_chars:
+                                logger.error(f"File contains problematic characters: {special_chars}")
                     
                     raise insert_error
             except Exception as schema_error:
@@ -1314,6 +1371,30 @@ class MilvusManager:
                     # 데이터 삽입 상태 로깅 (디버깅용)
                     logger.debug(f"Data path being inserted: {data_copy.get('path', 'N/A')}")
                     logger.debug(f"Vector dimension: {len(data_copy.get('vector', []))}")
+                    
+                    # 메모리 사용량 확인
+                    try:
+                        import psutil
+                        process = psutil.Process()
+                        logger.debug(f"Memory usage during insert: {process.memory_info().rss / (1024 * 1024):.2f} MB")
+                    except (ImportError, Exception) as e:
+                        logger.debug(f"Could not log memory usage: {e}")
+                        
+                    # 삽입 시도 중 데이터 구조 분석
+                    data_keys = list(data_copy.keys())
+                    logger.debug(f"Data structure during insert: {data_keys}")
+                    
+                    # 마지막으로 중요 필드 값 분석
+                    for key in ['path', 'title']:
+                        if key in data_copy:
+                            value = data_copy[key]
+                            if value and isinstance(value, str):
+                                # 값의 앞부분 로깅 (너무 길면 자름)
+                                logger.debug(f"Field '{key}' starts with: {value[:50]}{'...' if len(value) > 50 else ''}")
+                                # 숫자로 시작하는지 확인
+                                import re
+                                if re.match(r'^\d', value):
+                                    logger.error(f"Field '{key}' starts with a number - may cause schema issues")
                     
                     raise insert_error
                 
