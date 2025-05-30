@@ -897,7 +897,7 @@ class ObsidianProcessor:
                     
                     # 특수 URL 필드를 미리 추출 (일반 정규식으로는 URL 처리가 어려움)
                     url_fields = ['url', 'link', 'share_link', 'source']
-                    url_pattern = re.compile(r'^((?:' + '|'.join(url_fields) + ')(?:_[\w]+)?)\s*:\s*(.+)$', re.IGNORECASE)
+                    url_pattern = re.compile(r'^((?:' + '|'.join(url_fields) + ')(?:_[\\w]+)?)\s*:\s*(.+)$', re.IGNORECASE)
                     
                     # 먼저 URL 필드 추출 시도
                     for line in frontmatter_text.split('\n'):
