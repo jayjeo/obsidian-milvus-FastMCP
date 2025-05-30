@@ -742,17 +742,62 @@ class ObsidianProcessor:
                 frontmatter_text = re.sub(r'[^\w\s\-\[\]:#\'",._{\}]+', ' ', frontmatter_text)
                 
                 try:
-                    # YAML 파싱 시도
-                    frontmatter = yaml.safe_load(frontmatter_text)
-                    if isinstance(frontmatter, dict):
-                        # 태그 추출
-                        if 'tags' in frontmatter:
-                            tags_data = frontmatter['tags']
-                            if isinstance(tags_data, list):
-                                tags = [str(tag).strip() for tag in tags_data if tag]
-                            elif isinstance(tags_data, str):
-                                tags = [tags_data.strip()]
-                            logger.debug(f"Extracted {len(tags)} tags from frontmatter for {rel_path}")
+                    # URL 형식 문제 사전 처리
+                    # https: www.example.com -> https://www.example.com
+                    url_pattern = re.compile(r'(url|link):\s*https:\s+([^\n]+)', re.IGNORECASE)
+                    frontmatter_fixed = url_pattern.sub(r'\1: "https://\2"', frontmatter_text)
+                    
+                    # 다른 일반적인 URL 형식 문제 처리
+                    url_pattern2 = re.compile(r'(url|link):\s*([^\s"]+)\s+([^\n]+)', re.IGNORECASE)
+                    frontmatter_fixed = url_pattern2.sub(r'\1: "\2 \3"', frontmatter_fixed)
+                    
+                    logger.debug(f"Fixed potential URL formatting issues in frontmatter for {rel_path}")
+                    
+                    # YAML 파싱 시도 - 프론트매터 라인 별 처리
+                    # 안전한 파싱을 위해 각 줄을 개별적으로 파싱
+                    frontmatter = {}
+                    for line in frontmatter_fixed.split('\n'):
+                        # 비어있거나 주석이면 건너뛰기
+                        line = line.strip()
+                        if not line or line.startswith('#'):
+                            continue
+                            
+                        # 키-값 구분
+                        if ':' in line:
+                            key, value = line.split(':', 1)
+                            key = key.strip()
+                            value = value.strip().strip('"\'')
+                            
+                            # 태그 처리는 별도로 진행
+                            if key.lower() == 'tags':
+                                if value.startswith('[') and value.endswith(']'):
+                                    tag_list = value[1:-1].split(',')
+                                    frontmatter['tags'] = [tag.strip().strip('"\'\'') for tag in tag_list if tag.strip()]
+                                else:
+                                    frontmatter['tags'] = [value] if value else []
+                            else:
+                                frontmatter[key] = value
+                    
+                    # 태그 추출
+                    if 'tags' in frontmatter:
+                        tags_data = frontmatter['tags']
+                        if isinstance(tags_data, list):
+                            tags = [str(tag).strip() for tag in tags_data if tag]
+                        elif isinstance(tags_data, str):
+                            tags = [tags_data.strip()]
+                        logger.debug(f"Extracted {len(tags)} tags from frontmatter for {rel_path}")
+                        
+                    # URL 필드가 있는 경우 추가 처리
+                    if 'url' in frontmatter and isinstance(frontmatter['url'], str):
+                        url_value = frontmatter['url']
+                        if not url_value.startswith(('http://', 'https://')):
+                            # URL 형식 자동 수정
+                            if url_value.startswith('www.'):
+                                frontmatter['url'] = f"https://{url_value}"
+                                logger.debug(f"Fixed URL format in frontmatter: {frontmatter['url']}")
+                            elif ' ' in url_value and not url_value.startswith('"'):
+                                # 따옴표로 감싸서 URL의 공백 문제 방지
+                                frontmatter['url'] = f"\"{url_value}\""
                 except yaml.YAMLError as yaml_err:
                     logger.error(f"YAML parsing error in {rel_path}: {yaml_err}")
                 except Exception as e:
@@ -1301,56 +1346,140 @@ class ObsidianProcessor:
                 try:
                     # 단일 항목 삽입 시도
                     if valid_data:
-                        # 디버깅용 - 전체 데이터 구조 로깅
-                        logger.debug(f"Attempting to insert data with id {self.next_id}")
+                        # 디버깅용 - 현재 처리중인 파일 정보 로깅
+                        current_file = os.path.basename(rel_path)
+                        logger.info(f"Processing file: {current_file} (ID: {self.next_id})")
+                        
+                        # 1. 상세 데이터 구조 출력 (벡터 제외)
+                        logger.debug(f"=== DATA DETAILS FOR {current_file} ===")
                         for key, value in sanitized_data.items():
                             if key != "vector":
-                                value_preview = str(value)[:30] + "..." if isinstance(value, str) and len(str(value)) > 30 else value
+                                value_preview = str(value)[:50] + "..." if isinstance(value, str) and len(str(value)) > 50 else value
                                 logger.debug(f"  Field {key}: {value_preview}")
                         
-                        # 벡터 차원 수 확인
+                        # 2. 벡터 차원 수 확인
                         vector_dim = len(sanitized_data.get("vector", []))
                         logger.debug(f"  Vector dimension: {vector_dim}")
                         
-                        # 삽입 시도
-                        result = self.milvus_manager.insert_data(sanitized_data)
-                        success_count += 1
-                        logger.debug(f"Successfully inserted data for path: {sanitized_data.get('path', 'unknown')}")
+                        # 3. 자세한 엔코딩 정보 출력
+                        for key, value in sanitized_data.items():
+                            if key != "vector" and isinstance(value, str):
+                                try:
+                                    encoded_bytes = value.encode('utf-8')
+                                    byte_len = len(encoded_bytes)
+                                    # 특정 범위의 바이트 값 출력 (오류 발생 가능성이 높은 위치 확인)
+                                    if byte_len > 100:
+                                        sample_bytes = encoded_bytes[:50] + b'...' + encoded_bytes[-50:]
+                                        logger.debug(f"  Field {key} encoding (byte length: {byte_len}): {sample_bytes}")
+                                except Exception as enc_error:
+                                    logger.warning(f"  Field {key} has encoding issues: {enc_error}")
                         
-                        # 일정 개수마다 flush - 메모리 관리
+                        # 4. 삽입 시도 전 Milvus 문서 확인
+                        try:
+                            # 콜렉션 스키마 정보 요청
+                            schema = self.milvus_manager.collection.schema
+                            field_names = [field.name for field in schema.fields]
+                            logger.debug(f"  Milvus schema fields: {field_names}")
+                            
+                            # 스키마에 없는 필드 찾기
+                            extra_fields = [key for key in sanitized_data.keys() if key not in field_names]
+                            if extra_fields:
+                                logger.warning(f"  Fields not in schema: {extra_fields} - these might cause errors")
+                        except Exception as schema_error:
+                            logger.warning(f"  Could not verify schema compatibility: {schema_error}")
+                        
+                        # 5. 삽입 시도
+                        logger.debug(f"  Attempting to insert data for {current_file}...")
+                        start_time = time.time()
+                        result = self.milvus_manager.insert_data(sanitized_data)
+                        end_time = time.time()
+                        
+                        # 6. 성공 시 추가 정보 로깅
+                        success_count += 1
+                        logger.info(f"Successfully inserted data for file: {current_file} (took {end_time - start_time:.2f}s)")
+                        logger.debug(f"  Insert result: {result}")
+                        
+                        # 7. 일정 개수마다 flush - 메모리 관리
                         if success_count % 10 == 0:
                             try:
+                                flush_start = time.time()
                                 self.milvus_manager.collection.flush()
-                                logger.debug(f"Successfully flushed after {success_count} insertions")
+                                flush_end = time.time()
+                                logger.debug(f"Successfully flushed after {success_count} insertions (took {flush_end - flush_start:.2f}s)")
                             except Exception as flush_error:
                                 logger.warning(f"Non-critical flush error (continuing): {flush_error}")
                     else:
                         failed_count += 1
-                        logger.warning(f"Skipping invalid data for item {self.next_id}")
+                        logger.warning(f"Skipping invalid data for item {self.next_id} (data validation failed)")
                         
                 except Exception as insert_error:
                     # 삽입 오류 발생 시 이 항목은 건너뛰고 계속 진행
                     failed_count += 1
+                    error_type = type(insert_error).__name__
                     error_message = str(insert_error)
-                    logger.error(f"Failed to insert data for path: {sanitized_data.get('path', 'unknown')}, error: {error_message}")
                     
-                    # 전체 오류 정보와 스택 트레이스 로깅
+                    # 현재 파일 정보
+                    current_file = os.path.basename(rel_path)
+                    
+                    # 1. 기본 오류 정보 로깅
+                    logger.error(f"Failed to insert data for file: {current_file}")
+                    logger.error(f"Error type: {error_type}, Message: {error_message}")
+                    
+                    # 2. 상세 오류 정보와 스택 트레이스 로깅
                     import traceback
                     stack_trace = traceback.format_exc()
-                    logger.error(f"Exception details: {stack_trace}")
+                    logger.error(f"Exception stack trace:\n{stack_trace}")
                     
-                    # 주요 필드 로깅 (디버깅용)
-                    logger.error("Detailed data information:")
+                    # 3. 오류 분석
+                    if "DataNotMatchException" in error_type or "schema" in error_message.lower():
+                        logger.error("This appears to be a schema mismatch error. Check if field definitions match Milvus schema.")
+                        # 필드 정보 출력
+                        logger.error("Field values that might be causing the error:")
+                        for key, value in sanitized_data.items():
+                            if key != "vector":
+                                value_type = type(value).__name__
+                                value_preview = str(value)[:50] + "..." if isinstance(value, str) and len(str(value)) > 50 else value
+                                logger.error(f"  Field '{key}' ({value_type}): {value_preview}")
+                    
+                    elif "timeout" in error_message.lower() or "connection" in error_message.lower():
+                        logger.error("This appears to be a connection or timeout issue with Milvus.")
+                        # 연결 정보 로깅
+                        logger.error(f"Milvus connection info: {self.milvus_manager.host}:{self.milvus_manager.port}")
+                    
+                    elif "quota" in error_message.lower() or "limit" in error_message.lower():
+                        logger.error("This appears to be a quota or limit exceeded error in Milvus.")
+                        # 일부 데이터 크기 출력
+                        for key, value in sanitized_data.items():
+                            if key != "vector" and isinstance(value, str):
+                                logger.error(f"  Field '{key}' length: {len(value)} chars")
+                    
+                    # 4. 전체 데이터 정보 디버깅 로깅
+                    logger.error("Complete data details for debugging:")
                     for field_name, field_value in sanitized_data.items():
                         if field_name != "vector":
-                            value_preview = str(field_value)[:50] + "..." if isinstance(field_value, str) and len(str(field_value)) > 50 else field_value
-                            logger.error(f"  Field {field_name}: {value_preview}")
+                            value_type = type(field_value).__name__
+                            value_preview = str(field_value)[:100] + "..." if isinstance(field_value, str) and len(str(field_value)) > 100 else field_value
+                            logger.error(f"  Field '{field_name}' ({value_type}): {value_preview}")
                     
-                    # 벡터 정보 로깅
+                    # 5. 벡터 정보 로깅
                     vector = sanitized_data.get("vector", [])
                     logger.error(f"  Vector dimension: {len(vector)}")
                     
-                    # 오류 정보 자세히 기록하지만 전체 프로세스는 계속 진행
+                    # 6. 문자열 필드의 바이트 크기 확인 (인코딩 문제 진단)
+                    for key, value in sanitized_data.items():
+                        if key != "vector" and isinstance(value, str):
+                            try:
+                                encoded_bytes = value.encode('utf-8')
+                                logger.error(f"  Field '{key}' byte length: {len(encoded_bytes)}")
+                                
+                                # 위험한 문자 찾기
+                                for i, char in enumerate(value[:100]):
+                                    if ord(char) > 127 or char in '\\\'"`<>{}[]':
+                                        logger.error(f"  Field '{key}' contains potentially problematic character '{char}' (ord={ord(char)}) at position {i}")
+                            except Exception as enc_error:
+                                logger.error(f"  Field '{key}' encoding error: {enc_error}")
+                    
+                    # 7. 오류 정보 자세히 기록하지만 전체 프로세스는 계속 진행
                     logger.debug(f"Continuing with next item despite insertion error for item {self.next_id}")
                 
                 # ID 증가 (항상 증가해야 중복 ID 방지)
