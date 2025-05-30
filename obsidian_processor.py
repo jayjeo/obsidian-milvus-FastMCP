@@ -1315,11 +1315,14 @@ class ObsidianProcessor:
                     logger.warning(f"Error creating safe title: {title_error}, using original title")
                     safe_title = original_title
                 
+                # 현재 파일 정보 설정 (로깅용)
+                current_file = os.path.basename(rel_path)
+                
                 # 경로 정보를 path 필드에 저장
                 # 숫자로 시작하는 파일명은 safe_path를 사용하여 해결
                 # 중요: original_path 필드도 포함 (스키마 요구사항)
                 single_data = {
-                    "id": self.next_id,
+                    # "id" 필드는 제거됨 - Milvus에서 자동 생성됨
                     "path": safe_truncate(safe_path, 500),  # 안전한 경로 사용
                     "original_path": safe_truncate(original_path, 500),  # 원본 경로 추가 - 스키마 요구사항
                     "title": safe_truncate(safe_title, 500),  # 안전한 제목 사용
@@ -1391,6 +1394,11 @@ class ObsidianProcessor:
                     logger.warning(f"WARNING: original_path field is still missing after all fixes")
                 else:
                     logger.debug(f"original_path field is present with value: '{sanitized_data['original_path'][:30]}...'")
+                    
+                # 중요: id 필드가 있으면 제거 (Milvus에서 자동 관리)
+                if 'id' in sanitized_data:
+                    logger.debug(f"Removing 'id' field from sanitized_data to prevent DataNotMatchException")
+                    del sanitized_data['id']
                     
                 # 특수 문자를 포함하는 경우 추가 로깅
                 has_special_chars = False
@@ -1522,8 +1530,7 @@ class ObsidianProcessor:
                 error_type = type(overall_error).__name__
                 error_message = str(overall_error)
                 
-                # 현재 파일 정보
-                current_file = os.path.basename(rel_path)
+                # current_file은 이미 위에서 정의됨
                     
                 # 1. 기본 오류 정보 로깅
                 logger.error(f"Failed to insert data for file: {current_file}")
