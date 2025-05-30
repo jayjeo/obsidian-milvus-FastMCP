@@ -1241,20 +1241,81 @@ class MilvusManager:
             else:
                 data_copy = data
             
-            # 5. 삽입 시도
+            # 5. 스키마 호환성 검사 및 필드 자동 처리
             try:
-                result = self.collection.insert(data_copy)
-                return result
-            except Exception as insert_error:
-                # 삽입 오류에 대한 자세한 로깅
-                error_msg = f"Failed to insert data: {insert_error}"
-                logger.error(error_msg, exc_info=True)
+                # 스키마 필드 정보 가져오기
+                schema = self.collection.schema
+                schema_fields = [field.name for field in schema.fields]
+                logger.debug(f"Collection schema fields: {schema_fields}")
                 
-                # 데이터 삽입 상태 로깅 (디버깅용)
-                logger.debug(f"Data path being inserted: {data_copy.get('path', 'N/A')}")
-                logger.debug(f"Vector dimension: {len(data_copy.get('vector', []))}")
+                # 'original_path' 필드 처리 - Milvus 스키마에 필요하지만 데이터에 없는 경우
+                if 'original_path' in schema_fields and 'original_path' not in data_copy and 'path' in data_copy:
+                    # path를 사용하여 original_path 추가 (스키마 호환성을 위해)
+                    data_copy['original_path'] = data_copy['path']
+                    logger.debug(f"Added missing 'original_path' field using 'path' value for schema compatibility")
                 
-                raise insert_error
+                # 스키마에 있지만 데이터에 없는 필수 필드 처리
+                for field_name in schema_fields:
+                    if field_name not in data_copy and field_name != 'vector':
+                        # 빈 값 또는 기본값 추가
+                        data_copy[field_name] = ""
+                        logger.debug(f"Added missing field '{field_name}' with empty value for schema compatibility")
+                
+                # 스키마에 없는 불필요한 필드 제거
+                extra_fields = [field for field in data_copy.keys() if field not in schema_fields and field != 'vector']
+                for field in extra_fields:
+                    del data_copy[field]
+                    logger.debug(f"Removed extra field '{field}' not in schema")
+                
+                # 최종 데이터 필드 로깅
+                logger.debug(f"Final fields for insertion: {[k for k in data_copy.keys() if k != 'vector']}")
+                
+                # 6. 삽입 시도
+                try:
+                    result = self.collection.insert(data_copy)
+                    logger.debug(f"Successfully inserted data: {result}")
+                    return result
+                except Exception as insert_error:
+                    error_msg = str(insert_error)
+                    
+                    # DataNotMatchException 처리
+                    if "DataNotMatchException" in str(type(insert_error)) and "original_path" in error_msg:
+                        # original_path 필드 문제인 경우 특별 처리
+                        logger.warning(f"Schema mismatch with 'original_path' field, attempting to fix...")
+                        
+                        # 다시 한 번 시도
+                        if 'path' in data_copy:
+                            data_copy['original_path'] = data_copy['path']
+                            logger.debug(f"Retry: Added 'original_path' field with value from 'path'")
+                            result = self.collection.insert(data_copy)
+                            logger.info(f"Successfully inserted data after fixing original_path field")
+                            return result
+                    
+                    # 실패 시 상세 로깅
+                    logger.error(f"Failed to insert data: {insert_error}")
+                    logger.debug(f"Failed data fields: {[k for k in data_copy.keys() if k != 'vector']}")
+                    if 'path' in data_copy:
+                        logger.debug(f"Path value: {data_copy['path'][:100]}")
+                    
+                    raise insert_error
+            except Exception as schema_error:
+                # 스키마 처리 중 오류 발생
+                logger.error(f"Error processing schema compatibility: {schema_error}")
+                
+                # 원래 데이터로 다시 시도
+                try:
+                    result = self.collection.insert(data_copy)
+                    return result
+                except Exception as insert_error:
+                    # 삽입 오류에 대한 자세한 로깅
+                    error_msg = f"Failed to insert data: {insert_error}"
+                    logger.error(error_msg, exc_info=True)
+                    
+                    # 데이터 삽입 상태 로깅 (디버깅용)
+                    logger.debug(f"Data path being inserted: {data_copy.get('path', 'N/A')}")
+                    logger.debug(f"Vector dimension: {len(data_copy.get('vector', []))}")
+                    
+                    raise insert_error
                 
         except Exception as e:
             # 총괄적인 오류 처리

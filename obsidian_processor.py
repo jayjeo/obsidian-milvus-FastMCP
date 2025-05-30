@@ -1278,12 +1278,13 @@ class ObsidianProcessor:
                     logger.warning(f"Error creating safe title: {title_error}, using original title")
                     safe_title = original_title
                 
-                # 경로 정보를 path 필드에 저장 (중요: original_path 필드 사용하지 않음)
+                # 경로 정보를 path 필드에 저장
                 # 숫자로 시작하는 파일명은 safe_path를 사용하여 해결
-                # safe_path에 원본 경로 정보가 저장되어 있음 (prefix 추가)
+                # 중요: original_path 필드도 포함 (스키마 요구사항)
                 single_data = {
                     "id": self.next_id,
                     "path": safe_truncate(safe_path, 500),  # 안전한 경로 사용
+                    "original_path": safe_truncate(original_path, 500),  # 원본 경로 추가 - 스키마 요구사항
                     "title": safe_truncate(safe_title, 500),  # 안전한 제목 사용
                     # 첫 번째 청크일 때만 전체 내용 저장, 나머지는 빈 문자열
                     # 안전한 방식으로 content 키에 접근 (기본값 빈 문자열 사용)
@@ -1295,7 +1296,6 @@ class ObsidianProcessor:
                     "created_at": safe_truncate(metadata.get("created_at", ""), 30),
                     "updated_at": safe_truncate(metadata.get("updated_at", ""), 30),
                     "vector": vector
-                    # original_path 필드 삭제 - Milvus 스키마와 일치하지 않기 때문
                 }
                 
                 # 강화된 데이터 유효성 검사 (안전 장치)
@@ -1327,7 +1327,7 @@ class ObsidianProcessor:
                         sanitized_data[key] = value
                     elif isinstance(value, str):
                         # 문자열 필드의 경우 특수 문자 처리
-                        if key == "path" or key == "title":
+                        if key in ["path", "title", "original_path"]:  # original_path 필드 추가
                             # 경로와 제목은 중요하므로 인코딩 문제 확인
                             try:
                                 # Milvus에서 사용하는 표현식에 중요한 특수 문자 이스케이핑
@@ -1342,116 +1342,183 @@ class ObsidianProcessor:
                     else:
                         sanitized_data[key] = value
                 
-                # 안전하게 처리된 데이터 삽입
-                try:
-                    # 단일 항목 삽입 시도
-                    if valid_data:
-                        # 디버깅용 - 현재 처리중인 파일 정보 로깅
-                        current_file = os.path.basename(rel_path)
-                        logger.info(f"Processing file: {current_file} (ID: {self.next_id})")
-                        
-                        # 1. 상세 데이터 구조 출력 (벡터 제외)
-                        logger.debug(f"=== DATA DETAILS FOR {current_file} ===")
-                        for key, value in sanitized_data.items():
-                            if key != "vector":
-                                value_preview = str(value)[:50] + "..." if isinstance(value, str) and len(str(value)) > 50 else value
-                                logger.debug(f"  Field {key}: {value_preview}")
-                        
-                        # 2. 벡터 차원 수 확인
-                        vector_dim = len(sanitized_data.get("vector", []))
-                        logger.debug(f"  Vector dimension: {vector_dim}")
-                        
-                        # 3. 자세한 엔코딩 정보 출력
-                        for key, value in sanitized_data.items():
-                            if key != "vector" and isinstance(value, str):
-                                try:
-                                    encoded_bytes = value.encode('utf-8')
-                                    byte_len = len(encoded_bytes)
-                                    # 특정 범위의 바이트 값 출력 (오류 발생 가능성이 높은 위치 확인)
-                                    if byte_len > 100:
-                                        sample_bytes = encoded_bytes[:50] + b'...' + encoded_bytes[-50:]
-                                        logger.debug(f"  Field {key} encoding (byte length: {byte_len}): {sample_bytes}")
-                                except Exception as enc_error:
-                                    logger.warning(f"  Field {key} has encoding issues: {enc_error}")
-                        
-                        # 4. 삽입 시도 전 Milvus 문서 확인
+                # 추가 가능성 검사 - original_path 필드가 없는 경우 추가
+                if "original_path" not in sanitized_data and "path" in sanitized_data:
+                    # 반드시 original_path가 포함되도록 보장 (스키마 요구사항)
+                    sanitized_data["original_path"] = sanitized_data.get("path", "")  # path 값을 기본값으로 사용
+                    logger.debug(f"Added missing original_path field (schema requirement)")
+                    
+                # 확인용 로깅
+                logger.debug(f"Final fields ready for insertion: {list(sanitized_data.keys())}")
+                if "original_path" not in sanitized_data:
+                    logger.warning(f"WARNING: original_path field is still missing after all fixes")
+                else:
+                    logger.debug(f"original_path field is present with value: '{sanitized_data['original_path'][:30]}...'")
+                    
+                # 특수 문자를 포함하는 경우 추가 로깅
+                has_special_chars = False
+                for key, value in sanitized_data.items():
+                    if key != "vector" and isinstance(value, str) and any(c in value for c in "'\"()[]{},;"):
+                        has_special_chars = True
+                        logger.debug(f"Field {key} contains special characters that might need careful handling")
+                
                         try:
-                            # 콜렉션 스키마 정보 요청
-                            schema = self.milvus_manager.collection.schema
-                            field_names = [field.name for field in schema.fields]
-                            logger.debug(f"  Milvus schema fields: {field_names}")
-                            
-                            # 스키마에 없는 필드 찾기
-                            extra_fields = [key for key in sanitized_data.keys() if key not in field_names]
-                            if extra_fields:
-                                logger.warning(f"  Fields not in schema: {extra_fields} - these might cause errors")
-                        except Exception as schema_error:
-                            logger.warning(f"  Could not verify schema compatibility: {schema_error}")
-                        
-                        # 5. 삽입 시도
-                        logger.debug(f"  Attempting to insert data for {current_file}...")
+                            encoded_bytes = value.encode('utf-8')
+                            byte_len = len(encoded_bytes)
+                            # 특정 범위의 바이트 값 출력 (오류 발생 가능성이 높은 위치 확인)
+                            if byte_len > 100:
+                                sample_bytes = encoded_bytes[:50] + b'...' + encoded_bytes[-50:]
+                                logger.debug(f"  Field {key} encoding (byte length: {byte_len}): {sample_bytes}")
+                        except Exception as enc_error:
+                            logger.warning(f"  Field {key} has encoding issues: {enc_error}")
+
+                # 4. 삽입 시도 전 Milvus 문서 확인
+                try:
+                    # 콜렉션 스키마 정보 요청
+                    schema = self.milvus_manager.collection.schema
+                    field_names = [field.name for field in schema.fields]
+                    logger.debug(f"  Milvus schema fields: {field_names}")
+
+                    # 스키마에 없는 필드 찾기
+                    extra_fields = [key for key in sanitized_data.keys() if key not in field_names]
+                    if extra_fields:
+                        logger.warning(f"  Fields not in schema: {extra_fields} - these might cause errors")
+
+                        # 불필요한 필드 제거
+                        for field in extra_fields:
+                            if field in sanitized_data:
+                                del sanitized_data[field]
+                                logger.debug(f"Removed extra field '{field}' not in schema")
+
+                        # 스키마에 있지만 데이터에 없는 필드 찾기
+                        missing_fields = [name for name in field_names if name not in sanitized_data and name != 'vector']
+                        if missing_fields:
+                            logger.warning(f"  Missing fields from schema: {missing_fields}")
+
+                            # 필수 필드 추가 (빈 문자열 사용)
+                            for field in missing_fields:
+                                if field != "vector":  # 벡터 필드는 처리하지 않음
+                                    sanitized_data[field] = ""
+                                    logger.debug(f"Added missing field '{field}' required by schema")
+                except Exception as schema_error:
+                    logger.warning(f"  Could not verify schema compatibility: {schema_error}")
+
+                # 5. 삽입 시도 (실패 시 재시도 로직 추가)
+                logger.debug(f"  Attempting to insert data for {current_file}...")
+
+                # 재시도 로직 추가 - 최대 3회 시도
+                max_retries = 3
+                retry_count = 0
+                last_error = None
+
+                while retry_count < max_retries:
+                    try:
                         start_time = time.time()
                         result = self.milvus_manager.insert_data(sanitized_data)
                         end_time = time.time()
-                        
-                        # 6. 성공 시 추가 정보 로깅
+
+                        # 성공 시 추가 정보 로깅
                         success_count += 1
-                        logger.info(f"Successfully inserted data for file: {current_file} (took {end_time - start_time:.2f}s)")
+                        if retry_count > 0:
+                            logger.info(f"Successfully inserted data for file: {current_file} after {retry_count+1} attempts (took {end_time - start_time:.2f}s)")
+                        else:
+                            logger.info(f"Successfully inserted data for file: {current_file} (took {end_time - start_time:.2f}s)")
+
                         logger.debug(f"  Insert result: {result}")
-                        
-                        # 7. 일정 개수마다 flush - 메모리 관리
-                        if success_count % 10 == 0:
-                            try:
-                                flush_start = time.time()
-                                self.milvus_manager.collection.flush()
-                                flush_end = time.time()
-                                logger.debug(f"Successfully flushed after {success_count} insertions (took {flush_end - flush_start:.2f}s)")
-                            except Exception as flush_error:
-                                logger.warning(f"Non-critical flush error (continuing): {flush_error}")
-                    else:
-                        failed_count += 1
-                        logger.warning(f"Skipping invalid data for item {self.next_id} (data validation failed)")
-                        
-                except Exception as insert_error:
-                    # 삽입 오류 발생 시 이 항목은 건너뛰고 계속 진행
+                        break  # 성공하면 루프 비활성화
+                    except Exception as insert_error:
+                        retry_count += 1
+                        last_error = insert_error
+
+                        # 오류 발생 시 재시도 전 조치
+                        error_type = type(insert_error).__name__
+                        error_message = str(insert_error)
+
+                        logger.warning(f"Insert attempt {retry_count}/{max_retries} failed: {error_type} - {error_message[:100]}...")
+
+                        # 재시도 전 추가 조치 (오류 유형에 따라 다른 조치 적용)
+                        if "schema" in error_message.lower() or "DataNotMatchException" in error_type:
+                            # 스키마 문제인 경우 original_path 처리 강화
+                            if "original_path" in error_message:
+                                sanitized_data["original_path"] = sanitized_data.get("path", f"safe_path_{self.next_id}")
+                                logger.debug(f"Retry {retry_count}: Reinforced original_path field")
+                        elif "timeout" in error_message.lower() or "connection" in error_message.lower():
+                            # 연결 문제인 경우 잠시 대기 후 재시도
+                            time.sleep(1.0)  # 1초 대기 후 재시도
+                            logger.debug(f"Retry {retry_count}: Waiting before retry due to connection issue")
+                        else:
+                            # 기타 문제는 데이터 정제 후 재시도
+                            for field in ['path', 'original_path', 'title']:
+                                if field in sanitized_data and isinstance(sanitized_data[field], str):
+                                    # 더 강력한 정제 적용
+                                    safe_value = re.sub(r'[^\w\-\. ]', '_', sanitized_data[field])
+                                    if len(safe_value) < 3:  # 너무 짧아지면 안전한 기본값 사용
+                                        safe_value = f"safe_{field}_{self.next_id}"
+                                    sanitized_data[field] = safe_value
+                                    logger.debug(f"Retry {retry_count}: Sanitized {field} to '{safe_value[:20]}...'")
+
+                        # 마지막 시도에서도 실패하면 오류 처리
+                        if retry_count >= max_retries:
+                            failed_count += 1
+                            logger.error(f"Failed to insert data for {current_file} after {max_retries} attempts")
+                            # 오류 세부 정보 추가 로깅
+                            logger.error(f"Final error: {error_type} - {error_message}")
+
+                # 6. 일정 개수마다 flush - 메모리 관리
+                if success_count % 10 == 0:
+                    try:
+                        flush_start = time.time()
+                        self.milvus_manager.collection.flush()
+                        flush_end = time.time()
+                        logger.debug(f"Successfully flushed after {success_count} insertions (took {flush_end - flush_start:.2f}s)")
+                    except Exception as flush_error:
+                        logger.warning(f"Non-critical flush error (continuing): {flush_error}")
+                    
+                # 유효하지 않은 데이터인 경우
+                else:  # valid_data가 False인 경우
                     failed_count += 1
-                    error_type = type(insert_error).__name__
-                    error_message = str(insert_error)
+                    logger.warning(f"Skipping invalid data for item {self.next_id} (data validation failed)")
+            
+            except Exception as overall_error:  # 전체 처리 중 발생한 예외
+                # 삽입 오류 발생 시 이 항목은 건너뛰고 계속 진행
+                failed_count += 1
+                error_type = type(overall_error).__name__
+                error_message = str(overall_error)
+                
+                # 현재 파일 정보
+                current_file = os.path.basename(rel_path)
                     
-                    # 현재 파일 정보
-                    current_file = os.path.basename(rel_path)
-                    
-                    # 1. 기본 오류 정보 로깅
-                    logger.error(f"Failed to insert data for file: {current_file}")
-                    logger.error(f"Error type: {error_type}, Message: {error_message}")
-                    
-                    # 2. 상세 오류 정보와 스택 트레이스 로깅
-                    import traceback
-                    stack_trace = traceback.format_exc()
-                    logger.error(f"Exception stack trace:\n{stack_trace}")
-                    
-                    # 3. 오류 분석
-                    if "DataNotMatchException" in error_type or "schema" in error_message.lower():
-                        logger.error("This appears to be a schema mismatch error. Check if field definitions match Milvus schema.")
-                        # 필드 정보 출력
-                        logger.error("Field values that might be causing the error:")
-                        for key, value in sanitized_data.items():
-                            if key != "vector":
-                                value_type = type(value).__name__
-                                value_preview = str(value)[:50] + "..." if isinstance(value, str) and len(str(value)) > 50 else value
-                                logger.error(f"  Field '{key}' ({value_type}): {value_preview}")
-                    
-                    elif "timeout" in error_message.lower() or "connection" in error_message.lower():
-                        logger.error("This appears to be a connection or timeout issue with Milvus.")
-                        # 연결 정보 로깅
-                        logger.error(f"Milvus connection info: {self.milvus_manager.host}:{self.milvus_manager.port}")
-                    
-                    elif "quota" in error_message.lower() or "limit" in error_message.lower():
-                        logger.error("This appears to be a quota or limit exceeded error in Milvus.")
-                        # 일부 데이터 크기 출력
-                        for key, value in sanitized_data.items():
-                            if key != "vector" and isinstance(value, str):
-                                logger.error(f"  Field '{key}' length: {len(value)} chars")
+                # 1. 기본 오류 정보 로깅
+                logger.error(f"Failed to insert data for file: {current_file}")
+                logger.error(f"Error type: {error_type}, Message: {error_message}")
+                
+                # 2. 상세 오류 정보와 스택 트레이스 로깅
+                import traceback
+                stack_trace = traceback.format_exc()
+                logger.error(f"Exception stack trace:\n{stack_trace}")
+                
+                # 3. 오류 분석
+                if "DataNotMatchException" in error_type or "schema" in error_message.lower():
+                    logger.error("This appears to be a schema mismatch error. Check if field definitions match Milvus schema.")
+                    # 필드 정보 출력
+                    logger.error("Field values that might be causing the error:")
+                    for key, value in sanitized_data.items():
+                        if key != "vector":
+                            value_type = type(value).__name__
+                            value_preview = str(value)[:50] + "..." if isinstance(value, str) and len(str(value)) > 50 else value
+                            logger.error(f"  Field '{key}' ({value_type}): {value_preview}")
+                
+                elif "timeout" in error_message.lower() or "connection" in error_message.lower():
+                    logger.error("This appears to be a connection or timeout issue with Milvus.")
+                    # 연결 정보 로깅
+                    logger.error(f"Milvus connection info: {self.milvus_manager.host}:{self.milvus_manager.port}")
+                
+                elif "quota" in error_message.lower() or "limit" in error_message.lower():
+                    logger.error("This appears to be a quota or limit exceeded error in Milvus.")
+                    # 일부 데이터 크기 출력
+                    for key, value in sanitized_data.items():
+                        if key != "vector" and isinstance(value, str):
+                            logger.error(f"  Field '{key}' length: {len(value)} chars")
                     
                     # 4. 전체 데이터 정보 디버깅 로깅
                     logger.error("Complete data details for debugging:")
