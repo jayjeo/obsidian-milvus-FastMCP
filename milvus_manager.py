@@ -1235,10 +1235,16 @@ class MilvusManager:
                 raise ValueError(error_msg)
                 
             # auto_id=True로 설정되어 있으므로 항상 'id' 필드 제거
-            data_copy = data.copy()
+            import copy
+            data_copy = copy.deepcopy(data)
             if 'id' in data_copy:
                 del data_copy['id']
                 logger.debug(f"Removed 'id' field from data as auto_id=True is enabled")
+            else:
+                logger.debug(f"No 'id' field found in original data - good!")
+                
+            # 데이터 필드 로깅
+            logger.debug(f"Data fields after initial processing: {list(data_copy.keys())}")
             
             # 파일 경로 확인 및 추가 진단
             if 'path' in data_copy:
@@ -1302,6 +1308,15 @@ class MilvusManager:
                 
                 # 6. 삽입 시도
                 try:
+                    # 삽입 직전에 'id' 필드가 있는지 다시 확인하고 제거 (중요 안전장치)
+                    if 'id' in data_copy:
+                        logger.warning(f"'id' 필드가 여전히 data_copy에 있어 제거합니다.")
+                        del data_copy['id']
+                    
+                    # 삽입 직전 최종 데이터 필드 확인 (디버깅용)
+                    logger.debug(f"Final data fields before insertion: {list(data_copy.keys())}")
+                    
+                    # Milvus에 데이터 삽입
                     result = self.collection.insert(data_copy)
                     logger.debug(f"Successfully inserted data: {result}")
                     return result
@@ -1317,6 +1332,15 @@ class MilvusManager:
                         if 'path' in data_copy:
                             data_copy['original_path'] = data_copy['path']
                             logger.debug(f"Retry: Added 'original_path' field with value from 'path'")
+                            
+                            # id 필드 제거 확인 (매우 중요)
+                            if 'id' in data_copy:
+                                logger.warning(f"Removing 'id' field before retry")
+                                del data_copy['id']
+                                
+                            # 최종 필드 확인
+                            logger.debug(f"Fields before retry: {list(data_copy.keys())}")
+                            
                             result = self.collection.insert(data_copy)
                             logger.info(f"Successfully inserted data after fixing original_path field")
                             return result
@@ -1328,9 +1352,23 @@ class MilvusManager:
                     # 'id' 필드 관련 문제 확인 
                     if "id" in str(insert_error).lower():
                         logger.error("'id' field error detected in insert operation")
-                        # 'id' 키가 있는지 다시 확인
+                        # 'id' 키가 있는지 다시 확인하고 제거 시도
                         if 'id' in data_copy:
-                            logger.error("CRITICAL: 'id' field is still present in data_copy - this will cause schema errors")
+                            logger.error("CRITICAL: 'id' field is still present in data_copy - removing it now")
+                            del data_copy['id']  # 여기서 id 필드 제거 시도
+                            logger.debug(f"Remaining fields after forced removal: {list(data_copy.keys())}")
+                        else:
+                            logger.error("'id' field not found in data_copy but error still mentions it - possible nested structure or other issue")
+                            
+                        # 중첩된 구조에서 id를 찾아 제거 시도 (deep inspection)
+                        try:
+                            import json
+                            data_str = json.dumps(data_copy)
+                            if '"id":' in data_str:
+                                logger.error("Found 'id' in nested structure - this might be causing the error")
+                        except Exception as json_err:
+                            logger.error(f"Could not inspect data deeply: {json_err}")
+                            
                         # schema 구조 확인
                         try:
                             schema_fields = [field.name for field in schema.fields]
