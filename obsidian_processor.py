@@ -770,50 +770,152 @@ class ObsidianProcessor:
             
             # YAML 프론트매터 및 태그 추출 (개선된 방식)
             tags = []
+            
+            # 처리 전 원본 콘텐츠 보존
+            original_content = content
+            
+            # 콘텐츠에서 프론트매터 구문 추출
             yaml_match = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
             
             if yaml_match:
-                # 안전한 YAML 파싱
-                frontmatter_text = yaml_match.group(1)
-                # 특수 문자 및 악성 문자열 제거 (security)
-                frontmatter_text = re.sub(r'[^\w\s\-\[\]:#\'",._{\}]+', ' ', frontmatter_text)
+                # 원래 프론트매터 텍스트 추출
+                original_frontmatter = yaml_match.group(1)
+                
+                # 프론트매터 전처리 (YAML 구문 문제 수정)
+                lines = original_frontmatter.split('\n')
+                processed_lines = []
+                
+                for line in lines:
+                    if not line.strip() or line.startswith('#'):
+                        processed_lines.append(line)
+                        continue
+                        
+                    # 1. 키:값 형태인지 확인
+                    if ':' in line:
+                        # 키와 값 분리
+                        key_value = line.split(':', 1)
+                        key = key_value[0].strip()
+                        value = key_value[1].strip() if len(key_value) > 1 else ''
+                        
+                        # 2. title 필드 특별 처리
+                        if key.lower() == 'title':
+                            # 값에 콜론이 있거나 특수 문자가 있는지 확인
+                            if ':' in value or any(c in value for c in '&@#%'):
+                                # 이미 따옴표로 감싸져 있지 않으면 따옴표로 감싸기
+                                if not (value.startswith('"') and value.endswith('"')) and not (value.startswith('\'') and value.endswith('\'')):
+                                    value = f'"{value}"'
+                                line = f"{key}: {value}"
+                                logger.debug(f"Quoted title with special chars: {value}")
+                        
+                        # 3. 태그 필드 특별 처리
+                        elif key.lower() == 'tags':
+                            # 배열 형태로 표현되지 않은 경우 처리
+                            if not value.startswith('[') and not value.startswith('-'):
+                                line = f"{key}: [{value}]"
+                        
+                        # 4. 일반 필드에 콜론이 포함된 경우
+                        elif ':' in value and not (value.startswith('"') or value.startswith('\'')):
+                            value = f'"{value}"'
+                            line = f"{key}: {value}"
+                            
+                        # 5. 숫자로 시작하는 값 처리
+                        elif value and value[0].isdigit() and not (value.startswith('"') or value.startswith('\'')):
+                            value = f'"{value}"'
+                            line = f"{key}: {value}"
+                    
+                    processed_lines.append(line)
+                
+                # 최종 처리된 프론트매터 텍스트
+                frontmatter_text = '\n'.join(processed_lines)
+                
+                # 안전을 위한 추가 필터링 (심각한 악성 문자열만 제거)
+                frontmatter_text = re.sub(r'[^\w\s\-\[\]:#\'",._{}@&%]+', ' ', frontmatter_text)
                 
                 try:
-                    # URL 형식 문제 사전 처리
-                    # https: www.example.com -> https://www.example.com
-                    url_pattern = re.compile(r'(url|link):\s*https:\s+([^\n]+)', re.IGNORECASE)
-                    frontmatter_fixed = url_pattern.sub(r'\1: "https://\2"', frontmatter_text)
+                    # 숫자로 시작하는 값과 콜론이 포함된 값을 처리하기 위한 YAML 수정
+                    lines = frontmatter_text.split('\n')
+                    fixed_lines = []
                     
-                    # 다른 일반적인 URL 형식 문제 처리
-                    url_pattern2 = re.compile(r'(url|link):\s*([^\s"]+)\s+([^\n]+)', re.IGNORECASE)
-                    frontmatter_fixed = url_pattern2.sub(r'\1: "\2 \3"', frontmatter_fixed)
-                    
-                    logger.debug(f"Fixed potential URL formatting issues in frontmatter for {rel_path}")
-                    
-                    # YAML 파싱 시도 - 프론트매터 라인 별 처리
-                    # 안전한 파싱을 위해 각 줄을 개별적으로 파싱
-                    frontmatter = {}
-                    for line in frontmatter_fixed.split('\n'):
-                        # 비어있거나 주석이면 건너뛰기
-                        line = line.strip()
-                        if not line or line.startswith('#'):
+                    for line in lines:
+                        if not line.strip() or line.strip().startswith('#'):
+                            fixed_lines.append(line)
                             continue
                             
-                        # 키-값 구분
+                        # 키-값 라인인지 확인
                         if ':' in line:
-                            key, value = line.split(':', 1)
-                            key = key.strip()
-                            value = value.strip().strip('"\'')
+                            parts = line.split(':', 1)  # 첫 번째 콜론에서만 분리
+                            key_part = parts[0].strip()
+                            value_part = parts[1].strip() if len(parts) > 1 else ''
                             
-                            # 태그 처리는 별도로 진행
-                            if key.lower() == 'tags':
-                                if value.startswith('[') and value.endswith(']'):
-                                    tag_list = value[1:-1].split(',')
-                                    frontmatter['tags'] = [tag.strip().strip('"\'\'') for tag in tag_list if tag.strip()]
+                            # 값에 콜론이 포함되어 있는지 확인
+                            if ':' in value_part and not (value_part.startswith('"') or value_part.startswith('\'')):
+                                # title 필드에 콜론이 있는 경우 (예: title: Robots and jobs: Evidence from US labor markets)
+                                value_part = f'"{value_part}"'
+                                line = f'{key_part}: {value_part}'
+                                logger.debug(f"Added quotes to value with colon: {value_part}")
+                            
+                            # PDF 파일 참조 처리 (예: [PDF] 2008.pdf)
+                            elif '[PDF]' in value_part and re.search(r'\d+\.pdf', value_part):
+                                value_part = f'"{value_part}"'
+                                line = f'{key_part}: {value_part}'
+                            
+                            # 숫자로 시작하는 값에 따옴표 추가
+                            elif value_part and value_part[0].isdigit() and not (value_part.startswith('"') or value_part.startswith('\'')):
+                                value_part = f'"{value_part}"'
+                                line = f'{key_part}: {value_part}'
+                                
+                            # URL 형식 문제 사전 처리
+                            elif (key_part.lower() == 'url' or key_part.lower() == 'link'):
+                                if 'https:' in value_part and not 'https://' in value_part:
+                                    value_part = value_part.replace('https:', 'https://')
+                                if not (value_part.startswith('"') or value_part.startswith('\'')) and ' ' in value_part:
+                                    value_part = f'"{value_part}"'
+                                line = f'{key_part}: {value_part}'
+                                
+                            # title 필드의 경우 특별 처리 (일반적으로 콜론이나 특수문자를 포함할 가능성이 높음)
+                            elif key_part.lower() == 'title' and not (value_part.startswith('"') or value_part.startswith('\'')):
+                                # 이미 따옴표로 감싸져 있지 않으면 무조건 따옴표 추가
+                                value_part = f'"{value_part}"'
+                                line = f'{key_part}: {value_part}'
+                                
+                        fixed_lines.append(line)
+                    
+                    frontmatter_fixed = '\n'.join(fixed_lines)
+                    logger.debug(f"Fixed potential formatting issues in frontmatter for {rel_path}")
+                    
+                    # 전체 YAML 파싱 시도
+                    try:
+                        # 안전한 YAML 파싱 시도
+                        frontmatter = yaml.safe_load(frontmatter_fixed)
+                        if not isinstance(frontmatter, dict):
+                            # YAML이 딕셔너리가 아닌 경우 (예: 스칼라 값) 처리
+                            logger.warning(f"YAML parsing did not return a dictionary for {rel_path}")
+                            frontmatter = {}
+                    except Exception as yaml_inner_err:
+                        logger.warning(f"Safe YAML parsing failed for {rel_path}, falling back to line-by-line parsing: {yaml_inner_err}")
+                        # 안전하게 라인별 파싱으로 폴백
+                        frontmatter = {}
+                        for line in frontmatter_fixed.split('\n'):
+                            # 비어있거나 주석이면 건너뛰기
+                            line = line.strip()
+                            if not line or line.startswith('#'):
+                                continue
+                                
+                            # 키-값 구분
+                            if ':' in line:
+                                key, value = line.split(':', 1)
+                                key = key.strip()
+                                value = value.strip().strip('"\'')
+                                
+                                # 태그 처리는 별도로 진행
+                                if key.lower() == 'tags':
+                                    if value.startswith('[') and value.endswith(']'):
+                                        tag_list = value[1:-1].split(',')
+                                        frontmatter['tags'] = [tag.strip().strip('"\'\'') for tag in tag_list if tag.strip()]
+                                    else:
+                                        frontmatter['tags'] = [value] if value else []
                                 else:
-                                    frontmatter['tags'] = [value] if value else []
-                            else:
-                                frontmatter[key] = value
+                                    frontmatter[key] = value
                     
                     # 태그 추출
                     if 'tags' in frontmatter:
