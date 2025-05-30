@@ -193,7 +193,8 @@ class MilvusManager:
             # Use DynamicBatchOptimizer's intelligent sizing - apply Milvus limit from start
             optimal_limit = self.batch_optimizer.current_batch_size
             # Ensure it doesn't exceed Milvus safety limit from the start
-            milvus_limit = 16000  # Hard limit - never exceed this
+            # Milvus 제한: offset + limit <= 16384이므로 안전하게 12000으로 설정
+            milvus_limit = 12000  # Hard limit - leave room for offset
             return min(optimal_limit, milvus_limit)
         else:
             # Fallback to safe limit
@@ -890,7 +891,7 @@ class MilvusManager:
                 results = self.collection.query(
                     expr="id >= 0",
                     output_fields=["id"],
-                    limit=16384  # Milvus 최대 제한
+                    limit=12000  # 안전한 쿼리 제한 (offset + limit <= 16384)
                 )
                 return len(results)
             except:
@@ -913,7 +914,7 @@ class MilvusManager:
                 all_results = self.collection.query(
                     expr="id >= 0",
                     output_fields=["file_type"],
-                    limit=16384
+                    limit=12000  # 안전한 쿼리 제한 (offset + limit <= 16384)
                 )
                 
                 md_count = sum(1 for r in all_results if r.get('file_type', '').startswith('md'))
@@ -1071,7 +1072,8 @@ class MilvusManager:
             FieldSchema(name="tags", dtype=DataType.VARCHAR, max_length=1024),
             FieldSchema(name="created_at", dtype=DataType.VARCHAR, max_length=50),
             FieldSchema(name="updated_at", dtype=DataType.VARCHAR, max_length=50),
-            FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dimension)
+            FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dimension),
+            FieldSchema(name="original_path", dtype=DataType.VARCHAR, max_length=1024)  # 원본 경로 필드 추가
         ]
         
         # 스키마 생성
@@ -1334,7 +1336,7 @@ class MilvusManager:
                         
                         results = self.collection.query(
                             output_fields=["id", "path"],
-                            limit=current_limit,
+                            limit=12000,  # 안전한 쿼리 제한 (offset + limit <= 16384)
                             offset=offset,
                             expr="id >= 0"  # Query all documents
                         )

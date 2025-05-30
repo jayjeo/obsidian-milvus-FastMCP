@@ -801,7 +801,7 @@ class ObsidianProcessor:
         return content, title, tags
         
     def _extract_pdf(self, file_path):
-        """PDF 파일에서 텍스트 및 메타데이터 추출"""
+        """PDF 파일에서 텍스트 및 메타데이터 추출 (손상된 PDF 처리 개선)"""
         rel_path = os.path.relpath(file_path, self.vault_path) if hasattr(self, 'vault_path') else file_path
         has_special_chars = any(c in file_path for c in "'\"()[]{},;")
         
@@ -816,24 +816,51 @@ class ObsidianProcessor:
             content = ""
             with open(file_path, 'rb') as file:
                 try:
+                    # 안전한 PDF 읽기 시도
                     pdf_reader = PyPDF2.PdfReader(file)
-                    num_pages = len(pdf_reader.pages)
+                    
+                    # '/Root' KeyError 같은 문제를 감지하기 위한 안전 처리
+                    try:
+                        num_pages = len(pdf_reader.pages)
+                    except (KeyError, AttributeError, TypeError) as struct_err:
+                        # PDF 구조 문제 (손상되거나 암호화된 PDF)
+                        logger.error(f"PDF structure error in {rel_path}: {struct_err} - likely corrupted or encrypted PDF")
+                        return None, None, None  # 손상된 PDF는 None 반환하여 건너뛀
+                    
+                    # 페이지가 없는 경우 처리
+                    if num_pages == 0:
+                        logger.warning(f"PDF file {rel_path} has 0 pages")
+                        return None, None, None
                     
                     # Extract text from each page
                     for page_num in range(num_pages):
-                        page = pdf_reader.pages[page_num]
-                        page_text = page.extract_text()
-                        if page_text:
-                            content += page_text + "\n\n"
+                        try:
+                            page = pdf_reader.pages[page_num]
+                            page_text = page.extract_text()
+                            if page_text:
+                                content += page_text + "\n\n"
+                        except Exception as page_err:
+                            # 특정 페이지 처리 오류는 무시하고 계속 진행
+                            logger.warning(f"Error extracting text from page {page_num} in {rel_path}: {page_err}")
+                            continue
+                    
+                    # 내용이 없는 경우 처리
+                    if not content.strip():
+                        logger.warning(f"Extracted empty content from PDF {rel_path} - might be a scanned document")
+                        return None, None, None
                         
                     # Clean up the content
                     content = content.strip()
                     # Remove excessive newlines
                     content = re.sub(r'\n{3,}', '\n\n', content)
                     
+                except KeyError as key_err:
+                    # 특정 키가 없는 문제 ('/Root' 등)
+                    logger.error(f"PyPDF2 KeyError processing {rel_path}: {key_err} - PDF may be corrupted")
+                    return None, None, None  # 손상된 PDF는 None 반환하여 건너뛀
                 except Exception as pdf_err:
                     logger.error(f"PyPDF2 error processing {rel_path}: {pdf_err}")
-                    raise pdf_err
+                    return None, None, None  # 기타 오류도 None 반환하여 건너뛀
             
             # Use filename as title (remove extension)
             title = os.path.basename(file_path)
@@ -848,7 +875,8 @@ class ObsidianProcessor:
             
         except Exception as e:
             logger.error(f"Error processing PDF file {os.path.basename(file_path)}: {e}")
-            raise e
+            # 오류 발생 시에도 예외를 전파하지 않고 None 반환
+            return None, None, None
         
     def _extract_pdf_content(self, file_path):
         """PDF 파일에서 내용 추출"""
@@ -1146,10 +1174,72 @@ class ObsidianProcessor:
                         return ""
                 
                 # 각 항목을 개별적으로 삽입 (안전한 딕셔너리 접근 방식 사용)
+                # 숫자로 시작하는 파일명 처리
+                original_path = rel_path  # 원본 경로 저장
+                
+                # 안전한 파일 경로 생성 (한글 및 특수 문자 처리 강화)
+                file_dir = os.path.dirname(rel_path)
+                file_name = os.path.basename(rel_path)
+                
+                # 1. 특수 문자 및 공백을 안전하게 변환
+                # 숫자로 시작하면 접두사 추가, 특수 문자는 ASCII로 변환 시도
+                try:
+                    # 숫자로 시작하는지 확인
+                    if re.match(r'^\d', file_name):
+                        # 접두사 추가
+                        safe_file_name = f"file_{file_name}"
+                    else:
+                        safe_file_name = file_name
+                    
+                    # 특수 문자가 있는지 확인
+                    if re.search(r'[^\w\-\. ]', safe_file_name):
+                        # URL 인코딩과 유사한 방식으로 특수 문자 처리
+                        # 한글은 그대로 유지하되 위험한 특수 문자만 처리
+                        safe_file_name = safe_file_name.replace('\\', '_').replace('/', '_').replace(':', '_')\
+                                                    .replace('*', '_').replace('?', '_').replace('"', '_')\
+                                                    .replace('<', '_').replace('>', '_').replace('|', '_')\
+                                                    .replace('\t', '_').replace('\n', '_')
+                    
+                    # 최종 안전 경로 생성
+                    safe_path = os.path.join(file_dir, safe_file_name)
+                    logger.debug(f"Created safe path: {safe_path} from original: {rel_path}")
+                except Exception as path_error:
+                    # 경로 처리 중 오류 발생 시 원본 경로 사용
+                    logger.warning(f"Error creating safe path: {path_error}, using original path")
+                    safe_path = rel_path
+                
+                # 안전한 제목 생성 (파일 경로와 동일한 방식으로 처리)
+                original_title = metadata.get("title", "")
+                
+                try:
+                    # 숫자로 시작하는지 확인
+                    if original_title and re.match(r'^\d', original_title):
+                        safe_title = f"Title_{original_title}"
+                    else:
+                        safe_title = original_title
+                    
+                    # 특수 문자가 있는지 확인
+                    if safe_title and re.search(r'[^\w\-\. ]', safe_title):
+                        # URL 인코딩과 유사한 방식으로 특수 문자 처리
+                        # 한글은 그대로 유지하되 위험한 특수 문자만 처리
+                        safe_title = safe_title.replace('\\', '_').replace('/', '_').replace(':', '_')\
+                                               .replace('*', '_').replace('?', '_').replace('"', '_')\
+                                               .replace('<', '_').replace('>', '_').replace('|', '_')\
+                                               .replace('\t', '_').replace('\n', '_')
+                    
+                    logger.debug(f"Created safe title: {safe_title} from original: {original_title}")
+                except Exception as title_error:
+                    # 제목 처리 중 오류 발생 시 원본 제목 사용
+                    logger.warning(f"Error creating safe title: {title_error}, using original title")
+                    safe_title = original_title
+                
+                # 경로 정보를 path 필드에 저장 (중요: original_path 필드 사용하지 않음)
+                # 숫자로 시작하는 파일명은 safe_path를 사용하여 해결
+                # safe_path에 원본 경로 정보가 저장되어 있음 (prefix 추가)
                 single_data = {
                     "id": self.next_id,
-                    "path": safe_truncate(rel_path, 500),
-                    "title": safe_truncate(metadata.get("title", ""), 500),
+                    "path": safe_truncate(safe_path, 500),  # 안전한 경로 사용
+                    "title": safe_truncate(safe_title, 500),  # 안전한 제목 사용
                     # 첫 번째 청크일 때만 전체 내용 저장, 나머지는 빈 문자열
                     # 안전한 방식으로 content 키에 접근 (기본값 빈 문자열 사용)
                     "content": safe_truncate(metadata.get("content", ""), MAX_CONTENT_LENGTH) if chunk_index == 0 else "",
@@ -1160,6 +1250,7 @@ class ObsidianProcessor:
                     "created_at": safe_truncate(metadata.get("created_at", ""), 30),
                     "updated_at": safe_truncate(metadata.get("updated_at", ""), 30),
                     "vector": vector
+                    # original_path 필드 삭제 - Milvus 스키마와 일치하지 않기 때문
                 }
                 
                 # 강화된 데이터 유효성 검사 (안전 장치)
@@ -1210,8 +1301,21 @@ class ObsidianProcessor:
                 try:
                     # 단일 항목 삽입 시도
                     if valid_data:
-                        self.milvus_manager.insert_data(sanitized_data)
+                        # 디버깅용 - 전체 데이터 구조 로깅
+                        logger.debug(f"Attempting to insert data with id {self.next_id}")
+                        for key, value in sanitized_data.items():
+                            if key != "vector":
+                                value_preview = str(value)[:30] + "..." if isinstance(value, str) and len(str(value)) > 30 else value
+                                logger.debug(f"  Field {key}: {value_preview}")
+                        
+                        # 벡터 차원 수 확인
+                        vector_dim = len(sanitized_data.get("vector", []))
+                        logger.debug(f"  Vector dimension: {vector_dim}")
+                        
+                        # 삽입 시도
+                        result = self.milvus_manager.insert_data(sanitized_data)
                         success_count += 1
+                        logger.debug(f"Successfully inserted data for path: {sanitized_data.get('path', 'unknown')}")
                         
                         # 일정 개수마다 flush - 메모리 관리
                         if success_count % 10 == 0:
@@ -1227,13 +1331,24 @@ class ObsidianProcessor:
                 except Exception as insert_error:
                     # 삽입 오류 발생 시 이 항목은 건너뛰고 계속 진행
                     failed_count += 1
-                    logger.error(f"Failed to insert data for path: {sanitized_data.get('path', 'unknown')}, error: {insert_error}")
+                    error_message = str(insert_error)
+                    logger.error(f"Failed to insert data for path: {sanitized_data.get('path', 'unknown')}, error: {error_message}")
+                    
+                    # 전체 오류 정보와 스택 트레이스 로깅
+                    import traceback
+                    stack_trace = traceback.format_exc()
+                    logger.error(f"Exception details: {stack_trace}")
                     
                     # 주요 필드 로깅 (디버깅용)
-                    for field_name in ['path', 'title', 'file_type']:
-                        field_value = sanitized_data.get(field_name, '')
-                        if isinstance(field_value, str) and field_value:
-                            logger.debug(f"Field {field_name}: '{field_value[:50]}...'")
+                    logger.error("Detailed data information:")
+                    for field_name, field_value in sanitized_data.items():
+                        if field_name != "vector":
+                            value_preview = str(field_value)[:50] + "..." if isinstance(field_value, str) and len(str(field_value)) > 50 else field_value
+                            logger.error(f"  Field {field_name}: {value_preview}")
+                    
+                    # 벡터 정보 로깅
+                    vector = sanitized_data.get("vector", [])
+                    logger.error(f"  Vector dimension: {len(vector)}")
                     
                     # 오류 정보 자세히 기록하지만 전체 프로세스는 계속 진행
                     logger.debug(f"Continuing with next item despite insertion error for item {self.next_id}")
