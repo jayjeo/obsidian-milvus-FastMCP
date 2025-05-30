@@ -828,8 +828,9 @@ class ObsidianProcessor:
                 # 최종 처리된 프론트매터 텍스트
                 frontmatter_text = '\n'.join(processed_lines)
                 
-                # 안전을 위한 추가 필터링 (심각한 악성 문자열만 제거)
-                frontmatter_text = re.sub(r'[^\w\s\-\[\]:#\'",._{}@&%]+', ' ', frontmatter_text)
+                # 안전을 위한 추가 필터링 (URL 안전 문자 유지하면서 악성 문자열만 제거)
+                # URL에 사용되는 문자 +/# 등을 유지
+                frontmatter_text = re.sub(r'[^\w\s\-\[\]:#\'\",._{}@&%/\\(\)\+=]+', ' ', frontmatter_text)
                 
                 try:
                     # 숫자로 시작하는 값과 콜론이 포함된 값을 처리하기 위한 YAML 수정
@@ -864,13 +865,21 @@ class ObsidianProcessor:
                                 value_part = f'"{value_part}"'
                                 line = f'{key_part}: {value_part}'
                                 
-                            # URL 형식 문제 사전 처리
-                            elif (key_part.lower() == 'url' or key_part.lower() == 'link'):
+                            # URL 형식 문제 사전 처리 (share_link 포함)
+                            elif any(url_field in key_part.lower() for url_field in ['url', 'link', 'share_link', 'source']):
+                                # https: 문제 수정 (슬래시가 빠진 URL)
                                 if 'https:' in value_part and not 'https://' in value_part:
                                     value_part = value_part.replace('https:', 'https://')
-                                if not (value_part.startswith('"') or value_part.startswith('\'')) and ' ' in value_part:
-                                    value_part = f'"{value_part}"'
+                                # http: 문제도 같이 수정
+                                if 'http:' in value_part and not 'http://' in value_part:
+                                    value_part = value_part.replace('http:', 'http://')
+                                    
+                                # URL에 공백이 있으면 따옴표로 묶기
+                                if not (value_part.startswith('"') or value_part.startswith('\'')):
+                                    if ' ' in value_part or '+' in value_part or '#' in value_part:
+                                        value_part = f'"{value_part}"'
                                 line = f'{key_part}: {value_part}'
+                                logger.debug(f"Special handling for URL field {key_part}: {value_part[:30]}...")
                                 
                             # title 필드의 경우 특별 처리 (일반적으로 콜론이나 특수문자를 포함할 가능성이 높음)
                             elif key_part.lower() == 'title' and not (value_part.startswith('"') or value_part.startswith('\'')):
@@ -883,39 +892,51 @@ class ObsidianProcessor:
                     frontmatter_fixed = '\n'.join(fixed_lines)
                     logger.debug(f"Fixed potential formatting issues in frontmatter for {rel_path}")
                     
-                    # 전체 YAML 파싱 시도
-                    try:
-                        # 안전한 YAML 파싱 시도
-                        frontmatter = yaml.safe_load(frontmatter_fixed)
-                        if not isinstance(frontmatter, dict):
-                            # YAML이 딕셔너리가 아닌 경우 (예: 스칼라 값) 처리
-                            logger.warning(f"YAML parsing did not return a dictionary for {rel_path}")
-                            frontmatter = {}
-                    except Exception as yaml_inner_err:
-                        logger.warning(f"Safe YAML parsing failed for {rel_path}, falling back to line-by-line parsing: {yaml_inner_err}")
-                        # 안전하게 라인별 파싱으로 폴백
-                        frontmatter = {}
-                        for line in frontmatter_fixed.split('\n'):
-                            # 비어있거나 주석이면 건너뛰기
-                            line = line.strip()
-                            if not line or line.startswith('#'):
-                                continue
-                                
-                            # 키-값 구분
-                            if ':' in line:
-                                key, value = line.split(':', 1)
-                                key = key.strip()
-                                value = value.strip().strip('"\'')
-                                
-                                # 태그 처리는 별도로 진행
-                                if key.lower() == 'tags':
-                                    if value.startswith('[') and value.endswith(']'):
-                                        tag_list = value[1:-1].split(',')
-                                        frontmatter['tags'] = [tag.strip().strip('"\'\'') for tag in tag_list if tag.strip()]
-                                    else:
-                                        frontmatter['tags'] = [value] if value else []
+                    # YAML 파싱 실패 시 정규식으로 폴백 (향상된 버전)
+                    frontmatter = {}
+                    
+                    # 특수 URL 필드를 미리 추출 (일반 정규식으로는 URL 처리가 어려움)
+                    url_fields = ['url', 'link', 'share_link', 'source']
+                    url_pattern = re.compile(r'^((?:' + '|'.join(url_fields) + ')(?:_[\w]+)?)\s*:\s*(.+)$', re.IGNORECASE)
+                    
+                    # 먼저 URL 필드 추출 시도
+                    for line in frontmatter_text.split('\n'):
+                        line = line.strip()
+                        if not line or line.startswith('#'):
+                            continue
+                            
+                        url_match = url_pattern.match(line)
+                        if url_match:
+                            key = url_match.group(1).strip()
+                            value = url_match.group(2).strip()
+                            # URL 값에서 따옴표 제거
+                            if (value.startswith('"') and value.endswith('"')) or (value.startswith('\'') and value.endswith('\'')):
+                                value = value[1:-1]
+                            frontmatter[key] = value
+                            logger.debug(f"Extracted URL field with regex: {key}: {value[:30]}...")
+                    
+                    # 나머지 일반 키-값 추출을 위한 정규식
+                    pattern = re.compile(r'^([\w\-]+)\s*:\s*(.+)$')
+                    
+                    # 나머지 일반 키-값 추출
+                    for line in frontmatter_text.split('\n'):
+                        line = line.strip()
+                        if not line or line.startswith('#'):
+                            continue
+                            
+                        match = pattern.match(line)
+                        if match:
+                            key = match.group(1).strip()
+                            value = match.group(2).strip()
+                            # 태그 필드 처리는 별도로 진행
+                            if key.lower() == 'tags':
+                                if value.startswith('[') and value.endswith(']'):
+                                    tag_list = value[1:-1].split(',')
+                                    frontmatter['tags'] = [tag.strip().strip('"\'\'') for tag in tag_list if tag.strip()]
                                 else:
-                                    frontmatter[key] = value
+                                    frontmatter['tags'] = [value] if value else []
+                            else:
+                                frontmatter[key] = value
                     
                     # 태그 추출
                     if 'tags' in frontmatter:
@@ -1581,9 +1602,64 @@ class ObsidianProcessor:
                 retry_count = 0
                 last_error = None
 
-                # 최종 과도한 인코딩 문제 처리 - 모든 문자열 필드에 대해 추가 처리
+                # 데이터 전처리: 경로 및 파일 이름 특별 처리
+                # 숫자로 시작하는 파일명에 접두사 추가
+                if 'path' in sanitized_data and isinstance(sanitized_data['path'], str):
+                    # 경로에서 파일명 추출
+                    filename = os.path.basename(sanitized_data['path'])
+                    if filename and filename[0].isdigit():
+                        # 원래 경로 보존
+                        if 'original_path' not in sanitized_data:
+                            sanitized_data['original_path'] = sanitized_data['path']
+                        # 숫자로 시작하는 파일명에 접두사 추가
+                        sanitized_data['path'] = os.path.join(
+                            os.path.dirname(sanitized_data['path']),
+                            f"file_{filename}"
+                        )
+                        logger.debug(f"Added prefix to numeric filename: {filename} -> file_{filename}")
+                
+                # 제목이 숫자로 시작하는 경우 처리
+                if 'title' in sanitized_data and isinstance(sanitized_data['title'], str):
+                    if sanitized_data['title'] and sanitized_data['title'][0].isdigit():
+                        sanitized_data['title'] = f"Title_{sanitized_data['title']}"
+                        logger.debug(f"Added prefix to numeric title: {sanitized_data['title']}")
+                
+                # 이미지 참조 패턴 감지 및 정리 (![[Pasted image...]])
+                image_pattern = re.compile(r'!\[\[(Pasted image[^\]]+)\]\]')
+                for key, value in list(sanitized_data.items()):
+                    if key != "vector" and isinstance(value, str) and '![[' in value:
+                        sanitized_data[key] = image_pattern.sub(r'Image: \1', value)
+                        logger.debug(f"Sanitized image references in field '{key}'")
+                
+                # 한국어 텍스트 및 특수 문자 인코딩 문제 처리 - 모든 문자열 필드에 대해 추가 처리
                 for key, value in list(sanitized_data.items()):
                     if key != "vector" and isinstance(value, str):
+                        # 한국어 특수 처리: 길이 제한 적용 (바이트 기준)
+                        if any(ord(c) > 127 for c in value):
+                            # 한글이 포함된 경우 바이트 길이 계산 및 제한
+                            try:
+                                byte_length = len(value.encode('utf-8'))
+                                max_bytes = 2000  # Milvus 권장 최대 바이트 수
+                                
+                                if byte_length > max_bytes:
+                                    # 바이트 기준으로 안전하게 자르기
+                                    truncated = ''
+                                    current_bytes = 0
+                                    for char in value:
+                                        char_bytes = len(char.encode('utf-8'))
+                                        if current_bytes + char_bytes <= max_bytes - 3:  # 여유 공간 확보
+                                            truncated += char
+                                            current_bytes += char_bytes
+                                        else:
+                                            break
+                                    sanitized_data[key] = truncated + '...'
+                                    logger.debug(f"Korean text in '{key}' truncated from {byte_length} to {current_bytes} bytes")
+                            except UnicodeEncodeError as enc_err:
+                                logger.warning(f"Korean encoding issue with {key}, applying special handling: {enc_err}")
+                                # 인코딩 오류 시 안전하게 처리
+                                sanitized_data[key] = ''.join(c if ord(c) < 128 else '?' for c in value[:200]) + '...'
+                        
+                        # 일반 인코딩 테스트 및 문제 처리
                         try:
                             # 텍스트 인코딩 테스트
                             encoded = value.encode('utf-8')
@@ -1598,32 +1674,74 @@ class ObsidianProcessor:
                         
                         # 제일 묘하고 개선된 방법으로 시도
                         if retry_count == 0:
+                            # 첫 번째 시도: 정제된 데이터 그대로 시도
                             result = self.milvus_manager.insert_data(sanitized_data)
-                        # 두 번째 시도: 일부 필드 간소화
+                        # 두 번째 시도: 일부 필드 간소화 및 YAML 문제 필드 특별 처리
                         elif retry_count == 1:
                             # 중요하지 않은 필드 제거 후 재시도
                             minimal_data = dict(sanitized_data)
                             for field in ['tags', 'created_at', 'updated_at']:
                                 if field in minimal_data:
                                     del minimal_data[field]
+                            
+                            # YAML 프론트매터 관련 특수 문자 문제 처리
+                            if 'title' in minimal_data and isinstance(minimal_data['title'], str):
+                                # 콜론이 포함된 제목 처리
+                                if ':' in minimal_data['title']:
+                                    minimal_data['title'] = minimal_data['title'].replace(':', ' - ')
+                                    logger.debug(f"Replaced colons in title with hyphens")
+                                # 따옴표 처리
+                                if '"' in minimal_data['title'] or "'" in minimal_data['title']:
+                                    minimal_data['title'] = minimal_data['title'].replace('"', '').replace("'", '')
+                                    logger.debug(f"Removed quotes from title")
+                            
                             result = self.milvus_manager.insert_data(minimal_data)
-                        # 세 번째 시도: 노이즈가 있는 필드 표준화
+                        # 세 번째 시도: 노이즈가 있는 필드 표준화 및 Excalidraw 파일 특별 처리
                         elif retry_count == 2:
                             # 모든 문자열 필드 더 강력하게 정제
                             ultra_safe_data = dict(sanitized_data)
                             for key, value in ultra_safe_data.items():
                                 if key != "vector" and isinstance(value, str):
-                                    # 안전한 문자만 유지
-                                    ultra_safe_data[key] = re.sub(r'[^\w\-\. ]', '_', value)[:200]
+                                    # 안전한 문자만 유지 (더 관대한 버전으로 수정)
+                                    if 'excalidraw' in value.lower():
+                                        # Excalidraw 파일 특별 처리
+                                        logger.debug(f"Applying special handling for Excalidraw content in {key}")
+                                        ultra_safe_data[key] = f"Excalidraw drawing {self.next_id}"
+                                    else:                                  
+                                        # 한글과 영어 및 기본 문장 부호 유지, 나머지 특수문자 치환
+                                        ultra_safe_data[key] = re.sub(r'[^\w\-\. ,;:\(\)\[\]가-힣]', '_', value)[:200]
                             result = self.milvus_manager.insert_data(ultra_safe_data)
                         # 네 번째 시도: 색인 원본 파일을 최소한 필드로만 구성
                         elif retry_count == 3:
-                            # 필수 필드만을 사용하여 기본 삽입 시도
+                            # 필수 필드만을 사용하여 기본 삽입 시도 - 한글 지원 강화
+                            # 원본 경로 보존
+                            safe_path = f"safe_path_{self.next_id}"
+                            
+                            # 원본 경로가 있으면 사용, 없으면 안전한 값 생성
+                            if original_path:
+                                safe_original = original_path[:100]
+                            else:
+                                # 현재 파일 경로에서 추출 시도
+                                if current_file and isinstance(current_file, str):
+                                    safe_original = current_file[:100]
+                                else:
+                                    safe_original = f"fallback_path_{self.next_id}"
+                            
+                            # 청크 텍스트 안전하게 처리
+                            if isinstance(chunk, str):
+                                # 한글이 포함된 경우 특별 처리
+                                if any(ord(c) > 127 for c in chunk):
+                                    safe_chunk = ''.join(c for c in chunk[:50] if ord(c) < 1000) + '...'
+                                else:
+                                    safe_chunk = chunk[:100]
+                            else:
+                                safe_chunk = f"Safe chunk text {self.next_id}"
+                            
                             fallback_data = {
-                                "path": f"safe_path_{self.next_id}",
-                                "original_path": original_path[:100],
+                                "path": safe_path,
+                                "original_path": safe_original,
                                 "title": f"Safe Title {self.next_id}",
-                                "chunk_text": chunk[:100] if isinstance(chunk, str) else "Safe chunk text",
+                                "chunk_text": safe_chunk,
                                 "chunk_index": chunk_index,
                                 "vector": vector
                             }
