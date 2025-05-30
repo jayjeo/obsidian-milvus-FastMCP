@@ -1235,16 +1235,10 @@ class MilvusManager:
                 raise ValueError(error_msg)
                 
             # auto_id=True로 설정되어 있으므로 항상 'id' 필드 제거
-            import copy
-            data_copy = copy.deepcopy(data)
+            data_copy = data.copy()
             if 'id' in data_copy:
                 del data_copy['id']
                 logger.debug(f"Removed 'id' field from data as auto_id=True is enabled")
-            else:
-                logger.debug(f"No 'id' field found in original data - good!")
-                
-            # 데이터 필드 로깅
-            logger.debug(f"Data fields after initial processing: {list(data_copy.keys())}")
             
             # 파일 경로 확인 및 추가 진단
             if 'path' in data_copy:
@@ -1265,146 +1259,123 @@ class MilvusManager:
                         
                     # 로깅에만 사용하기 위한 진단 정보
                     logger.debug(f"File diagnostics - Starts with number: {starts_with_number}, Has special chars: {has_special_chars}")
-            
-            # 5. 스키마 호환성 검사 및 필드 자동 처리
             try:
-                # 스키마 필드 정보 가져오기
-                schema = self.collection.schema
-                schema_fields = [field.name for field in schema.fields]
-                logger.debug(f"Collection schema fields: {schema_fields}")
+                result = self.collection.insert(data_copy)
+                logger.debug(f"Successfully inserted data: {result}")
+                return result
+            except Exception as insert_error:
+                error_msg = str(insert_error)
                 
-                # 'original_path' 필드 처리 - Milvus 스키마에 필요하지만 데이터에 없는 경우
-                if 'original_path' in schema_fields and 'original_path' not in data_copy and 'path' in data_copy:
-                    # path를 사용하여 original_path 추가 (스키마 호환성을 위해)
-                    data_copy['original_path'] = data_copy['path']
-                    logger.debug(f"Added missing 'original_path' field using 'path' value for schema compatibility")
-                
-                # 스키마에 있지만 데이터에 없는 필수 필드 처리
-                for field_name in schema_fields:
-                    if field_name not in data_copy and field_name != 'vector':
-                        # 빈 값 또는 기본값 추가
-                        data_copy[field_name] = ""
-                        logger.debug(f"Added missing field '{field_name}' with empty value for schema compatibility")
-                
-                # 스키마에 없는 불필요한 필드 제거
-                extra_fields = [field for field in data_copy.keys() if field not in schema_fields and field != 'vector']
-                for field in extra_fields:
-                    del data_copy[field]
-                    logger.debug(f"Removed extra field '{field}' not in schema")
-                
-                # 최종 데이터 필드 로깅
-                logger.debug(f"Final fields for insertion: {[k for k in data_copy.keys() if k != 'vector']}")
-                
-                # 데이터 구조 추가 진단
-                has_id_field = 'id' in data_copy
-                if has_id_field:
-                    logger.warning("'id' field still present in data_copy after removal attempt - this will cause DataNotMatchException")
-                
-                # 중요 필드 존재 여부 확인
-                required_fields = ['path', 'content', 'vector']
-                missing_fields = [field for field in required_fields if field not in data_copy]
-                if missing_fields:
-                    logger.warning(f"Missing required fields: {missing_fields}")
-                
-                # 6. 삽입 시도
-                try:
-                    # 삽입 직전에 'id' 필드가 있는지 다시 확인하고 제거 (중요 안전장치)
-                    if 'id' in data_copy:
-                        logger.warning(f"'id' 필드가 여전히 data_copy에 있어 제거합니다.")
-                        del data_copy['id']
+                # DataNotMatchException 처리
+                if "DataNotMatchException" in str(type(insert_error)) and "original_path" in error_msg:
+                    # original_path 필드 문제인 경우 특별 처리
+                    logger.warning(f"Schema mismatch with 'original_path' field, attempting to fix...")
                     
-                    # 삽입 직전 최종 데이터 필드 확인 (디버깅용)
-                    logger.debug(f"Final data fields before insertion: {list(data_copy.keys())}")
-                    
-                    # Milvus에 데이터 삽입
-                    result = self.collection.insert(data_copy)
-                    logger.debug(f"Successfully inserted data: {result}")
-                    return result
-                except Exception as insert_error:
-                    error_msg = str(insert_error)
-                    
-                    # DataNotMatchException 처리
-                    if "DataNotMatchException" in str(type(insert_error)) and "original_path" in error_msg:
-                        # original_path 필드 문제인 경우 특별 처리
-                        logger.warning(f"Schema mismatch with 'original_path' field, attempting to fix...")
-                        
-                        # 다시 한 번 시도
-                        if 'path' in data_copy:
-                            data_copy['original_path'] = data_copy['path']
-                            logger.debug(f"Retry: Added 'original_path' field with value from 'path'")
-                            
-                            # id 필드 제거 확인 (매우 중요)
-                            if 'id' in data_copy:
-                                logger.warning(f"Removing 'id' field before retry")
-                                del data_copy['id']
-                                
-                            # 최종 필드 확인
-                            logger.debug(f"Fields before retry: {list(data_copy.keys())}")
-                            
-                            result = self.collection.insert(data_copy)
-                            logger.info(f"Successfully inserted data after fixing original_path field")
-                            return result
-                    
-                    # 실패 시 상세 로깅
-                    logger.error(f"Failed to insert data: {insert_error}")
-                    logger.debug(f"Failed data fields: {[k for k in data_copy.keys() if k != 'vector']}")
-                    
-                    # 'id' 필드 관련 문제 확인 
-                    if "id" in str(insert_error).lower():
-                        logger.error("'id' field error detected in insert operation")
-                        # 'id' 키가 있는지 다시 확인하고 제거 시도
-                        if 'id' in data_copy:
-                            logger.error("CRITICAL: 'id' field is still present in data_copy - removing it now")
-                            del data_copy['id']  # 여기서 id 필드 제거 시도
-                            logger.debug(f"Remaining fields after forced removal: {list(data_copy.keys())}")
-                        else:
-                            logger.error("'id' field not found in data_copy but error still mentions it - possible nested structure or other issue")
-                            
-                        # 중첩된 구조에서 id를 찾아 제거 시도 (deep inspection)
-                        try:
-                            import json
-                            data_str = json.dumps(data_copy)
-                            if '"id":' in data_str:
-                                logger.error("Found 'id' in nested structure - this might be causing the error")
-                        except Exception as json_err:
-                            logger.error(f"Could not inspect data deeply: {json_err}")
-                            
-                        # schema 구조 확인
-                        try:
-                            schema_fields = [field.name for field in schema.fields]
-                            logger.error(f"Collection schema fields: {schema_fields}")
-                        except Exception as schema_err:
-                            logger.error(f"Could not retrieve schema fields: {schema_err}")
-                    
-                    # 파일 경로 상세 진단
+                    # 다시 한 번 시도
                     if 'path' in data_copy:
-                        path_value = data_copy['path']
-                        logger.debug(f"Path value: {path_value[:100]}")
-                        
-                        # 파일명 추가 진단
-                        file_name = os.path.basename(path_value) if path_value else ''
-                        if file_name:
-                            import re
-                            if bool(re.match(r'^\d', file_name)):
-                                logger.error(f"File '{file_name}' starts with a number - recommend adding 'file_' prefix")
-                            
-                            special_chars = [c for c in '[](){}#$%^&*;:<>?/|\\=' if c in file_name]
-                            if special_chars:
-                                logger.error(f"File contains problematic characters: {special_chars}")
-                    
-                    raise insert_error
-            except Exception as schema_error:
-                # 스키마 처리 중 오류 발생
-                logger.error(f"Error processing schema compatibility: {schema_error}")
+                        data_copy['original_path'] = data_copy['path']
+                        logger.debug(f"Retry: Added 'original_path' field with value from 'path'")
+                        result = self.collection.insert(data_copy)
+                        logger.info(f"Successfully inserted data after fixing original_path field")
+                        return result
                 
-                # 원래 데이터로 다시 시도
+                # 'id' 필드 관련 문제인 경우 다시 시도
+                if "id" in str(insert_error).lower():
+                    logger.warning("'id' field error detected in insert operation, attempting to fix...")
+                    # 'id' 필드 제거 재시도
+                    if 'id' in data_copy:
+                        logger.info("Removing 'id' field from data and retrying insertion")
+                        del data_copy['id']
+                        try:
+                            result = self.collection.insert(data_copy)
+                            logger.info("Successfully inserted data after removing 'id' field")
+                            return result
+                        except Exception as retry_error:
+                            logger.error(f"Still failed after removing 'id' field: {retry_error}")
+                
+                # 실패 시 상세 로깅
+                logger.error(f"Failed to insert data: {insert_error}")
+                logger.debug(f"Failed data fields: {[k for k in data_copy.keys() if k != 'vector']}")
+                
+                # 'id' 필드 관련 문제 확인 
+                if "id" in str(insert_error).lower():
+                    logger.error("'id' field error detected in insert operation")
+                    # 'id' 키가 있는지 다시 확인
+                    if 'id' in data_copy:
+                        logger.error("CRITICAL: 'id' field is still present in data_copy - this will cause schema errors")
+                    # schema 구조 확인
+                    try:
+                        schema_fields = [field.name for field in schema.fields]
+                        logger.error(f"Collection schema fields: {schema_fields}")
+                    except Exception as schema_err:
+                        logger.error(f"Could not retrieve schema fields: {schema_err}")
+                
+                # 파일 경로 상세 진단
+                if 'path' in data_copy:
+                    path_value = data_copy['path']
+                    logger.debug(f"Path value: {path_value[:100]}")
+                    
+                    # 파일명 추가 진단
+                    file_name = os.path.basename(path_value) if path_value else ''
+                    if file_name:
+                        import re
+                        if bool(re.match(r'^\d', file_name)):
+                            logger.error(f"File '{file_name}' starts with a number - recommend adding 'file_' prefix")
+                        
+                        special_chars = [c for c in '[](){}#$%^&*;:<>?/|\\=' if c in file_name]
+                        if special_chars:
+                            logger.error(f"File contains problematic characters: {special_chars}")
+                
+                raise insert_error
+        except Exception as schema_error:
+            # 스키마 처리 중 오류 발생
+            logger.error(f"Error processing schema compatibility: {schema_error}")
+            
+            # 'id' 필드 다시 한번 확인하고 제거
+            if 'id' in data_copy:
+                logger.info("Removing 'id' field from data before final retry")
+                del data_copy['id']
+            
+            # 원래 데이터로 다시 시도
+            try:
+                result = self.collection.insert(data_copy)
+                return result
+            except Exception as insert_error:
+                # 삽입 오류에 대한 자세한 로깅
+                error_msg = f"Failed to insert data: {insert_error}"
+                logger.error(error_msg, exc_info=True)
+                
+                # 데이터 삽입 상태 로깅 (디버깅용)
+                logger.debug(f"Data path being inserted: {data_copy.get('path', 'N/A')}")
+                logger.debug(f"Vector dimension: {len(data_copy.get('vector', []))}")
+                
+                # 메모리 사용량 확인
                 try:
-                    result = self.collection.insert(data_copy)
-                    return result
-                except Exception as insert_error:
-                    # 삽입 오류에 대한 자세한 로깅
-                    error_msg = f"Failed to insert data: {insert_error}"
-                    logger.error(error_msg, exc_info=True)
+                    import psutil
+                    process = psutil.Process()
+                    logger.debug(f"Memory usage during insert: {process.memory_info().rss / (1024 * 1024):.2f} MB")
+                except (ImportError, Exception) as e:
+                    logger.debug(f"Could not log memory usage: {e}")
+                    
+                # 삽입 시도 중 데이터 구조 분석
+                data_keys = list(data_copy.keys())
+                logger.debug(f"Data structure during insert: {data_keys}")
+                
+                # 마지막으로 중요 필드 값 분석
+                for key in ['path', 'title']:
+                    if key in data_copy:
+                        value = data_copy[key]
+                        if value and isinstance(value, str):
+                            # 값의 앞부분 로깅 (너무 길면 자름)
+                            logger.debug(f"Field '{key}' starts with: {value[:50]}{'...' if len(value) > 50 else ''}")
+                            # 숫자로 시작하는지 확인
+                            import re
+                            if re.match(r'^\d', value):
+                                logger.error(f"Field '{key}' starts with a number - may cause schema issues")
+                
+                raise insert_error
+            
+        except Exception as e:
                     
                     # 데이터 삽입 상태 로깅 (디버깅용)
                     logger.debug(f"Data path being inserted: {data_copy.get('path', 'N/A')}")
