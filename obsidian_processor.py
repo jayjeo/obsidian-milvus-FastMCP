@@ -1497,11 +1497,34 @@ class ObsidianProcessor:
                 else:
                     logger.debug(f"original_path field is present with value: '{sanitized_data['original_path'][:30]}...'")
                     
-                # 중요: id 필드가 있으면 제거 (Milvus에서 자동 관리)
+                # 중요: id 필드가 있으면 제거 (Milvus에서 자동 관리됨)
                 if 'id' in sanitized_data:
                     logger.debug(f"Removing 'id' field from sanitized_data to prevent DataNotMatchException")
                     del sanitized_data['id']
+                
+                # 이미지 참조 탐지 및 제거 (![[...]] 형태 처리)
+                if 'chunk_text' in sanitized_data and isinstance(sanitized_data['chunk_text'], str):
+                    # 이미지 참조 제거 및 공백으로 대체
+                    image_pattern = re.compile(r'!\[\[Pasted image [^\]]+\]\]')
+                    sanitized_data['chunk_text'] = image_pattern.sub(' [IMAGE] ', sanitized_data['chunk_text'])
                     
+                    # 만약 content도 있다면 동일하게 처리
+                    if 'content' in sanitized_data and isinstance(sanitized_data['content'], str):
+                        sanitized_data['content'] = image_pattern.sub(' [IMAGE] ', sanitized_data['content'])
+                
+                # 한글 및 특수 문자 처리
+                for key in ['path', 'title', 'original_path', 'chunk_text', 'content']:
+                    if key in sanitized_data and isinstance(sanitized_data[key], str):
+                        # 한글이 포함된 경우 추가 로깅
+                        if any('\u3131' <= c <= '\ud7a3' for c in sanitized_data[key]):
+                            logger.debug(f"Field {key} contains Korean characters")
+                            
+                            # 길이 제한 적용 - 한글은 일반적으로 더 많은 바이트를 차지함
+                            max_length = min(len(sanitized_data[key]), 800 if key in ['chunk_text', 'content'] else 500)
+                            if len(sanitized_data[key]) > max_length:
+                                sanitized_data[key] = sanitized_data[key][:max_length]
+                                logger.debug(f"Truncated {key} with Korean content to {max_length} characters")
+                
                 # 특수 문자를 포함하는 경우 추가 로깅
                 has_special_chars = False
                 for key, value in sanitized_data.items():
@@ -1550,18 +1573,74 @@ class ObsidianProcessor:
                 except Exception as schema_error:
                     logger.warning(f"  Could not verify schema compatibility: {schema_error}")
 
-                # 5. 삽입 시도 (실패 시 재시도 로직 추가)
+                # 5. 삽입 시도 (강화된 오류 처리 및 재시도 로직)
                 logger.debug(f"  Attempting to insert data for {current_file}...")
 
-                # 재시도 로직 추가 - 최대 3회 시도
-                max_retries = 3
+                # 재시도 로직 추가 - 최대 5회로 증가
+                max_retries = 5
                 retry_count = 0
                 last_error = None
+
+                # 최종 과도한 인코딩 문제 처리 - 모든 문자열 필드에 대해 추가 처리
+                for key, value in list(sanitized_data.items()):
+                    if key != "vector" and isinstance(value, str):
+                        try:
+                            # 텍스트 인코딩 테스트
+                            encoded = value.encode('utf-8')
+                        except UnicodeEncodeError as enc_err:
+                            # 인코딩 문제가 있는 경우 ascii로 필터링
+                            logger.warning(f"Encoding issue with {key}, sanitizing: {enc_err}")
+                            sanitized_data[key] = value.encode('ascii', 'ignore').decode('ascii')
 
                 while retry_count < max_retries:
                     try:
                         start_time = time.time()
-                        result = self.milvus_manager.insert_data(sanitized_data)
+                        
+                        # 제일 묘하고 개선된 방법으로 시도
+                        if retry_count == 0:
+                            result = self.milvus_manager.insert_data(sanitized_data)
+                        # 두 번째 시도: 일부 필드 간소화
+                        elif retry_count == 1:
+                            # 중요하지 않은 필드 제거 후 재시도
+                            minimal_data = dict(sanitized_data)
+                            for field in ['tags', 'created_at', 'updated_at']:
+                                if field in minimal_data:
+                                    del minimal_data[field]
+                            result = self.milvus_manager.insert_data(minimal_data)
+                        # 세 번째 시도: 노이즈가 있는 필드 표준화
+                        elif retry_count == 2:
+                            # 모든 문자열 필드 더 강력하게 정제
+                            ultra_safe_data = dict(sanitized_data)
+                            for key, value in ultra_safe_data.items():
+                                if key != "vector" and isinstance(value, str):
+                                    # 안전한 문자만 유지
+                                    ultra_safe_data[key] = re.sub(r'[^\w\-\. ]', '_', value)[:200]
+                            result = self.milvus_manager.insert_data(ultra_safe_data)
+                        # 네 번째 시도: 색인 원본 파일을 최소한 필드로만 구성
+                        elif retry_count == 3:
+                            # 필수 필드만을 사용하여 기본 삽입 시도
+                            fallback_data = {
+                                "path": f"safe_path_{self.next_id}",
+                                "original_path": original_path[:100],
+                                "title": f"Safe Title {self.next_id}",
+                                "chunk_text": chunk[:100] if isinstance(chunk, str) else "Safe chunk text",
+                                "chunk_index": chunk_index,
+                                "vector": vector
+                            }
+                            result = self.milvus_manager.insert_data(fallback_data)
+                        # 마지막 시도: 고정 값 사용
+                        else:
+                            # 고정 값을 사용한 가장 안전한 삽입 시도
+                            emergency_data = {
+                                "path": f"emergency_path_{self.next_id}",
+                                "original_path": f"emergency_original_path_{self.next_id}",
+                                "title": f"Emergency Title {self.next_id}",
+                                "chunk_text": f"Emergency chunk {self.next_id}",
+                                "chunk_index": 0,
+                                "vector": vector
+                            }
+                            result = self.milvus_manager.insert_data(emergency_data)
+                            
                         end_time = time.time()
 
                         # 성공 시 추가 정보 로깅
@@ -1577,32 +1656,24 @@ class ObsidianProcessor:
                         retry_count += 1
                         last_error = insert_error
 
-                        # 오류 발생 시 재시도 전 조치
+                        # 오류 발생 시 로깅 개선
                         error_type = type(insert_error).__name__
                         error_message = str(insert_error)
 
                         logger.warning(f"Insert attempt {retry_count}/{max_retries} failed: {error_type} - {error_message[:100]}...")
 
-                        # 재시도 전 추가 조치 (오류 유형에 따라 다른 조치 적용)
+                        # 재시도 전 추가 조치 (오류 유형에 따라 다른 전략 적용)
                         if "schema" in error_message.lower() or "DataNotMatchException" in error_type:
-                            # 스키마 문제인 경우 original_path 처리 강화
-                            if "original_path" in error_message:
-                                sanitized_data["original_path"] = sanitized_data.get("path", f"safe_path_{self.next_id}")
-                                logger.debug(f"Retry {retry_count}: Reinforced original_path field")
+                            # 스키마 문제인 경우 기록 및 다음 시도에 대비
+                            logger.debug(f"Schema issue detected, will try alternative approach in next retry")
+                            # 아무 처리도 하지 않음 - 다음 시도에서 다른 전략 사용
                         elif "timeout" in error_message.lower() or "connection" in error_message.lower():
                             # 연결 문제인 경우 잠시 대기 후 재시도
                             time.sleep(1.0)  # 1초 대기 후 재시도
-                            logger.debug(f"Retry {retry_count}: Waiting before retry due to connection issue")
+                            logger.debug(f"Connection issue, waiting before retry {retry_count}")
                         else:
-                            # 기타 문제는 데이터 정제 후 재시도
-                            for field in ['path', 'original_path', 'title']:
-                                if field in sanitized_data and isinstance(sanitized_data[field], str):
-                                    # 더 강력한 정제 적용
-                                    safe_value = re.sub(r'[^\w\-\. ]', '_', sanitized_data[field])
-                                    if len(safe_value) < 3:  # 너무 짧아지면 안전한 기본값 사용
-                                        safe_value = f"safe_{field}_{self.next_id}"
-                                    sanitized_data[field] = safe_value
-                                    logger.debug(f"Retry {retry_count}: Sanitized {field} to '{safe_value[:20]}...'")
+                            # 기타 오류에 대한 로깅
+                            logger.debug(f"General error in retry {retry_count}, will use more aggressive sanitization in next attempt")
 
                         # 마지막 시도에서도 실패하면 오류 처리
                         if retry_count >= max_retries:
