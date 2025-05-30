@@ -1902,15 +1902,16 @@ class ObsidianProcessor:
             logger.warning(f"Error during final flush (non-critical): {final_flush_error}")
         
         # 최종 결과 로깅
-        success_rate = (success_count / total_items) * 100 if total_items > 0 else 0
-        logger.info(f"Vector insertion complete. Total: {total_items}, Success: {success_count}, Failed: {failed_count}, Success Rate: {success_rate:.1f}%")
+        total_processed = success_count + failed_count
+        success_rate = (success_count / total_processed) * 100 if total_processed > 0 else 0
+        logger.info(f"Vector insertion complete. Total: {total_processed}, Success: {success_count}, Failed: {failed_count}, Success Rate: {success_rate:.1f}%")
         
         # 성공률 50% 이상이면 성공으로 간주
         # 또는 적어도 하나의 항목이 성공했고 실패가 적으면 성공으로 간주
         success_threshold = 0.5  # 50% 성공률 임계값
         min_success_count = 1    # 최소 성공 항목 수
         
-        if (total_items > 0 and success_count / total_items >= success_threshold) or \
+        if (total_processed > 0 and success_count / total_processed >= success_threshold) or \
            (success_count >= min_success_count and success_count > failed_count):
             logger.info(f"Vector insertion considered successful with {success_rate:.1f}% success rate")
             return True

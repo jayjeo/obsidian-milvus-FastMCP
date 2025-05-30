@@ -29,7 +29,7 @@ PODMAN_PATH = ""  # Leave empty for auto-detection, or enter full path if needed
 EXTERNAL_STORAGE_PATH = str(BASE_DIR / "MilvusData")  # DO NOT CHANGE THIS!!!!
 
 # Logging settings
-LOG_LEVEL = "ERROR"  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+LOG_LEVEL = "DEBUG"  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
 # Obsidian settings
 CHUNK_SIZE = 1000
