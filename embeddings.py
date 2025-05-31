@@ -44,8 +44,25 @@ warnings.filterwarnings('ignore', module='huggingface_hub')
 warnings.filterwarnings('ignore', module='transformers')
 
 # Set up main logging
-logging.basicConfig(level=getattr(logging, config.LOG_LEVEL if hasattr(config, 'LOG_LEVEL') else 'WARNING'),
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Create a file handler for logging to files
+log_file_handler = logging.FileHandler('logs/embeddings.log')
+log_file_handler.setLevel(getattr(logging, config.LOG_LEVEL if hasattr(config, 'LOG_LEVEL') else 'WARNING'))
+log_file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+# Create a console handler with higher threshold to suppress warnings
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.ERROR)  # Only show ERROR and CRITICAL in console
+console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+# Configure the root logger
+root_logger = logging.getLogger()
+root_logger.setLevel(getattr(logging, config.LOG_LEVEL if hasattr(config, 'LOG_LEVEL') else 'WARNING'))
+
+# Remove any existing handlers and add our custom handlers
+for handler in root_logger.handlers[:]:  # Make a copy of the list
+    root_logger.removeHandler(handler)
+root_logger.addHandler(log_file_handler)
+root_logger.addHandler(console_handler)
 
 # Set up document embedding status logger
 embedding_status_logger = logging.getLogger('document_embedding_status')

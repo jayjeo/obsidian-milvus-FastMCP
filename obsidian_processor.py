@@ -1713,11 +1713,20 @@ class ObsidianProcessor:
                 while retry_count < max_retries:
                     try:
                         start_time = time.time()
-
-                        # ... (rest of the code remains the same)
-
-                        flush_end = time.time()
-                        logger.debug(f"Successfully flushed after {success_count} insertions (took {flush_end - flush_start:.2f}s)")
+                        
+                        # Execute the Milvus insertion
+                        result = self.milvus_manager.insert_data(sanitized_data)
+                        success_count += 1
+                        
+                        # After successful insertion, try to flush periodically
+                        if success_count % 10 == 0:  # Flush every 10 successful insertions
+                            flush_start = time.time()
+                            self.milvus_manager.collection.flush()
+                            flush_end = time.time()
+                            logger.debug(f"Successfully flushed after {success_count} insertions (took {flush_end - flush_start:.2f}s)")
+                        
+                        # Break retry loop on success
+                        break
                     except Exception as flush_error:
                         logger.warning(f"Non-critical flush error (continuing): {flush_error}")
 
