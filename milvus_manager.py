@@ -134,6 +134,7 @@ class MilvusManager:
         self.port = config.MILVUS_PORT
         self.collection_name = config.COLLECTION_NAME
         self.dimension = getattr(config, 'VECTOR_DIM', 768)  # 벡터 차원 추가 (768로 기본값 변경)
+        self.collection = None  # Initialize collection attribute
         
         # Import and initialize batch optimizer for intelligent query sizing
         try:
@@ -159,18 +160,6 @@ class MilvusManager:
         # 삭제 작업 배치 처리를 위한 추가 필드
         self.pending_deletions = set()
         
-    def _get_optimal_query_limit(self):
-        """Get optimal query limit from batch optimizer or config fallback"""
-        if self.batch_optimizer:
-            # Use DynamicBatchOptimizer's intelligent sizing
-            optimal_limit = self.batch_optimizer.current_batch_size
-            # Ensure it doesn't exceed Milvus safety limit
-            milvus_limit = config.get_milvus_max_query_limit()  # 16000
-            return min(optimal_limit, milvus_limit)
-        else:
-            # Fallback to config value
-            return config.get_milvus_max_query_limit()  # 16000
-        
         # 초기 설정 - 서비스가 이미 실행 중인 경우 스킵
         try:
             if not self.is_port_in_use(self.port):
@@ -182,6 +171,7 @@ class MilvusManager:
             # Milvus 서비스가 완전히 준비될 때까지 대기
             self.wait_for_milvus_ready()
             
+            # Connection and collection setup should be indented under the __init__ method
             self.connect()
             self.ensure_collection()
             
@@ -195,6 +185,18 @@ class MilvusManager:
         
         # 모니터링 스레드 시작
         self.start_monitoring()
+        
+    def _get_optimal_query_limit(self):
+        """Get optimal query limit from batch optimizer or config fallback"""
+        if self.batch_optimizer:
+            # Use DynamicBatchOptimizer's intelligent sizing
+            optimal_limit = self.batch_optimizer.current_batch_size
+            # Ensure it doesn't exceed Milvus safety limit
+            milvus_limit = config.get_milvus_max_query_limit()  # 16000
+            return min(optimal_limit, milvus_limit)
+        else:
+            # Fallback to config value
+            return config.get_milvus_max_query_limit()  # 16000
     
     def wait_for_milvus_ready(self, max_wait_time=120):
         """
