@@ -287,10 +287,9 @@ def analyze_query_complexity(query: str) -> Dict[str, Any]:
         "estimated_time": "fast" if complexity_score <= 2 else "medium" if complexity_score <= 4 else "slow"
     })
 
-# auto_search_mode_decision 함수 제거됨 - milvus_power_search로 대체
 
 @mcp.tool()
-async def comprehensive_search_all(
+async def comprehensive_search(
     query: str,
     include_similarity_scores: bool = True,
     batch_size: int = 500,
@@ -430,7 +429,7 @@ async def comprehensive_search_all(
         return {"error": str(e), "query": query}
 
 @mcp.tool()
-async def advanced_filter_search_with_pagination(
+async def multi_query_fusion(
     query: str,
     page_size: int = 100,
     page_number: int = 1,
@@ -482,7 +481,7 @@ async def advanced_filter_search_with_pagination(
 
 
 @mcp.tool()
-async def performance_optimization_analysis() -> Dict[str, Any]:
+async def performance_analysis() -> Dict[str, Any]:
     """Milvus 성능 최적화 분석 및 권장사항"""
     global hnsw_optimizer, enhanced_search
     
@@ -723,7 +722,7 @@ async def milvus_power_search(
         return {"error": str(e), "query": query}
 
 @mcp.tool()
-async def milvus_knowledge_graph_builder(
+async def knowledge_graph_builder(
     starting_document: str,
     max_depth: int = 3,
     similarity_threshold: float = 0.8,
