@@ -96,8 +96,7 @@
    - Do the following:
 
     ```bash
-    Open Anaconda Prompt with administrator privileges
-    cd to your directory
+    cd to your desired directory
     pip uninstall -y numpy sentence-transformers
     pip install "numpy>2.0.0"
     pip install --no-deps transformers==4.52.3
@@ -141,8 +140,9 @@
    - `pip install podman-compose` using CMD at your path
 
 2. **Configure paths**
-   - Edit `config.py` and set your Obsidian vault path
-   - Edit `config.py` and set your podman path
+   - cd to your desired directory
+   - Edit `.env` and set your Obsidian vault path
+   - Edit `.env` and set your podman path
      - Find podman path using `find_podman_path.bat`
 
 3. **Initialize Podman Container**
