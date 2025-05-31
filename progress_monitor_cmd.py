@@ -16,7 +16,24 @@ import io
 import torch
 
 # Enable ANSI escape sequences in Windows
-init(autoreset=True)
+# Force color output regardless of environment
+os.environ['FORCE_COLOR'] = '1'
+os.environ.pop('NO_COLOR', None)  # Remove NO_COLOR if exists
+
+# Windows specific color enabling
+if os.name == 'nt':
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
+    kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+
+init(autoreset=True, convert=True, strip=False, wrap=True)
+
+# Test if colors are working (you can remove this after testing)
+if __name__ != "__main__":  # Only when imported as module
+    test_colors = False  # Set to True to test colors on import
+    if test_colors:
+        print(f"{Fore.RED}RED{Fore.RESET} {Fore.GREEN}GREEN{Fore.RESET} {Fore.BLUE}BLUE{Fore.RESET} {Fore.YELLOW}YELLOW{Fore.RESET} {Fore.MAGENTA}MAGENTA{Fore.RESET} {Fore.CYAN}CYAN{Fore.RESET}")
+        print(f"If you see colors above, colorama is working!")
 
 # Try to import pynvml for accurate GPU monitoring
 try:
@@ -31,6 +48,8 @@ except ImportError:
 class OutputFilter(io.TextIOBase):
     def __init__(self, original_stdout):
         self.original_stdout = original_stdout
+        # Never filter ANSI color codes
+        self.ansi_pattern = re.compile(r'\x1b\[[0-9;]*m')
         # Filter patterns with regex
         self.filter_patterns = [
             # System related messages
@@ -63,6 +82,10 @@ class OutputFilter(io.TextIOBase):
         ]
     
     def write(self, text):
+        # Never filter text containing ANSI color codes
+        if self.ansi_pattern.search(text):
+            return self.original_stdout.write(text)
+            
         # Check for filtering patterns
         for pattern in self.filter_patterns:
             if pattern.search(text):
@@ -80,8 +103,12 @@ class OutputFilter(io.TextIOBase):
     def fileno(self):
         return self.original_stdout.fileno()
 
-# Enable log filtering
-sys.stdout = OutputFilter(sys.stdout)
+# Enable log filtering - but preserve color support
+original_stdout = sys.stdout
+filtered_stdout = OutputFilter(original_stdout)
+# Only apply filter if not testing colors
+if not os.environ.get('DISABLE_OUTPUT_FILTER', False):
+    sys.stdout = filtered_stdout
 
 class ProgressMonitor:
     def __init__(self, processor):
@@ -92,6 +119,9 @@ class ProgressMonitor:
             processor (ObsidianProcessor): Embedding processor object
         """
         self.processor = processor
+        
+        # Force enable colors for this instance
+        self.force_color = True  # Always use colors
         self.progress_update_interval = 0.5  # Longer interval to reduce flickering
         self.resource_check_interval = 1.0  # System resource check interval (seconds)
         
@@ -140,6 +170,20 @@ class ProgressMonitor:
             os.system('cls')
         else:  # Unix/Linux/MacOS
             os.system('clear')
+    
+    def _print_colored(self, text):
+        """Print with colors forced - bypass any filtering"""
+        # Direct write to terminal, bypassing filters
+        if hasattr(sys, '__stdout__'):
+            sys.__stdout__.write(text + '\n')
+            sys.__stdout__.flush()
+        else:
+            # Fallback to original stdout if available
+            if 'original_stdout' in globals():
+                original_stdout.write(text + '\n')
+                original_stdout.flush()
+            else:
+                print(text)
     
     def _create_bar(self, percent, width=20):
         """Create a simple progress bar"""
@@ -453,11 +497,11 @@ class ProgressMonitor:
         output_lines = []
         
         # Add header
-        output_lines.append(f"{Style.BRIGHT}{Fore.CYAN}Embedding Progress{Style.RESET_ALL}")
-        output_lines.append("-" * 80)
+        output_lines.append(f"{Style.BRIGHT}{Fore.MAGENTA}Embedding Progress{Style.RESET_ALL}")
+        output_lines.append(f"{Fore.BLUE}{"-" * 80}{Fore.RESET}")
         
         # Display progress bar
-        output_lines.append(f"{Style.BRIGHT}Progress:{Style.RESET_ALL}     [{self._create_bar(percentage)}] {percentage}% ({processed_files}/{total_files} files)")
+        output_lines.append(f"{Style.BRIGHT}{Fore.CYAN}Progress:{Style.RESET_ALL}     [{Fore.GREEN}{self._create_bar(percentage)}{Fore.RESET}] {Fore.YELLOW}{percentage}%{Fore.RESET} ({Fore.CYAN}{processed_files}{Fore.RESET}/{Fore.BLUE}{total_files}{Fore.RESET} files)")
         
         # Display size progress if available
         if total_size > 0:
@@ -465,13 +509,13 @@ class ProgressMonitor:
             size_bar = self._create_bar(size_percentage)
             processed_mb = processed_size / (1024 * 1024)
             total_mb = total_size / (1024 * 1024)
-            output_lines.append(f"{Style.BRIGHT}Size:{Style.RESET_ALL}         [{size_bar}] {size_percentage}% ({processed_mb:.1f} MB/{total_mb:.1f} MB)")
+            output_lines.append(f"{Style.BRIGHT}{Fore.MAGENTA}Size:{Style.RESET_ALL}         [{Fore.BLUE}{size_bar}{Fore.RESET}] {Fore.YELLOW}{size_percentage}%{Fore.RESET} ({Fore.CYAN}{processed_mb:.1f} MB{Fore.RESET}/{Fore.BLUE}{total_mb:.1f} MB{Fore.RESET})")
         
         # Display estimated time remaining (using the value calculated earlier)
         # Always show the line, even if the calculation isn't available yet
         if not estimated_time_remaining:
             estimated_time_remaining = "Calculating..."
-        output_lines.append(f"{Style.BRIGHT}Est. Time Remaining:{Style.RESET_ALL}    {Fore.CYAN}{estimated_time_remaining}{Fore.RESET}")
+        output_lines.append(f"{Style.BRIGHT}{Fore.LIGHTYELLOW_EX}Est. Time Remaining:{Style.RESET_ALL}    {Fore.LIGHTCYAN_EX}{estimated_time_remaining}{Fore.RESET}")
         
         # Display system resource usage
         cpu_color = Fore.GREEN
@@ -479,14 +523,14 @@ class ProgressMonitor:
             cpu_color = Fore.YELLOW
         if cpu_percent > 90:
             cpu_color = Fore.RED
-        output_lines.append(f"{Style.BRIGHT}CPU Usage:{Style.RESET_ALL}    [{cpu_color}{self._create_bar(cpu_percent)}{Fore.RESET}] {cpu_color}{cpu_percent:.1f}%{Fore.RESET}")
+        output_lines.append(f"{Style.BRIGHT}{Fore.LIGHTBLUE_EX}CPU Usage:{Style.RESET_ALL}    [{cpu_color}{self._create_bar(cpu_percent)}{Fore.RESET}] {cpu_color}{cpu_percent:.1f}%{Fore.RESET}")
         
         memory_color = Fore.GREEN
         if memory_percent > 70:
             memory_color = Fore.YELLOW
         if memory_percent > 90:
             memory_color = Fore.RED
-        output_lines.append(f"{Style.BRIGHT}Memory Usage:{Style.RESET_ALL} [{memory_color}{self._create_bar(memory_percent)}{Fore.RESET}] {memory_color}{memory_percent:.1f}%{Fore.RESET}")
+        output_lines.append(f"{Style.BRIGHT}{Fore.LIGHTMAGENTA_EX}Memory Usage:{Style.RESET_ALL} [{memory_color}{self._create_bar(memory_percent)}{Fore.RESET}] {memory_color}{memory_percent:.1f}%{Fore.RESET}")
         
         # Enhanced GPU usage display with maximum tracking
         try:
@@ -507,23 +551,23 @@ class ProgressMonitor:
                     gpu_mem_color = Fore.RED
                 
                 # Display GPU usage (5-second maximum)
-                output_lines.append(f"{Style.BRIGHT}GPU Usage:{Style.RESET_ALL}    [{gpu_color}{self._create_bar(display_gpu_percent)}{Fore.RESET}] {gpu_color}{display_gpu_percent:.1f}% (5s max){Fore.RESET}")
+                output_lines.append(f"{Style.BRIGHT}{Fore.LIGHTGREEN_EX}GPU Usage:{Style.RESET_ALL}    [{gpu_color}{self._create_bar(display_gpu_percent)}{Fore.RESET}] {gpu_color}{display_gpu_percent:.1f}% {Fore.LIGHTCYAN_EX}(5s max){Fore.RESET}")
                 
                 # Display GPU memory usage (5-second maximum)
-                output_lines.append(f"{Style.BRIGHT}GPU Memory:{Style.RESET_ALL}   [{gpu_mem_color}{self._create_bar(display_gpu_memory_percent)}{Fore.RESET}] {gpu_mem_color}{display_gpu_memory_percent:.1f}% (5s max){Fore.RESET}")
+                output_lines.append(f"{Style.BRIGHT}{Fore.LIGHTYELLOW_EX}GPU Memory:{Style.RESET_ALL}   [{gpu_mem_color}{self._create_bar(display_gpu_memory_percent)}{Fore.RESET}] {gpu_mem_color}{display_gpu_memory_percent:.1f}% {Fore.LIGHTCYAN_EX}(5s max){Fore.RESET}")
             else:
-                output_lines.append(f"{Style.BRIGHT}GPU Status:{Style.RESET_ALL}   [No CUDA compatible GPU detected]")
+                output_lines.append(f"{Style.BRIGHT}{Fore.LIGHTRED_EX}GPU Status:{Style.RESET_ALL}   {Fore.RED}[No CUDA compatible GPU detected]{Fore.RESET}")
         except Exception as e:
-            output_lines.append(f"{Style.BRIGHT}GPU Status:{Style.RESET_ALL}   [Error getting GPU info: {str(e)[:50]}]")
+            output_lines.append(f"{Style.BRIGHT}{Fore.LIGHTRED_EX}GPU Status:{Style.RESET_ALL}   {Fore.RED}[Error getting GPU info: {str(e)[:50]}]{Fore.RESET}")
             
         # GPU configuration check
         use_gpu = hasattr(self.processor, 'use_gpu') and self.processor.use_gpu
         if not use_gpu and torch.cuda.is_available():
-            output_lines.append(f"{Style.BRIGHT}GPU Config:{Style.RESET_ALL}    [GPU available but disabled in settings]")
+            output_lines.append(f"{Style.BRIGHT}{Fore.LIGHTRED_EX}GPU Config:{Style.RESET_ALL}    {Fore.YELLOW}[GPU available but disabled in settings]{Fore.RESET}")
         elif not torch.cuda.is_available():
-            output_lines.append(f"{Style.BRIGHT}GPU Config:{Style.RESET_ALL}    [No CUDA compatible GPU available]")
+            output_lines.append(f"{Style.BRIGHT}{Fore.LIGHTRED_EX}GPU Config:{Style.RESET_ALL}    {Fore.RED}[No CUDA compatible GPU available]{Fore.RESET}")
         else:
-            output_lines.append(f"{Style.BRIGHT}GPU Config:{Style.RESET_ALL}    [GPU enabled and active]")
+            output_lines.append(f"{Style.BRIGHT}{Fore.LIGHTGREEN_EX}GPU Config:{Style.RESET_ALL}    {Fore.GREEN}[GPU enabled and active]{Fore.RESET}")
 
         # Display current file - avoid showing same file if it was skipped
         display_current_file = current_file
@@ -531,13 +575,13 @@ class ProgressMonitor:
             if self.last_processed_status and ("Already exists, Skipping" in self.last_processed_status):
                 display_current_file = ""  # Don't show skipped files
         
-        output_lines.append(f"\n{Style.BRIGHT}Current File:{Style.RESET_ALL} {display_current_file}")
+        output_lines.append(f"\n{Style.BRIGHT}{Fore.LIGHTCYAN_EX}Current File:{Style.RESET_ALL} {Fore.WHITE}{display_current_file}{Fore.RESET}")
         
         # Previous file - always show
         if self.last_processed_file:
-            output_lines.append(f"{Style.BRIGHT}Last File:{Style.RESET_ALL}   {self.last_processed_file} - {self.last_processed_status}")
+            output_lines.append(f"{Style.BRIGHT}{Fore.LIGHTBLUE_EX}Last File:{Style.RESET_ALL}   {Fore.WHITE}{self.last_processed_file}{Fore.RESET} - {self.last_processed_status}")
         
-        output_lines.append("-" * 80)
+        output_lines.append(f"{Fore.BLUE}{"-" * 80}{Fore.RESET}")
         
         # Display error logs if any
         current_time = time.time()
@@ -552,11 +596,25 @@ class ProgressMonitor:
             output_lines.append(f"{Style.BRIGHT}{Fore.RED}Error Logs:{Style.RESET_ALL}")
             for error in active_errors[-5:]:  # Show only recent 5
                 output_lines.append(f"{Fore.RED}{error}{Fore.RESET}")
-            output_lines.append("-" * 80)
+            output_lines.append(f"{Fore.BLUE}{"-" * 80}{Fore.RESET}")
         
         # Clear screen and display all lines
         self._clear_screen()
-        print("\n".join(output_lines))
+        
+        # Try to output directly to terminal for color support
+        output_text = "\n".join(output_lines)
+        
+        # Method 1: Direct to __stdout__ (original stdout before any wrapping)
+        if hasattr(sys, '__stdout__'):
+            sys.__stdout__.write(output_text + '\n')
+            sys.__stdout__.flush()
+        # Method 2: Use original_stdout if saved
+        elif 'original_stdout' in globals():
+            original_stdout.write(output_text + '\n')
+            original_stdout.flush()
+        # Method 3: Regular print as fallback
+        else:
+            print(output_text)
     
     def _progress_update_thread_func(self):
         """Thread function for updating the progress display"""
@@ -576,9 +634,9 @@ class ProgressMonitor:
                         
                         # Show "Already exists, Skipping" message only when not in full reindex mode
                         if not is_full_reindex:
-                            self.last_processed_status = f"{Fore.GREEN}Already exists, Skipping{Fore.RESET}"
+                            self.last_processed_status = f"{Fore.LIGHTGREEN_EX}Already exists, Skipping{Fore.RESET}"
                         else:
-                            self.last_processed_status = f"{Fore.GREEN}Processing...{Fore.RESET}"
+                            self.last_processed_status = f"{Fore.LIGHTYELLOW_EX}Processing...{Fore.RESET}"
                         
                         # Update current file to last processed file
                         self.last_processed_file = last_current_file
@@ -602,9 +660,9 @@ class ProgressMonitor:
                         
                         # Show "Already exists, Skipping" message only when not in full reindex mode
                         if not is_full_reindex:
-                            self.last_processed_status = f"{Fore.GREEN}Already exists, Skipping{Fore.RESET}"
+                            self.last_processed_status = f"{Fore.LIGHTGREEN_EX}Already exists, Skipping{Fore.RESET}"
                         else:
-                            self.last_processed_status = f"{Fore.GREEN}Processed{Fore.RESET}"
+                            self.last_processed_status = f"{Fore.LIGHTGREEN_EX}Processed{Fore.RESET}"
                     
                     # Now update screen - display screen after current file info is updated
                     self._display_progress()
@@ -717,3 +775,25 @@ class ProgressMonitor:
     # Stop monitoring (maintain compatibility with previous version)
     def stop(self):
         self.stop_monitoring()
+
+# Test function to check if colors are working
+def test_colors():
+    """Test if terminal colors are working properly"""
+    print("\nTesting colorama colors:")
+    print(f"{Fore.RED}█ RED{Fore.RESET}")
+    print(f"{Fore.GREEN}█ GREEN{Fore.RESET}")
+    print(f"{Fore.BLUE}█ BLUE{Fore.RESET}")
+    print(f"{Fore.YELLOW}█ YELLOW{Fore.RESET}")
+    print(f"{Fore.MAGENTA}█ MAGENTA{Fore.RESET}")
+    print(f"{Fore.CYAN}█ CYAN{Fore.RESET}")
+    print(f"{Fore.LIGHTRED_EX}█ LIGHT RED{Fore.RESET}")
+    print(f"{Fore.LIGHTGREEN_EX}█ LIGHT GREEN{Fore.RESET}")
+    print(f"{Fore.LIGHTBLUE_EX}█ LIGHT BLUE{Fore.RESET}")
+    print(f"{Fore.LIGHTYELLOW_EX}█ LIGHT YELLOW{Fore.RESET}")
+    print(f"{Fore.LIGHTMAGENTA_EX}█ LIGHT MAGENTA{Fore.RESET}")
+    print(f"{Fore.LIGHTCYAN_EX}█ LIGHT CYAN{Fore.RESET}")
+    print("\nIf you see colors above, colorama is working!\n")
+
+# Run color test if executed directly
+if __name__ == "__main__":
+    test_colors()
