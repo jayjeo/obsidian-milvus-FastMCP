@@ -342,9 +342,8 @@ class IntroPage(QtWidgets.QWizardPage):
         
         process_label = QtWidgets.QLabel(
             "<b>Complete Installation Process:</b><br>"
-            "✔ Prerequisites verification (Conda installed)<br>"
             "✔ Repository cloning from GitHub<br>"
-            "✔ Python dependencies installation (Conda & pip)<br>"
+            "✔ Python dependencies installation (pip)<br>"
             "✔ Podman container runtime installation<br>"
             "✔ WSL and Ubuntu 22.04 setup<br>"
             "✔ Milvus vector database deployment<br>"
@@ -355,32 +354,19 @@ class IntroPage(QtWidgets.QWizardPage):
         
         req_label = QtWidgets.QLabel(
             "<b>System Requirements:</b><br>"
-            "• Anaconda or Miniconda (REQUIRED – must be pre-installed)<br>"
             "• 20 GB free disk space (containers & dependencies)<br>"
             "• 8 GB RAM or more recommended"
         )
         req_label.setTextFormat(QtCore.Qt.RichText)
         req_label.setWordWrap(True)
         
-        before_group = QtWidgets.QGroupBox("Before Starting")
-        before_layout = QtWidgets.QVBoxLayout(before_group)
-        
-        # Create a label with larger, red text for the Anaconda notice
-        anaconda_label = QtWidgets.QLabel("⚠ <b>Please ensure Anaconda or Miniconda is installed before proceeding.</b>")
-        anaconda_label.setStyleSheet("color: red;")
-        anaconda_label.setWordWrap(True)
-        before_layout.addWidget(anaconda_label)
-        
-        # Add the path environment variable instruction
-        path_var_label = QtWidgets.QLabel("While installing, make sure to select the path environment variable option.")
-        path_var_label.setWordWrap(True)
-        before_layout.addWidget(path_var_label)
+
         
         layout.addWidget(welcome_label)
         layout.addWidget(desc_label)
         layout.addWidget(process_label)
         layout.addWidget(req_label)
-        layout.addWidget(before_group)
+
 
 
 class PathPage(QtWidgets.QWizardPage):
@@ -485,7 +471,7 @@ class SummaryPage(QtWidgets.QWizardPage):
         components_label = QtWidgets.QLabel(
             "<b>Components to install:</b><br>"
             "• Repository cloning (GitHub)<br>"
-            "• Python dependencies (Conda & pip)<br>"
+            "• Python dependencies (pip)<br>"
             "• Podman container runtime<br>"
             "• WSL 2 and Ubuntu 22.04<br>"
             "• Milvus vector database (via Podman)<br>"
