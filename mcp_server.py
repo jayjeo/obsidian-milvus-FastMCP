@@ -29,31 +29,75 @@ import logging
 import time
 import asyncio
 import math
+import numpy as np
 from typing import List, Dict, Any, Optional, Tuple, Generator
 from datetime import datetime
 
-# Import centralized logging system
+# Set environment variables to suppress output from various libraries
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
+os.environ['TRANSFORMERS_VERBOSITY'] = 'error'  # Suppress transformers logs
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Suppress tokenizer warnings
+os.environ['CUDA_VISIBLE_DEVICES'] = os.environ.get('CUDA_VISIBLE_DEVICES', '0')  # Prevent CUDA re-initialization messages
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'  # Prevent CUDA memory fragmentation messages
+os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'  # Suppress cuBLAS warnings
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Suppress oneDNN messages
+
+# CRITICAL: Redirect all stdout to stderr to prevent JSON-RPC stream pollution
+# MCP uses stdout for JSON-RPC communication, so any print() or logging to stdout will break it
+class StdoutToStderr:
+    def write(self, text):
+        sys.stderr.write(text)
+    def flush(self):
+        sys.stderr.flush()
+
+# Replace stdout with stderr before any imports that might print
+original_stdout = sys.stdout
+sys.stdout = StdoutToStderr()
+
+# Import centralized logging system AFTER redirecting stdout
 from logger import get_logger
 
-# Import other modules
-from mcp.server.fastmcp import FastMCP
-import config
-from milvus_manager import MilvusManager
-from search_engine import SearchEngine
+# Context manager to temporarily suppress stdout during imports
+class SuppressStdout:
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.close()
+        sys.stdout = self._original_stdout
 
-# 새로운 고급 모듈들
-from enhanced_search_engine import EnhancedSearchEngine
-from hnsw_optimizer import HNSWOptimizer
-from advanced_rag import AdvancedRAGEngine
+# Import modules that might print to stdout with suppression
+with SuppressStdout():
+    # Import other modules
+    from mcp.server.fastmcp import FastMCP
+    import config
+    from milvus_manager import MilvusManager
+    from search_engine import SearchEngine
+    
+    # 새로운 고급 모듈들
+    from enhanced_search_engine import EnhancedSearchEngine
+    from hnsw_optimizer import HNSWOptimizer
+    from advanced_rag import AdvancedRAGEngine
 
-# Get logger for this module
+# After imports, ensure stdout is set to StdoutToStderr
+sys.stdout = StdoutToStderr()
+
+# Get logger for this module - ensure it logs to stderr
 logger = get_logger('mcp_server')
 
-# Helper function to safely print messages with both console output and logging
+# Configure all loggers to use stderr
+for handler in logger.handlers:
+    if hasattr(handler, 'stream') and handler.stream == original_stdout:
+        handler.stream = sys.stderr
+
+# Helper function to safely print messages (only to stderr)
 def safe_print(message, level="info"):
-    """Print a message safely using the logger and console output"""
-    # Console output for immediate feedback
-    print(message)
+    """Print a message safely to stderr only"""
+    # Output to stderr for debugging
+    sys.stderr.write(f"[{level.upper()}] {message}\n")
+    sys.stderr.flush()
     
     # Log to centralized logging system
     if level.lower() == "error":
@@ -63,7 +107,70 @@ def safe_print(message, level="info"):
     else:
         logger.info(message)
 
+# 유틸리티 함수: 객체를 JSON 직렬화가 가능한 형태로 변환
+def safe_json(obj):
+    """객체를 재귀적으로 JSON 직렬화 가능한 Python 기본 타입으로 변환합니다."""
+    # 기본 직렬화 가능한 타입들은 그대로 반환
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    # NumPy 배열인 경우 -> 파이썬 리스트로 변환
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    # NumPy 스칼라인 경우 -> 해당 Python 스칼라 값으로 변환
+    if isinstance(obj, np.generic):  # numpy.float32, numpy.int64 등 numpy 숫자 타입
+        return obj.item()
+    # bytes 타입 처리
+    if isinstance(obj, bytes):
+        return obj.decode('utf-8', errors='ignore')
+    # 사전인 경우 -> 키와 값 모두 safe_json 재귀 적용
+    if isinstance(obj, dict):
+        return { str(k): safe_json(v) for k, v in obj.items() }
+    # 리스트, 튜플, 집합 등의 반복 가능 객체 -> 각 요소를 재귀 변환 (튜플/집합도 리스트로 반환)
+    if isinstance(obj, (list, tuple, set)):
+        return [ safe_json(x) for x in obj ]
+    # 기타 객체는 문자열로 변환 (필요에 따라 다른 처리 가능)
+    return str(obj)
+
+# FastMCP 인스턴스 생성
 mcp = FastMCP(config.FASTMCP_SERVER_NAME)
+
+# 모든 MCP 도구 함수가 JSON 직렬화 가능한 데이터를 반환하도록 하는 데코레이터
+def json_serializable(func):
+    """함수의 반환값을 JSON 직렬화 가능한 형태로 변환하는 데코레이터"""
+    async def async_wrapper(*args, **kwargs):
+        try:
+            result = await func(*args, **kwargs)
+            return safe_json(result)
+        except Exception as e:
+            logger.error(f"Error in {func.__name__}: {str(e)}", exc_info=True)
+            return safe_json({"error": str(e)})
+    
+    def sync_wrapper(*args, **kwargs):
+        try:
+            result = func(*args, **kwargs)
+            return safe_json(result)
+        except Exception as e:
+            logger.error(f"Error in {func.__name__}: {str(e)}", exc_info=True)
+            return safe_json({"error": str(e)})
+    
+    if asyncio.iscoroutinefunction(func):
+        return async_wrapper
+    else:
+        return sync_wrapper
+
+# FastMCP 클래스의 tool 메소드를 오버라이드하여 자동으로 JSON 직렬화 가능하게 만듦
+original_tool = mcp.tool
+def json_safe_tool(*args, **kwargs):
+    """모든 MCP 도구 함수의 반환값을 자동으로 JSON 직렬화 가능하게 만드는 데코레이터"""
+    def decorator(func):
+        # 함수를 json_serializable 데코레이터로 래핑
+        wrapped_func = json_serializable(func)
+        # 원래 mcp.tool 데코레이터 적용
+        return original_tool(*args, **kwargs)(wrapped_func)
+    return decorator
+
+# mcp.tool 메소드 교체
+mcp.tool = json_safe_tool
 
 # 전역 변수들
 milvus_manager = None
@@ -77,27 +184,34 @@ def initialize_components():
     global milvus_manager, search_engine, enhanced_search, hnsw_optimizer, rag_engine
     
     try:
-        logger.info("Starting Enhanced Obsidian-Milvus Fast MCP Server...")
+        safe_print("Starting Enhanced Obsidian-Milvus Fast MCP Server...")
         
-        milvus_manager = MilvusManager()
-        search_engine = SearchEngine(milvus_manager)
-        enhanced_search = EnhancedSearchEngine(milvus_manager)
-        hnsw_optimizer = HNSWOptimizer(milvus_manager)
-        rag_engine = AdvancedRAGEngine(milvus_manager, enhanced_search)
+        # Suppress stdout during component initialization
+        with SuppressStdout():
+            milvus_manager = MilvusManager()
+            search_engine = SearchEngine(milvus_manager)
+            enhanced_search = EnhancedSearchEngine(milvus_manager)
+            hnsw_optimizer = HNSWOptimizer(milvus_manager)
+            rag_engine = AdvancedRAGEngine(milvus_manager, enhanced_search)
+        
+        # Ensure stdout is redirected back to stderr after initialization
+        sys.stdout = StdoutToStderr()
         
         try:
             # Skip auto-tuning to prevent hanging
-            logger.info("Skipping auto-tuning to prevent system hang")
+            safe_print("Skipping auto-tuning to prevent system hang")
             # optimization_params = hnsw_optimizer.auto_tune_parameters()
-            # logger.info(f"Auto-tuning completed: {optimization_params}")
+            # safe_print(f"Auto-tuning completed: {optimization_params}")
         except Exception as e:
-            logger.warning(f"Auto-tuning warning: {e}")
+            safe_print(f"Auto-tuning warning: {e}", "warning")
         
-        logger.info("All components initialized!")
+        safe_print("All components initialized!")
         return True
         
     except Exception as e:
-        logger.error(f"❌ Component initialization failed: {e}")
+        safe_print(f"❌ Component initialization failed: {e}", "error")
+        # Ensure stdout is redirected even on failure
+        sys.stdout = StdoutToStderr()
         return False
 
 # ==================== 새로운 고급 검색 도구들 ====================
@@ -167,13 +281,13 @@ def analyze_query_complexity(query: str) -> Dict[str, Any]:
     if keyword_matches:
         logger.debug(f"Keyword matches that affected score: {', '.join(keyword_matches)}")
     
-    return {
+    return safe_json({
         "complexity_score": complexity_score,
         "word_count": word_count,
         "recommended_mode": search_mode,
         "recommended_strategy": search_strategy,
         "estimated_time": "fast" if complexity_score <= 2 else "medium" if complexity_score <= 4 else "slow"
-    }
+    })
 
 @mcp.tool()
 async def auto_search_mode_decision(
@@ -243,9 +357,6 @@ async def auto_search_mode_decision(
                         logger.debug(f"Processing dictionary result with {len(results.get('primary_chunks', []))} primary chunks")
                         results = results["primary_chunks"][:limit]
                     
-                    # Ensure all data is JSON serializable
-                    results = [{k: (str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v) 
-                              for k, v in item.items()} for item in results]
                     search_info = {"type": "semantic_graph", "mode": "comprehensive"}
                     logger.info(f"Semantic graph search completed with {len(results)} results")
                     
@@ -267,30 +378,18 @@ async def auto_search_mode_decision(
         analysis_time = time.time() - start_time
         logger.info(f"Query analysis completed in {analysis_time:.3f} seconds")
         
-        # Ensure all data is JSON serializable
-        logger.debug("Ensuring all results are JSON serializable")
-        def ensure_json_serializable(obj):
-            if isinstance(obj, dict):
-                return {k: ensure_json_serializable(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [ensure_json_serializable(item) for item in obj]
-            elif isinstance(obj, (str, int, float, bool, type(None))):
-                return obj
-            else:
-                return str(obj)
-        
         # Create response with serializable data
         result_count = len(results) if execute_search else 0
         logger.debug(f"Creating response with {result_count} results")
         
         response = {
             "query": query,
-            "query_analysis": ensure_json_serializable(analysis),
+            "query_analysis": analysis,
             "selected_mode": recommended_mode,
             "selected_strategy": recommended_strategy,
             "limit_used": limit,
-            "results": ensure_json_serializable(results) if execute_search else [],
-            "search_info": ensure_json_serializable(search_info) if execute_search else {},
+            "results": results if execute_search else [],
+            "search_info": search_info if execute_search else {},
             "performance": {
                 "analysis_time_ms": round(analysis_time * 1000, 2),
                 "total_results": result_count,
@@ -326,7 +425,7 @@ async def comprehensive_search_all(
         # 전체 컬렉션 크기 확인
         total_entities = milvus_manager.count_entities()
         logger.info(f"Comprehensive search across {total_entities} documents")
-        print(f"🔍 Comprehensive search across {total_entities} documents...")
+        safe_print(f"🔍 Comprehensive search across {total_entities} documents...")
         
         all_results = []
         processed_batches = 0
@@ -396,7 +495,7 @@ async def comprehensive_search_all(
                 if processed_batches % 5 == 0:
                     progress = processed_batches * batch_size
                     logger.info(f"Search progress: {progress}/{total_entities} documents processed ({(progress/total_entities*100):.1f}%)")
-                    print(f"📊 Processed {progress}/{total_entities} documents...")
+                    safe_print(f"📊 Processed {progress}/{total_entities} documents...")
                 
             except Exception as batch_error:
                 logger.error(f"Batch processing error at offset {offset}: {batch_error}", exc_info=True)
@@ -413,34 +512,12 @@ async def comprehensive_search_all(
         logger.info(f"Comprehensive search completed in {search_time:.3f} seconds with {len(all_results)} results")
         logger.info(f"Processing rate: {total_entities/search_time:.1f} documents per second")
         
-        # Ensure all data is JSON serializable
-        def ensure_json_serializable(obj):
-            if isinstance(obj, dict):
-                return {k: ensure_json_serializable(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [ensure_json_serializable(item) for item in obj]
-            elif isinstance(obj, (str, int, float, bool, type(None))):
-                return obj
-            else:
-                return str(obj)
-        
-        # Process results to ensure they're serializable
-        processed_results = []
-        for result in all_results:
-            processed_result = {}
-            for k, v in result.items():
-                if not isinstance(v, (str, int, float, bool, type(None))):
-                    processed_result[k] = str(v)
-                else:
-                    processed_result[k] = v
-            processed_results.append(processed_result)
-        
         return {
             "query": query,
             "search_type": "comprehensive_all",
             "total_documents_searched": total_entities,
-            "total_results_found": len(processed_results),
-            "results": processed_results,
+            "total_results_found": len(all_results),
+            "results": all_results,
             "search_parameters": {
                 "batch_size": batch_size,
                 "similarity_threshold": similarity_threshold,
@@ -450,7 +527,7 @@ async def comprehensive_search_all(
                 "search_time_seconds": round(search_time, 2),
                 "documents_per_second": round(total_entities / search_time, 2) if search_time > 0 else 0,
                 "batches_processed": processed_batches,
-                "effectiveness_ratio": len(processed_results) / total_entities if total_entities > 0 else 0
+                "effectiveness_ratio": len(all_results) / total_entities if total_entities > 0 else 0
             }
         }
         
@@ -552,7 +629,7 @@ async def batch_search_with_pagination(
                 # 전체 결과에 추가
                 all_results.extend(page_matches)
                 
-                print(f"📄 Page {page + 1}/{max_pages}: {len(page_matches)} matches found")
+                safe_print(f"📄 Page {page + 1}/{max_pages}: {len(page_matches)} matches found")
                 
             except Exception as page_error:
                 logger.error(f"Page {page + 1} processing error: {page_error}")
@@ -1874,6 +1951,9 @@ def main():
     """Main function"""
     safe_print("Enhanced Obsidian-Milvus Fast MCP Server starting...")
     safe_print("All Milvus advanced features + new enhanced features activated!")
+    
+    # Ensure stdout is restored for MCP communication
+    sys.stdout = original_stdout
     
     if not initialize_components():
         safe_print("Component initialization failed. Server cannot start.", "error")

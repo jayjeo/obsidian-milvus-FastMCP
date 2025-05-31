@@ -1,11 +1,24 @@
 # Import warning suppressor first to suppress all warnings
 import warning_suppressor
 
+# CRITICAL: Redirect stdout to stderr for MCP compatibility
+import sys
+original_stdout = sys.stdout
+
+class PrintToStderr:
+    def write(self, text):
+        sys.stderr.write(text)
+    def flush(self):
+        sys.stderr.flush()
+
+# Replace print with stderr output
+sys.stdout = PrintToStderr()
+
 # Import NumPy without compatibility check as sentence-transformers now supports NumPy 2.x
 try:
     import numpy as np
 except ImportError:
-    print("WARNING: NumPy not found")
+    sys.stderr.write("WARNING: NumPy not found\n")
 
 from sentence_transformers import SentenceTransformer
 import config

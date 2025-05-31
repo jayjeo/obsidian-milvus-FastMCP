@@ -2,6 +2,16 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+# CRITICAL: Set environment variables to suppress output from various libraries for MCP compatibility
+# This MUST be done before any library imports
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
+os.environ['TRANSFORMERS_VERBOSITY'] = 'error'  # Suppress transformers logs  
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Suppress tokenizer warnings
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'  # Prevent CUDA memory fragmentation messages
+os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'  # Suppress cuBLAS warnings
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Suppress oneDNN messages
+os.environ['CUDA_LAUNCH_BLOCKING'] = '0'  # Prevent CUDA blocking messages
+
 # Load environment variables (optional - auto-loads if .env file exists)
 load_dotenv()
 

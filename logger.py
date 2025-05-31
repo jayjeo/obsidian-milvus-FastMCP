@@ -41,8 +41,9 @@ def setup_logger():
     file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     console_formatter = logging.Formatter('%(levelname)s: %(message)s')
     
-    # Create console handler
-    console_handler = logging.StreamHandler(sys.stdout)
+    # Create console handler - MUST use stderr for MCP compatibility
+    # MCP uses stdout for JSON-RPC communication, so we must use stderr for logging
+    console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setLevel(logging.WARNING)  # Only warnings and above to console
     console_handler.setFormatter(console_formatter)
     
