@@ -26,8 +26,8 @@ echo Python found. Checking for required files...
 echo.
 
 REM Check if required files exist
-if not exist "installer_complete.py" (
-    echo ERROR: installer_complete.py not found
+if not exist "installer_ui.py" (
+    echo ERROR: installer_ui.py not found
     echo Please make sure all installer files are present
     echo.
     pause

@@ -177,11 +177,11 @@ def build_installer():
     current_dir = Path(__file__).parent
     
     # Use the complete installer script
-    installer_script = current_dir / "installer_complete.py"
+    installer_script = current_dir / "installer_ui.py"
     
     if not installer_script.exists():
         print(f"Error: {installer_script} not found!")
-        print("Please make sure installer_complete.py exists in the installer directory.")
+        print("Please make sure installer_ui.py exists in the installer directory.")
         return False
     
     # Create version and manifest files
@@ -196,7 +196,7 @@ def build_installer():
         "pyinstaller",
         "--onefile",                    # Single executable
         "--windowed",                   # No console window
-        "--name", "ObsidianMilvusInstaller",
+        "--name", "Obsidian_Milvus_Installer_AMD64",
         "--distpath", str(current_dir / "dist"),
         "--workpath", str(current_dir / "build"),
         "--specpath", str(current_dir),
@@ -251,7 +251,7 @@ def build_installer():
             print("BUILD SUCCESSFUL!")
             print("="*60)
             
-            exe_path = current_dir / "dist" / "ObsidianMilvusInstaller.exe"
+            exe_path = current_dir / "dist" / "Obsidian_Milvus_Installer_AMD64.exe"
             if exe_path.exists():
                 size_mb = exe_path.stat().st_size / (1024 * 1024)
                 print(f"Executable created: {exe_path}")
