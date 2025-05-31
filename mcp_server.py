@@ -862,9 +862,10 @@ async def get_document_content(file_path: str) -> Dict[str, Any]:
         return {"error": "Milvus manager not initialized.", "file_path": file_path}
     
     try:
+        # path 또는 original_path로 검색 (숫자로 시작하는 파일명 대응)
         results = milvus_manager.query(
-            expr=f'path == "{file_path}"',
-            output_fields=["id", "path", "title", "content", "chunk_text", "file_type", "tags", "created_at", "updated_at", "chunk_index"],
+            expr=f'path == "{file_path}" || original_path == "{file_path}"',
+            output_fields=["id", "path", "original_path", "title", "content", "chunk_text", "file_type", "tags", "created_at", "updated_at", "chunk_index"],
             limit=200  # 기본값 100 -> 200으로 증가
         )
         
@@ -921,9 +922,10 @@ async def get_similar_documents(
     try:
         start_time = time.time()
         
+        # path 또는 original_path로 검색 (숫자로 시작하는 파일명 대응)
         base_docs = milvus_manager.query(
-            expr=f'path == "{file_path}"',
-            output_fields=["id", "path", "title", "content", "chunk_text"],
+            expr=f'path == "{file_path}" || original_path == "{file_path}"',
+            output_fields=["id", "path", "original_path", "title", "content", "chunk_text"],
             limit=1
         )
         
