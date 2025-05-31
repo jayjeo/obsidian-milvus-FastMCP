@@ -67,15 +67,14 @@ echo.
 echo The installer has been built successfully.
 echo.
 echo You can find the installer at:
-echo   dist/ObsidianMilvusInstaller.exe
+echo   dist/Obsidian_Milvus_Installer_AMD64.exe
 echo.
 echo For distribution, use the release package:
-echo   release/ObsidianMilvusInstaller.exe
+echo   release/Obsidian_Milvus_Installer_AMD64.exe
 echo   release/README.md
 echo.
 echo Users should:
-echo 1. Install Anaconda first (https://www.anaconda.com/download)
-echo 2. Run ObsidianMilvusInstaller.exe as Administrator
+echo 1. Run Obsidian_Milvus_Installer_AMD64.exe as Administrator
 echo 3. Follow the installation wizard
 echo.
 echo ================================================================

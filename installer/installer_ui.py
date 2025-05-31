@@ -342,9 +342,9 @@ class IntroPage(QtWidgets.QWizardPage):
         
         process_label = QtWidgets.QLabel(
             "<b>Complete Installation Process:</b><br>"
-            "✔ Prerequisites verification (Conda installed)<br>"
+            "✔ Prerequisites verification<br>"
             "✔ Repository cloning from GitHub<br>"
-            "✔ Python dependencies installation (Conda & pip)<br>"
+            "✔ Python dependencies installation (pip)<br>"
             "✔ Podman container runtime installation<br>"
             "✔ WSL and Ubuntu 22.04 setup<br>"
             "✔ Milvus vector database deployment<br>"
@@ -355,7 +355,8 @@ class IntroPage(QtWidgets.QWizardPage):
         
         req_label = QtWidgets.QLabel(
             "<b>System Requirements:</b><br>"
-            "• Anaconda or Miniconda (REQUIRED – must be pre-installed)<br>"
+            "• Python 3.12 or higher<br>"
+            "• All Python packages are compatible with Python version 3.9 or higher, but the MCP package requires Python 3.12. Therefore, the minimum requirement is Python 3.12.<br>"
             "• 20 GB free disk space (containers & dependencies)<br>"
             "• 8 GB RAM or more recommended"
         )
@@ -365,16 +366,11 @@ class IntroPage(QtWidgets.QWizardPage):
         before_group = QtWidgets.QGroupBox("Before Starting")
         before_layout = QtWidgets.QVBoxLayout(before_group)
         
-        # Create a label with larger, red text for the Anaconda notice
-        anaconda_label = QtWidgets.QLabel("⚠ <b>Please ensure Anaconda or Miniconda is installed before proceeding.</b>")
-        anaconda_label.setStyleSheet("color: red;")
-        anaconda_label.setWordWrap(True)
-        before_layout.addWidget(anaconda_label)
-        
-        # Add the path environment variable instruction
-        path_var_label = QtWidgets.QLabel("While installing, make sure to select the path environment variable option.")
-        path_var_label.setWordWrap(True)
-        before_layout.addWidget(path_var_label)
+        # Create a label with important notice
+        python_label = QtWidgets.QLabel("⚠ <b>Please ensure Python 3.12 or higher is installed and added to PATH.</b>")
+        python_label.setStyleSheet("color: red;")
+        python_label.setWordWrap(True)
+        before_layout.addWidget(python_label)
         
         layout.addWidget(welcome_label)
         layout.addWidget(desc_label)
@@ -485,7 +481,7 @@ class SummaryPage(QtWidgets.QWizardPage):
         components_label = QtWidgets.QLabel(
             "<b>Components to install:</b><br>"
             "• Repository cloning (GitHub)<br>"
-            "• Python dependencies (Conda & pip)<br>"
+            "• Python dependencies (pip)<br>"
             "• Podman container runtime<br>"
             "• WSL 2 and Ubuntu 22.04<br>"
             "• Milvus vector database (via Podman)<br>"
@@ -576,7 +572,7 @@ class FinalPage(QtWidgets.QWizardPage):
         # First paragraph: Basic information
         status_label = QtWidgets.QLabel(
             "A cmd window should have popped up.\n"
-            "This launches the Milvus server, which takes about 5 minutes.\n"
+            "This launches the Milvus server, which takes about 5~10 minutes.\n"
             "You need to keep this window open; otherwise, the server will close."
         )
         status_label.setWordWrap(True)

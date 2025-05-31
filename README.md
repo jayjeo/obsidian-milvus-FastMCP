@@ -53,7 +53,7 @@
 
 ## 📋 Requirements
 
-- **Python 3.8+**
+- **Python 3.12+** (All Python packages are compatible with Python version 3.9 or higher, but the MCP package requires Python 3.12. Therefore, the minimum requirement is Python 3.12.)
 - **Podman** (for Milvus containers)
 - **CUDA-compatible GPU** (optional, for acceleration)
 - **Obsidian vault** with markdown files
@@ -61,7 +61,7 @@
 ## 🔧 Installation
 ### Recommended Installation
 
-1. Make sure git and anaconda (or miniconda) is installed
+1. Make sure git is installed
 
 2. Download an installer from [here](https://www.dropbox.com/scl/fo/l4qtgiuajhrcqk6ejatdt/ANv-uIw78Q9hvbUzp5FEWHM?rlkey=8apdv9cwzptivbjaat39uwcfp&st=9esvs2et), and run it
    
@@ -87,12 +87,14 @@
    
 2. **Clone the repository**
    ```bash
+   cd to the parent folder of your desired directory 
+   For example, if your deired location is `G:\JJ Dropbox\J J\PythonWorks\milvus\obsidian-milvus-FastMCP`
+   Then cd "G:\JJ Dropbox\J J\PythonWorks\milvus"
    git clone https://github.com/jayjeo/obsidian-milvus-FastMCP
    cd obsidian-milvus-fastmcp
    ```
 
 3. **Install dependencies**
-   - Install conda([anaconda](https://www.anaconda.com/download))
    - Do the following:
 
     ```bash
