@@ -547,23 +547,16 @@ async def batch_search_with_pagination(
     query: str,
     page_size: int = 200,
     max_pages: Optional[int] = None,
-    search_mode: str = "hybrid",
-    ctx = None
+    search_mode: str = "hybrid"
 ) -> Dict[str, Any]:
     """페이지네이션 방식으로 배치 검색 수행"""
     global search_engine, milvus_manager
     
     if not search_engine or not milvus_manager:
-        if ctx:
-            await ctx.info("Error: Required components not initialized.")
         return {"error": "Required components not initialized.", "query": query}
     
     try:
         start_time = time.time()
-        
-        if ctx:
-            await ctx.info(f"Starting batch search with pagination for query: '{query}'")
-            
         total_entities = milvus_manager.count_entities()
         max_possible_pages = math.ceil(total_entities / page_size)
         
@@ -643,14 +636,8 @@ async def batch_search_with_pagination(
                 all_results.extend(page_matches)
                 
                 safe_print(f"📄 Page {page + 1}/{max_pages}: {len(page_matches)} matches found")
-                
-                if ctx:
-                    await ctx.info(f"Processed page {page + 1}/{max_pages}: found {len(page_matches)} matches")
-                
             except Exception as page_error:
                 logger.error(f"Page {page + 1} processing error: {page_error}")
-                if ctx:
-                    await ctx.info(f"Error processing page {page + 1}: {str(page_error)}")
                 continue
         
         # 전체 결과 재정렬
@@ -689,8 +676,7 @@ async def intelligent_search_enhanced(
     time_awareness: bool = False,
     similarity_threshold: float = 0.7,
     limit: Optional[int] = None,  # None means comprehensive search
-    enable_full_search: bool = False,
-    ctx = None
+    enable_full_search: bool = False
 ) -> Dict[str, Any]:
     """고도로 향상된 지능형 검색 (전체 검색 지원)"""
     global rag_engine, enhanced_search, milvus_manager
@@ -700,8 +686,6 @@ async def intelligent_search_enhanced(
     
     try:
         start_time = time.time()
-        if ctx:
-            await ctx.info(f"Starting intelligent search enhanced for query: '{query}'")
         
         # 자동 모드인 경우 쿼리 분석으로 전략 결정
         if search_strategy == "auto":
@@ -710,36 +694,26 @@ async def intelligent_search_enhanced(
                 search_strategy = analysis["recommended_strategy"]
                 if search_strategy == "keyword":
                     search_strategy = "adaptive"  # 키워드 -> 적응적 검색
-                if ctx:
-                    await ctx.info(f"Auto strategy selection: '{search_strategy}'")
+
             except Exception as strategy_error:
                 logger.warning(f"Auto strategy selection failed: {strategy_error}, falling back to 'adaptive'")
-                if ctx:
-                    await ctx.info(f"Auto strategy selection error: {str(strategy_error)}, using 'adaptive' strategy")
                 search_strategy = "adaptive"  # 오류 발생 시 적응적 검색으로 기본 설정
         
         # limit 자동 결정
         if limit is None:
             if enable_full_search:
                 # 전체 검색 모드
-                if ctx:
-                    await ctx.info("Using comprehensive search mode")
                 return await comprehensive_search_all(
                     query=query,
                     include_similarity_scores=True,
-                    similarity_threshold=similarity_threshold,
-                    ctx=ctx
+                    similarity_threshold=similarity_threshold
                 )
             else:
                 # 기본 limit 설정
                 limit = 300
-                if ctx:
-                    await ctx.info(f"Using default limit: {limit}")
         
         # 전략별 검색 수행
         results: List[Dict[str, Any]] = []
-        if ctx:
-            await ctx.info(f"Executing search with strategy: {search_strategy}")
         
         try:
             if search_strategy == "adaptive":
@@ -756,18 +730,12 @@ async def intelligent_search_enhanced(
                 
             # 검색 결과 유효성 확인
             if results is None:
-                if ctx:
-                    await ctx.info("Warning: Search returned None results, using empty list")
                 results = []
                 
             # 결과가 비어있는지 확인
             if len(results) == 0:
-                if ctx:
-                    await ctx.info(f"No results found with {search_strategy} strategy, trying fallback strategy")
                 # 대체 전략 시도
                 fallback_strategy = "semantic" if search_strategy != "semantic" else "hybrid"
-                if ctx:
-                    await ctx.info(f"Using fallback strategy: {fallback_strategy}")
                 try:
                     if fallback_strategy == "semantic":
                         results = await enhanced_search.semantic_similarity_search(query, similarity_threshold=similarity_threshold, limit=limit)
@@ -777,8 +745,6 @@ async def intelligent_search_enhanced(
                         results = fallback_results
                 except Exception as fallback_error:
                     logger.warning(f"Fallback search strategy failed: {fallback_error}")
-                    if ctx:
-                        await ctx.info(f"Fallback search strategy failed: {str(fallback_error)}")
                         
             # 결과에서 비어있는 필드 가진 항목 필터링
             valid_results = []
@@ -795,31 +761,19 @@ async def intelligent_search_enhanced(
                 else:
                     empty_count += 1
             
-            if empty_count > 0 and ctx:
-                await ctx.info(f"Filtered out {empty_count} empty results")
-                
             results = valid_results
                 
         except Exception as search_error:
             logger.error(f"Search execution error: {search_error}")
-            if ctx:
-                await ctx.info(f"Search error: {str(search_error)}, trying simple search as fallback")
             # 오류 발생 시 기본 검색 시도
             try:
                 results, _ = await search_engine.hybrid_search(query=query, limit=limit)
             except Exception as basic_error:
                 logger.error(f"Basic fallback search failed: {basic_error}")
-                if ctx:
-                    await ctx.info(f"All search attempts failed. Last error: {str(basic_error)}")
                 results = []
-        
-        if ctx:
-            await ctx.info(f"Initial search found {len(results) if isinstance(results, list) else 'complex'} results")
         
         # 시간 인식 검색 적용
         if time_awareness and isinstance(results, list):
-            if ctx:
-                await ctx.info("Applying temporal awareness to results")
             results = await rag_engine.temporal_aware_retrieval(query, time_weight=0.3)
         
         # 결과 처리
@@ -834,7 +788,7 @@ async def intelligent_search_enhanced(
         if context_expansion:
             try:
                 if isinstance(results, list) and results:
-                    await ctx.info("Expanding context for top results")
+                    # 상위 결과에 대한 컨텍스트 확장
                     context_docs = [r.get('id') for r in results[:5] if r.get('id')]
                     if context_docs:
                         expanded_results = await enhanced_search.contextual_search(
@@ -842,12 +796,8 @@ async def intelligent_search_enhanced(
                         )
             except Exception as e:
                 logger.error(f"Context expansion error: {e}")
-                if ctx:
-                    await ctx.info(f"Context expansion failed: {e}")
         
         search_time = time.time() - start_time
-        if ctx:
-            await ctx.info(f"Search completed in {round(search_time * 1000, 2)}ms")
         
         return {
             "query": query,
@@ -882,47 +832,31 @@ async def search_documents(
     search_type: str = "hybrid",
     file_types: Optional[List[str]] = None,
     tags: Optional[List[str]] = None,
-    enable_comprehensive: bool = False,  # 전체 검색 모드
-    ctx = None
+    enable_comprehensive: bool = False  # 전체 검색 모드
 ) -> Dict[str, Any]:
     """향상된 Obsidian 문서 검색 (기본 limit 증가, 전체 검색 지원)"""
     global search_engine
     
     if not search_engine:
-        if ctx:
-            await ctx.info("Error: Search engine not initialized.")
         return {"error": "Search engine not initialized.", "query": query, "results": []}
     
     try:
         start_time = time.time()
         
-        if ctx:
-            await ctx.info(f"Starting document search for query: '{query}'")
-        
         # 전체 검색 모드인 경우
         if enable_comprehensive:
-            if ctx:
-                await ctx.info("Using comprehensive search mode")
             return await comprehensive_search_all(
                 query=query,
                 include_similarity_scores=True,
-                similarity_threshold=0.3,
-                ctx=ctx
+                similarity_threshold=0.3
             )
         
         # 필터 파라미터 구성
         filter_params = {}
         if file_types:
             filter_params['file_types'] = file_types
-            if ctx:
-                await ctx.info(f"Filtering by file types: {file_types}")
         if tags:
             filter_params['tags'] = tags
-            if ctx:
-                await ctx.info(f"Filtering by tags: {tags}")
-        
-        if ctx:
-            await ctx.info(f"Using search type: {search_type} with limit: {limit}")
         
         # 검색 수행
         if search_type == "hybrid" or search_type == "vector":
@@ -934,9 +868,6 @@ async def search_documents(
                 query=query, limit=limit, filter_expr=filter_params.get('filter_expr') if filter_params else None
             )
             search_info = {"query": query, "search_type": "keyword_only", "total_count": len(results)}
-            
-        if ctx:
-            await ctx.info(f"Search found {len(results)} documents")
         
         # 결과 포맷팅
         formatted_results = []
@@ -972,13 +903,8 @@ async def search_documents(
                 "source": result.get("source", "unknown")
             }
             formatted_results.append(formatted_result)
-            
-        if ctx and empty_result_count > 0:
-            await ctx.info(f"Warning: {empty_result_count} results were skipped because they had empty path, title and content")
-            
+        
         if valid_result_count == 0 and empty_result_count > 0:
-            if ctx:
-                await ctx.info("Warning: All search results had empty critical fields - check database integrity")
             logger.warning(f"Search for '{query}' returned {empty_result_count} empty results with no valid data")
         
         search_time = time.time() - start_time
@@ -1080,8 +1006,6 @@ async def intelligent_search(
     except Exception as e:
         logger.error(f"Intelligent search error: {e}")
         logger.error(f"Batch search error: {e}")
-        if ctx:
-            await ctx.info(f"Error during batch search: {str(e)}")
         return {"error": str(e), "query": query}
 
 @mcp.tool()
@@ -1209,22 +1133,16 @@ async def knowledge_graph_exploration(
     starting_document: str,
     exploration_depth: int = 2,
     similarity_threshold: float = 0.75,
-    max_connections: int = 200,  # 기본값 50 -> 200으로 증가
-    ctx = None
+    max_connections: int = 200  # 기본값 50 -> 200으로 증가
 ) -> Dict[str, Any]:
     """Milvus 기반 지식 그래프 탐색 (연결 수 증가)"""
     global milvus_manager
     
     if not milvus_manager:
-        if ctx:
-            await ctx.info("Error: Milvus manager not initialized.")
         return {"error": "Milvus manager not initialized.", "starting_document": starting_document}
     
     try:
         start_time = time.time()
-        
-        if ctx:
-            await ctx.info(f"Starting knowledge graph exploration from document: {starting_document}")
         
         start_docs = milvus_manager.query(
             expr=f'path == "{starting_document}"',
@@ -1233,8 +1151,6 @@ async def knowledge_graph_exploration(
         )
         
         if not start_docs:
-            if ctx:
-                await ctx.info(f"Error: Starting document not found: {starting_document}")
             return {"error": f"Starting document not found: {starting_document}"}
         
         start_doc = start_docs[0]
@@ -1249,9 +1165,6 @@ async def knowledge_graph_exploration(
         explored_nodes = {start_doc.get("id", 0)}
         
         for depth in range(1, exploration_depth + 1):
-            if ctx:
-                await ctx.info(f"Exploring depth level {depth}/{exploration_depth}, current nodes: {len(knowledge_graph['nodes'])}")
-                
             next_level_nodes = []
             
             for node_id in current_level_nodes:
@@ -1289,8 +1202,6 @@ async def knowledge_graph_exploration(
                             
                 except Exception as e:
                     logger.error(f"Node {node_id} exploration error: {e}")
-                    if ctx:
-                        await ctx.info(f"Error exploring node {node_id}: {str(e)}")
                     continue
             
             current_level_nodes = next_level_nodes
@@ -1301,9 +1212,6 @@ async def knowledge_graph_exploration(
         knowledge_graph["clusters"] = clusters
         
         search_time = time.time() - start_time
-        
-        if ctx:
-            await ctx.info(f"Knowledge graph exploration completed in {round(search_time * 1000, 2)}ms, found {len(knowledge_graph['nodes'])} nodes and {len(knowledge_graph['edges'])} connections")
         
         return {
             "starting_document": starting_document,
@@ -1321,32 +1229,20 @@ async def knowledge_graph_exploration(
         
     except Exception as e:
         logger.error(f"Knowledge graph exploration error: {e}")
-        if ctx:
-            await ctx.info(f"Error during knowledge graph exploration: {str(e)}")
         return {"error": str(e), "starting_document": starting_document}
 
 @mcp.tool()
-async def performance_optimization_analysis(ctx = None) -> Dict[str, Any]:
+async def performance_optimization_analysis() -> Dict[str, Any]:
     """Milvus 성능 최적화 분석 및 권장사항"""
     global hnsw_optimizer, enhanced_search
     
-    if ctx:
-        await ctx.info("Starting Milvus performance optimization analysis...")
-    
     if not hnsw_optimizer:
-        if ctx:
-            await ctx.info("Error: HNSW optimizer not initialized.")
         return {"error": "HNSW optimizer not initialized."}
     
     try:
         start_time = time.time()
         
-        if ctx:
-            await ctx.info("Analyzing index performance...")
         performance_metrics = hnsw_optimizer.index_performance_monitoring()
-        
-        if ctx:
-            await ctx.info("Running search performance benchmark...")
             
         # benchmark_search_performance 메서드가 없는 문제 해결
         benchmark_results = {}
@@ -1356,8 +1252,6 @@ async def performance_optimization_analysis(ctx = None) -> Dict[str, Any]:
                 benchmark_results = hnsw_optimizer.benchmark_search_performance(test_queries=5)
             else:
                 # 메서드가 없으면 기본 벤치마크 결과 생성
-                if ctx:
-                    await ctx.info("Warning: benchmark_search_performance method not available, using default metrics")
                 benchmark_results = {
                     "avg_query_time_ms": 120.5,
                     "throughput_qps": 8.3,
@@ -1368,8 +1262,6 @@ async def performance_optimization_analysis(ctx = None) -> Dict[str, Any]:
                 }
         except Exception as bench_error:
             logger.warning(f"Benchmark error: {bench_error}, using default metrics")
-            if ctx:
-                await ctx.info(f"Benchmark error: {str(bench_error)}, using default metrics")
             benchmark_results = {
                 "avg_query_time_ms": 150.2,
                 "throughput_qps": 6.7,
@@ -1418,9 +1310,6 @@ async def performance_optimization_analysis(ctx = None) -> Dict[str, Any]:
         
         analysis_time = time.time() - start_time
         
-        if ctx:
-            await ctx.info("Analysis complete, preparing results...")
-            
         return {
             "performance_metrics": performance_metrics,
             "benchmark_results": benchmark_results,
@@ -1440,8 +1329,6 @@ async def performance_optimization_analysis(ctx = None) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"성능 분석 오류: {e}")
-        if ctx:
-            await ctx.info(f"Error during performance analysis: {str(e)}")
         return {"error": str(e)}
 
 @mcp.tool()
@@ -1451,19 +1338,13 @@ async def milvus_power_search(
     gpu_acceleration: bool = True,
     similarity_threshold: float = 0.7,
     metadata_filters: Optional[Dict[str, Any]] = None,
-    limit: int = 300,  # 기본값 50 -> 300으로 증가
-    ctx = None
+    limit: int = 300  # 기본값 50 -> 300으로 증가
 ) -> Dict[str, Any]:
     """Milvus의 모든 최적화 기능을 활용한 파워 검색 (limit 증가)"""
     global search_engine, milvus_manager
     
     if not search_engine or not milvus_manager:
-        if ctx:
-            await ctx.info("Error: Required components not initialized.")
         return {"error": "Required components not initialized."}
-        
-    if ctx:
-        await ctx.info(f"Starting power search with mode: {search_mode}, query: {query}")
     
     try:
         start_time = time.time()
@@ -1481,9 +1362,6 @@ async def milvus_power_search(
                 search_mode = "balanced"  
             else:
                 search_mode = "precise"
-                
-            if ctx:
-                await ctx.info(f"Adaptive mode selected based on query complexity: {search_mode}")
         
         mode_configs = {
             "fast": {"ef": 64, "nprobe": 8},
@@ -1526,9 +1404,6 @@ async def milvus_power_search(
                 filter_expr = " and ".join(filter_parts)
         
         # 최적화된 검색 수행
-        if ctx:
-            await ctx.info("Executing optimized search...")
-            
         if hasattr(milvus_manager, 'search_with_params'):
             raw_results = milvus_manager.search_with_params(
                 vector=query_vector,
@@ -1538,8 +1413,6 @@ async def milvus_power_search(
             )
         else:
             # 폴백: 기본 검색
-            if ctx:
-                await ctx.info("Using fallback basic search method...")
             raw_results = milvus_manager.search(query_vector, limit * 2, filter_expr)
         
         # 결과 후처리 및 순위 조정
@@ -1594,28 +1467,18 @@ async def milvus_power_search(
         
     except Exception as e:
         logger.error(f"Optimized search error: {e}")
-        if ctx:
-            await ctx.info(f"Error during optimized search: {str(e)}")
         return {"error": str(e), "query": query}
 
 @mcp.tool()
-async def milvus_system_optimization_report(ctx = None) -> Dict[str, Any]:
+async def milvus_system_optimization_report() -> Dict[str, Any]:
     """Milvus 시스템 최적화 상태 종합 보고서"""
     global milvus_manager
     
-    if ctx:
-        await ctx.info("Generating Milvus system optimization report...")
-    
     if not milvus_manager:
-        if ctx:
-            await ctx.info("Error: Milvus manager not initialized.")
         return {"error": "Milvus manager not initialized."}
     
     try:
         # 기본 통계
-        if ctx:
-            await ctx.info("Gathering system statistics...")
-            
         if hasattr(milvus_manager, 'get_performance_stats'):
             stats = milvus_manager.get_performance_stats()
         else:
@@ -1625,9 +1488,6 @@ async def milvus_system_optimization_report(ctx = None) -> Dict[str, Any]:
             }
         
         # 성능 벤치마크
-        if ctx:
-            await ctx.info("Running performance benchmarks...")
-            
         if hasattr(milvus_manager, 'benchmark_search_strategies'):
             benchmark = milvus_manager.benchmark_search_strategies(test_queries=3)
         else:
@@ -1709,8 +1569,7 @@ async def milvus_system_optimization_report(ctx = None) -> Dict[str, Any]:
             score += 5  # 향상된 limit 지원
             return min(score, 100)
         
-        if ctx:
-            await ctx.info("Report generation complete, preparing results...")
+        # 보고서 생성 완료
             
         return {
             "system_statistics": stats,
@@ -1746,8 +1605,6 @@ async def milvus_system_optimization_report(ctx = None) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Optimization report generation error: {e}")
-        if ctx:
-            await ctx.info(f"Error generating optimization report: {str(e)}")
         return {"error": str(e)}
 
 @mcp.tool()
@@ -1755,23 +1612,18 @@ async def milvus_knowledge_graph_builder(
     starting_document: str,
     max_depth: int = 3,
     similarity_threshold: float = 0.8,
-    max_nodes: int = 250,  # 기본값 50 -> 250으로 증가
-    ctx = None
+    max_nodes: int = 250  # 기본값 50 -> 250으로 증가
 ) -> Dict[str, Any]:
     """Milvus 벡터 유사도 기반 지식 그래프 구축 (노드 수 증가)"""
     global milvus_manager
     
     if not milvus_manager:
-        if ctx:
-            await ctx.info("Error: Milvus manager not initialized.")
         return {"error": "Milvus manager not initialized."}
     
     try:
         start_time = time.time()
         
         # 시작 문서 조회
-        if ctx:
-            await ctx.info("Finding starting document...")
         
         # 다양한 방법으로 문서 검색 시도
         search_attempts = [
@@ -1788,9 +1640,6 @@ async def milvus_knowledge_graph_builder(
         start_results = None
         for attempt, expr in enumerate(search_attempts):
             try:
-                if ctx:
-                    await ctx.info(f"Search attempt {attempt+1}: {expr}")
-                
                 results = milvus_manager.query(
                     expr=expr,
                     output_fields=["id", "path", "title", "chunk_text"],
@@ -1798,21 +1647,15 @@ async def milvus_knowledge_graph_builder(
                 )
                 
                 if results and len(results) > 0:
-                    if ctx:
-                        await ctx.info(f"Found document with expression: {expr}")
                     start_results = results
                     break
             except Exception as search_error:
                 logger.warning(f"Search attempt {attempt+1} failed: {search_error}")
-                if ctx:
-                    await ctx.info(f"Search attempt {attempt+1} failed: {str(search_error)}")
                 continue
         
         if not start_results:
             # 마지막 시도: 전체 검색으로 최적 후보 찾기
             try:
-                if ctx:
-                    await ctx.info("Final attempt: performing full collection scan")
                 all_docs = milvus_manager.query(
                     expr="",  # 빈 표현식으로 모든 문서 검색
                     output_fields=["id", "path", "title"],
@@ -1838,25 +1681,16 @@ async def milvus_knowledge_graph_builder(
                         best_match = doc
                 
                 if best_score > 0.5 and best_match:  # 임계값 이상이면 사용
-                    if ctx:
-                        await ctx.info(f"Found best match with similarity score {best_score:.2f}: {best_match.get('path', '')}")
                     start_results = [best_match]
             except Exception as full_search_error:
                 logger.error(f"Full collection search error: {full_search_error}")
-                if ctx:
-                    await ctx.info(f"Full collection search failed: {str(full_search_error)}")
         
         if not start_results:
-            if ctx:
-                await ctx.info(f"Error: Starting document not found after multiple attempts: {starting_document}")
             return {"error": f"Starting document not found: {starting_document}", "attempted_searches": search_attempts}
         
         start_doc = start_results[0]
         
         # 고급 지식 그래프 구축 함수 사용
-        if ctx:
-            await ctx.info(f"Building knowledge graph with max depth {max_depth}...")
-            
         if hasattr(milvus_manager, 'build_knowledge_graph'):
             graph = milvus_manager.build_knowledge_graph(
                 start_doc_id=start_doc["id"],
@@ -1865,9 +1699,6 @@ async def milvus_knowledge_graph_builder(
             )
         else:
             # 폴백: 기본 그래프 구축
-            if ctx:
-                await ctx.info("Using fallback basic graph building method...")
-                
             graph = {
                 "nodes": [{"id": start_doc["id"], "title": start_doc["title"], "path": start_doc["path"], "depth": 0}],
                 "edges": [],
@@ -1884,9 +1715,6 @@ async def milvus_knowledge_graph_builder(
         
         build_time = time.time() - start_time
         
-        if ctx:
-            await ctx.info(f"Knowledge graph built with {len(graph['nodes'])} nodes and {len(graph['edges'])} connections")
-            
         return {
             "starting_document": starting_document,
             "knowledge_graph": graph,
@@ -1908,27 +1736,17 @@ async def milvus_knowledge_graph_builder(
         
     except Exception as e:
         logger.error(f"Knowledge graph construction error: {e}")
-        if ctx:
-            await ctx.info(f"Error building knowledge graph: {str(e)}")
         return {"error": str(e), "starting_document": starting_document}
 
 @mcp.tool()
-async def get_document_content(file_path: str, ctx = None) -> Dict[str, Any]:
+async def get_document_content(file_path: str) -> Dict[str, Any]:
     """특정 문서의 전체 내용을 가져옵니다."""
     global milvus_manager
     
-    if ctx:
-        await ctx.info(f"Retrieving content for document: {file_path}")
-    
     if not milvus_manager:
-        if ctx:
-            await ctx.info("Error: Milvus manager not initialized.")
         return {"error": "Milvus manager not initialized.", "file_path": file_path}
     
     try:
-        if ctx:
-            await ctx.info("Querying document chunks...")
-            
         results = milvus_manager.query(
             expr=f'path == "{file_path}"',
             output_fields=["id", "path", "title", "content", "chunk_text", "file_type", "tags", "created_at", "updated_at", "chunk_index"],
@@ -1936,8 +1754,6 @@ async def get_document_content(file_path: str, ctx = None) -> Dict[str, Any]:
         )
         
         if not results:
-            if ctx:
-                await ctx.info(f"Error: Document not found: {file_path}")
             return {"error": f"Document not found: {file_path}", "file_path": file_path}
         
         first_result = results[0]
@@ -1955,8 +1771,7 @@ async def get_document_content(file_path: str, ctx = None) -> Dict[str, Any]:
         if not full_content:
             full_content = "\n\n".join([chunk["chunk_text"] for chunk in all_chunks])
         
-        if ctx:
-            await ctx.info(f"Retrieved document with {len(all_chunks)} chunks, preparing results...")
+        # 결과 반환 준비
             
         return {
             "file_path": file_path,
@@ -1975,29 +1790,21 @@ async def get_document_content(file_path: str, ctx = None) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Document content retrieval error: {e}")
-        if ctx:
-            await ctx.info(f"Error retrieving document content: {str(e)}")
         return {"error": f"Document retrieval error: {str(e)}", "file_path": file_path}
 
 @mcp.tool()
 async def get_similar_documents(
     file_path: str, 
-    limit: int = 250,  # 기본값 50 -> 250으로 증가
-    ctx = None
+    limit: int = 250  # 기본값 50 -> 250으로 증가
 ) -> Dict[str, Any]:
     """지정된 문서와 유사한 문서들을 찾기 (limit 증가)"""
     global milvus_manager, enhanced_search
     
     if not milvus_manager or not enhanced_search:
-        if ctx:
-            await ctx.info("Error: Required components not initialized.")
         return {"error": "Required components not initialized.", "file_path": file_path}
     
     try:
         start_time = time.time()
-        
-        if ctx:
-            await ctx.info(f"Finding similar documents to: {file_path}")
         
         base_docs = milvus_manager.query(
             expr=f'path == "{file_path}"',
@@ -2006,8 +1813,6 @@ async def get_similar_documents(
         )
         
         if not base_docs:
-            if ctx:
-                await ctx.info(f"Error: Base document not found: {file_path}")
             return {"error": f"Base document not found: {file_path}", "file_path": file_path}
         
         base_doc = base_docs[0]
@@ -2024,8 +1829,6 @@ async def get_similar_documents(
                     results, search_info = search_engine.hybrid_search(query=search_query, limit=limit + 10)
                 else:
                     logger.error("Both enhanced_search and search_engine are not available")
-                    if ctx:
-                        await ctx.info("Error: Search engines not available")
                     return {"error": "Search engines not available", "file_path": file_path}
         except Exception as search_error:
             logger.warning(f"Error using enhanced search: {search_error}, falling back to standard search engine")
@@ -2033,8 +1836,6 @@ async def get_similar_documents(
                 results, search_info = search_engine.hybrid_search(query=search_query, limit=limit + 10)
             else:
                 logger.error("Standard search engine is not available as fallback")
-                if ctx:
-                    await ctx.info(f"Error: Search error: {search_error}")
                 return {"error": f"Search error: {search_error}", "file_path": file_path}
             
         results = results or []
@@ -2061,8 +1862,6 @@ async def get_similar_documents(
         
     except Exception as e:
         logger.error(f"Similar document search error: {e}")
-        if ctx:
-            await ctx.info(f"Error: Similar document search error: {str(e)}")
         return {"error": f"Similar document search error: {str(e)}", "file_path": file_path}
 
 # ==================== 헬퍼 함수들 ====================
