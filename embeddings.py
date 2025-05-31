@@ -35,6 +35,7 @@ import threading
 import logging
 import warnings
 import re
+from logging.handlers import RotatingFileHandler
 
 # Additional warning suppression
 warnings.filterwarnings('ignore', category=FutureWarning)
@@ -42,9 +43,55 @@ warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', module='huggingface_hub')
 warnings.filterwarnings('ignore', module='transformers')
 
-# Set up logging
+# Set up main logging
 logging.basicConfig(level=getattr(logging, config.LOG_LEVEL if hasattr(config, 'LOG_LEVEL') else 'WARNING'),
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# Set up document embedding status logger
+embedding_status_logger = logging.getLogger('document_embedding_status')
+embedding_status_logger.setLevel(logging.INFO)
+embedding_status_logger.propagate = False  # Don't propagate to root logger
+
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
+
+# Create a file handler for embedding status
+status_handler = RotatingFileHandler(
+    'logs/document_embedding_status.log',
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5
+)
+status_handler.setLevel(logging.INFO)
+
+# Create a simple formatter that only includes the message
+status_formatter = logging.Formatter('%(message)s')
+status_handler.setFormatter(status_formatter)
+
+# Add the handler to the logger
+embedding_status_logger.addHandler(status_handler)
+
+# Document embedding status tracking function
+def log_document_embedding_status(document_name, status, reason=None):
+    """
+    Log the embedding status of a document to a dedicated log file.
+    
+    Args:
+        document_name (str): Name of the document being embedded
+        status (str): Status of embedding - 'Success', 'Fail', or 'Partial Success'
+        reason (str, optional): Reason for failure or partial success
+    """
+    if status not in ['Success', 'Fail', 'Partial Success']:
+        status = 'Unknown'  # Fallback for invalid status
+        
+    # Format the log message
+    log_message = f"{document_name} // {status}"
+    
+    # Add reason if provided
+    if reason and status in ['Fail', 'Partial Success']:
+        log_message += f" // {reason}"
+    
+    # Log the message
+    embedding_status_logger.info(log_message)
 
 class HardwareProfiler:
     """Enhanced hardware detection and profiling system for automatic optimization"""

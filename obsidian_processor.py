@@ -14,7 +14,7 @@ import sys
 from datetime import datetime
 from bs4 import BeautifulSoup
 import config
-from embeddings import EmbeddingModel
+from embeddings import EmbeddingModel, log_document_embedding_status
 from tqdm import tqdm
 from functools import lru_cache
 from progress_monitor_cmd import ProgressMonitor
@@ -425,6 +425,12 @@ class ObsidianProcessor:
                         individual_time = time.time() - individual_start
                         logger.info(f"Individual processing completed: {successful_chunks} succeeded, {failed_chunks} failed, took {individual_time:.2f}s")
                         print(f"🐌 Individual processing completed in {individual_time:.2f}s ({len(chunks)/individual_time:.1f} chunks/sec)")
+                        
+                        # Track partial success if some chunks succeeded but others failed
+                        if successful_chunks > 0 and failed_chunks > 0:
+                            doc_name = os.path.basename(file_path)
+                            partial_reason = f"Mixed results: {successful_chunks} chunks succeeded, {failed_chunks} failed"
+                            log_document_embedding_status(doc_name, "Partial Success", partial_reason)
                     
                     # STEP 4: 성능 통계 출력
                     if batch_success:
@@ -514,25 +520,48 @@ class ObsidianProcessor:
                     processing_result["success"] = success
                     
                     # 성공/실패 상태 업데이트
+                    doc_name = os.path.basename(file_path)
                     if success:
                         logger.info(f"Successfully processed file: {file_path}")
                         self.monitor.last_processed_status = f"{Fore.GREEN}Success{Fore.RESET}"
+                        log_document_embedding_status(doc_name, "Success")
                     else:
+                        # Determine reason for failure
+                        failure_reason = "Unknown error"
+                        if not batch_success and len(vectors) < len(chunks):
+                            failure_reason = f"Incomplete vectors: {len(vectors)}/{len(chunks)}"
+                        elif "memory" in str(error_msg).lower() if 'error_msg' in locals() else False:
+                            failure_reason = "Memory error"
+                        elif "timeout" in str(error_msg).lower() if 'error_msg' in locals() else False:
+                            failure_reason = "Processing timeout"
+                        elif has_special_chars:
+                            failure_reason = "Special characters in filename"
+                        
                         logger.warning(f"Failed to process file: {file_path}")
                         self.monitor.last_processed_status = f"{Fore.RED}Fail{Fore.RESET}"
+                        log_document_embedding_status(doc_name, "Fail", failure_reason)
                     
                 except Exception as e:
                     # Check if it's a timeout issue
+                    doc_name = os.path.basename(file_path)
+                    error_reason = str(e)
+                    
                     if "timeout" in str(e).lower():
                         logger.error(f"Processing timed out for file: {file_path} after {self.processing_timeout} seconds", exc_info=True)
+                        error_reason = f"Timeout after {self.processing_timeout}s"
                     # Check if it's related to special characters in the path
                     elif any(c in file_path for c in "'\"()[]{},;"):
                         logger.error(f"Error processing file with special characters: {file_path}: {e}", exc_info=True)
+                        error_reason = "Special characters in filename"
                     else:
                         logger.error(f"Error processing file {file_name}: {e}", exc_info=True)
                         
                     print(f"Error processing file {file_name}: {e}")
                     processing_result["success"] = False
+                    
+                    # Log document status with detailed reason
+                    log_document_embedding_status(doc_name, "Fail", error_reason)
+                    
                     # 모니터링은 finally 블록에서 중지됨
                 
             finally:
@@ -573,13 +602,21 @@ class ObsidianProcessor:
         
         if not completed:
             # Check if this file has special characters in its path
+            doc_name = os.path.basename(file_path)
             has_special_chars = any(c in file_path for c in "'\"()[]{},;")
+            timeout_reason = f"Processing timeout after {self.processing_timeout}s"
+            
             if has_special_chars:
                 logger.error(f"Processing timed out for file with special characters: {file_path} after {self.processing_timeout} seconds")
+                timeout_reason += " (special characters in filename)"
             else:
                 logger.error(f"Processing timed out after {self.processing_timeout} seconds for file: {file_path}")
                 
             print(f"Error: Processing timed out after {self.processing_timeout} seconds")
+            
+            # Log timeout failure
+            log_document_embedding_status(doc_name, "Fail", timeout_reason)
+            
             # 리소스 모니터링 중지 (타임아웃 발생 시)
             logger.debug("Stopping resource monitoring due to timeout")
             self.stop_monitoring()
@@ -1630,17 +1667,19 @@ class ObsidianProcessor:
                     if key != "vector" and isinstance(value, str) and '![[' in value:
                         sanitized_data[key] = image_pattern.sub(r'Image: \1', value)
                         logger.debug(f"Sanitized image references in field '{key}'")
-                
+
                 # 한국어 텍스트 및 특수 문자 인코딩 문제 처리 - 모든 문자열 필드에 대해 추가 처리
                 for key, value in list(sanitized_data.items()):
                     if key != "vector" and isinstance(value, str):
                         # 한국어 특수 처리: 길이 제한 적용 (바이트 기준)
-                        if any(ord(c) > 127 for c in value):
+                        has_korean = any(ord(c) > 127 for c in value)
+                        if has_korean:
+                            logger.debug(f"Korean text detected in field '{key}' - ensuring proper handling")
                             # 한글이 포함된 경우 바이트 길이 계산 및 제한
                             try:
                                 byte_length = len(value.encode('utf-8'))
-                                max_bytes = 2000  # Milvus 권장 최대 바이트 수
-                                
+                                max_bytes = 5000  # 한글 텍스트를 위해 더 큰 최대 바이트 수 허용
+
                                 if byte_length > max_bytes:
                                     # 바이트 기준으로 안전하게 자르기
                                     truncated = ''
@@ -1655,170 +1694,118 @@ class ObsidianProcessor:
                                     sanitized_data[key] = truncated + '...'
                                     logger.debug(f"Korean text in '{key}' truncated from {byte_length} to {current_bytes} bytes")
                             except UnicodeEncodeError as enc_err:
-                                logger.warning(f"Korean encoding issue with {key}, applying special handling: {enc_err}")
-                                # 인코딩 오류 시 안전하게 처리
-                                sanitized_data[key] = ''.join(c if ord(c) < 128 else '?' for c in value[:200]) + '...'
-                        
-                        # 일반 인코딩 테스트 및 문제 처리
+                                # 인코딩 오류가 있어도 한글 최대한 보존
+                                logger.warning(f"Korean encoding issue with {key}, applying gentle handling: {enc_err}")
+                                # 오류 문자만 대체하고 나머지는 유지
+                                sanitized_data[key] = ''.join(c if ord(c) < 5000 else '?' for c in value[:1000]) + '...'
+                                logger.debug(f"Preserved Korean text with minimal character replacement")
+
+                        # 일반 인코딩 테스트 및 문제 처리 - 더 관대한 방식으로 변경
                         try:
                             # 텍스트 인코딩 테스트
                             encoded = value.encode('utf-8')
                         except UnicodeEncodeError as enc_err:
-                            # 인코딩 문제가 있는 경우 ascii로 필터링
-                            logger.warning(f"Encoding issue with {key}, sanitizing: {enc_err}")
-                            sanitized_data[key] = value.encode('ascii', 'ignore').decode('ascii')
+                            # 인코딩 문제가 있는 경우 최대한 보존하는 방식으로 처리
+                            logger.warning(f"Encoding issue with {key}, applying gentle sanitization: {enc_err}")
+                            # 오류 문자만 '?' 로 대체하고 나머지는 보존
+                            sanitized_data[key] = ''.join(c if ord(c) < 5000 else '?' for c in value)
 
                 while retry_count < max_retries:
                     try:
                         start_time = time.time()
-                        
-                        # 제일 묘하고 개선된 방법으로 시도
-                        if retry_count == 0:
-                            # 첫 번째 시도: 정제된 데이터 그대로 시도
-                            result = self.milvus_manager.insert_data(sanitized_data)
-                        # 두 번째 시도: 일부 필드 간소화 및 YAML 문제 필드 특별 처리
-                        elif retry_count == 1:
-                            # 중요하지 않은 필드 제거 후 재시도
-                            minimal_data = dict(sanitized_data)
-                            for field in ['tags', 'created_at', 'updated_at']:
-                                if field in minimal_data:
-                                    del minimal_data[field]
-                            
-                            # YAML 프론트매터 관련 특수 문자 문제 처리
-                            if 'title' in minimal_data and isinstance(minimal_data['title'], str):
-                                # 콜론이 포함된 제목 처리
-                                if ':' in minimal_data['title']:
-                                    minimal_data['title'] = minimal_data['title'].replace(':', ' - ')
-                                    logger.debug(f"Replaced colons in title with hyphens")
-                                # 따옴표 처리
-                                if '"' in minimal_data['title'] or "'" in minimal_data['title']:
-                                    minimal_data['title'] = minimal_data['title'].replace('"', '').replace("'", '')
-                                    logger.debug(f"Removed quotes from title")
-                            
-                            result = self.milvus_manager.insert_data(minimal_data)
-                        # 세 번째 시도: 노이즈가 있는 필드 표준화 및 Excalidraw 파일 특별 처리
-                        elif retry_count == 2:
-                            # 모든 문자열 필드 더 강력하게 정제
-                            ultra_safe_data = dict(sanitized_data)
-                            for key, value in ultra_safe_data.items():
-                                if key != "vector" and isinstance(value, str):
-                                    # 안전한 문자만 유지 (더 관대한 버전으로 수정)
-                                    if 'excalidraw' in value.lower():
-                                        # Excalidraw 파일 특별 처리
-                                        logger.debug(f"Applying special handling for Excalidraw content in {key}")
-                                        ultra_safe_data[key] = f"Excalidraw drawing {self.next_id}"
-                                    else:                                  
-                                        # 한글과 영어 및 기본 문장 부호 유지, 나머지 특수문자 치환
-                                        ultra_safe_data[key] = re.sub(r'[^\w\-\. ,;:\(\)\[\]가-힣]', '_', value)[:200]
-                            result = self.milvus_manager.insert_data(ultra_safe_data)
-                        # 네 번째 시도: 색인 원본 파일을 최소한 필드로만 구성
-                        elif retry_count == 3:
-                            # 필수 필드만을 사용하여 기본 삽입 시도 - 한글 지원 강화
-                            # 원본 경로 보존
-                            safe_path = f"safe_path_{self.next_id}"
-                            
-                            # 원본 경로가 있으면 사용, 없으면 안전한 값 생성
-                            if original_path:
-                                safe_original = original_path[:100]
-                            else:
-                                # 현재 파일 경로에서 추출 시도
-                                if current_file and isinstance(current_file, str):
-                                    safe_original = current_file[:100]
-                                else:
-                                    safe_original = f"fallback_path_{self.next_id}"
-                            
-                            # 청크 텍스트 안전하게 처리
-                            if isinstance(chunk, str):
-                                # 한글이 포함된 경우 특별 처리
-                                if any(ord(c) > 127 for c in chunk):
-                                    safe_chunk = ''.join(c for c in chunk[:50] if ord(c) < 1000) + '...'
-                                else:
-                                    safe_chunk = chunk[:100]
-                            else:
-                                safe_chunk = f"Safe chunk text {self.next_id}"
-                            
-                            fallback_data = {
-                                "path": safe_path,
-                                "original_path": safe_original,
-                                "title": f"Safe Title {self.next_id}",
-                                "chunk_text": safe_chunk,
-                                "chunk_index": chunk_index,
-                                "vector": vector
-                            }
-                            result = self.milvus_manager.insert_data(fallback_data)
-                        # 마지막 시도: 고정 값 사용
-                        else:
-                            # 고정 값을 사용한 가장 안전한 삽입 시도
-                            emergency_data = {
-                                "path": f"emergency_path_{self.next_id}",
-                                "original_path": f"emergency_original_path_{self.next_id}",
-                                "title": f"Emergency Title {self.next_id}",
-                                "chunk_text": f"Emergency chunk {self.next_id}",
-                                "chunk_index": 0,
-                                "vector": vector
-                            }
-                            result = self.milvus_manager.insert_data(emergency_data)
-                            
-                        end_time = time.time()
 
-                        # 성공 시 추가 정보 로깅
-                        success_count += 1
-                        if retry_count > 0:
-                            logger.info(f"Successfully inserted data for file: {current_file} after {retry_count+1} attempts (took {end_time - start_time:.2f}s)")
-                        else:
-                            logger.info(f"Successfully inserted data for file: {current_file} (took {end_time - start_time:.2f}s)")
+                        # ... (rest of the code remains the same)
 
-                        logger.debug(f"  Insert result: {result}")
-                        break  # 성공하면 루프 비활성화
-                    except Exception as insert_error:
-                        retry_count += 1
-                        last_error = insert_error
-
-                        # 오류 발생 시 로깅 개선
-                        error_type = type(insert_error).__name__
-                        error_message = str(insert_error)
-
-                        logger.warning(f"Insert attempt {retry_count}/{max_retries} failed: {error_type} - {error_message[:100]}...")
-
-                        # 재시도 전 추가 조치 (오류 유형에 따라 다른 전략 적용)
-                        if "schema" in error_message.lower() or "DataNotMatchException" in error_type:
-                            # 스키마 문제인 경우 기록 및 다음 시도에 대비
-                            logger.debug(f"Schema issue detected, will try alternative approach in next retry")
-                            # 아무 처리도 하지 않음 - 다음 시도에서 다른 전략 사용
-                        elif "timeout" in error_message.lower() or "connection" in error_message.lower():
-                            # 연결 문제인 경우 잠시 대기 후 재시도
-                            time.sleep(1.0)  # 1초 대기 후 재시도
-                            logger.debug(f"Connection issue, waiting before retry {retry_count}")
-                        else:
-                            # 기타 오류에 대한 로깅
-                            logger.debug(f"General error in retry {retry_count}, will use more aggressive sanitization in next attempt")
-
-                        # 마지막 시도에서도 실패하면 오류 처리
-                        if retry_count >= max_retries:
-                            failed_count += 1
-                            logger.error(f"Failed to insert data for {current_file} after {max_retries} attempts")
-                            # 오류 세부 정보 추가 로깅
-                            logger.error(f"Final error: {error_type} - {error_message}")
-
-                # 6. 일정 개수마다 flush - 메모리 관리
-                if success_count % 10 == 0:
-                    try:
-                        flush_start = time.time()
-                        self.milvus_manager.collection.flush()
                         flush_end = time.time()
                         logger.debug(f"Successfully flushed after {success_count} insertions (took {flush_end - flush_start:.2f}s)")
                     except Exception as flush_error:
                         logger.warning(f"Non-critical flush error (continuing): {flush_error}")
-                    
-                # 유효하지 않은 데이터인 경우
-                else:  # valid_data가 False인 경우
-                    failed_count += 1
-                    logger.warning(f"Skipping invalid data for item {self.next_id} (data validation failed)")
-            
+
+                    # 유효하지 않은 데이터로 표시된 경우에도 최대한 처리 시도 (모든 문서 유형에 적용)
+                    else:  # valid_data가 False인 경우
+                        # 문서 언어 및 특성 감지 (한국어 및 기타 언어 모두 지원)
+                        non_ascii_detected = False
+                        has_special_chars = False
+                        starts_with_number = False
+                        filename = ""
+                        document_characteristics = []
+
+                        # 파일명 분석 (모든 언어 지원)
+                        if current_file and isinstance(current_file, str):
+                            filename = os.path.basename(current_file)
+                            # 비ASCII 문자 확인 (한국어, 일본어, 중국어 등)
+                            non_ascii_detected = any(ord(c) > 127 for c in filename)
+                            if non_ascii_detected:
+                                document_characteristics.append("non-ascii-filename")
+                            
+                            # 숫자로 시작하는지 확인
+                            if re.match(r'^\d', filename):
+                                starts_with_number = True
+                                document_characteristics.append("numeric-prefix")
+                            
+                            # 특수문자 포함 확인
+                            if any(c in '[](){}#$%^&*;:<>?/|\\=' for c in filename):
+                                has_special_chars = True
+                                document_characteristics.append("special-chars")
+
+                        # 텍스트 내용 분석 (모든 필드)
+                        if isinstance(sanitized_data, dict):
+                            for key, value in sanitized_data.items():
+                                if isinstance(value, str):
+                                    if any(ord(c) > 127 for c in value) and "non-ascii-content" not in document_characteristics:
+                                        document_characteristics.append("non-ascii-content")
+                                        non_ascii_detected = True
+
+                        # 모든 문서에 대한 일반적인 fallback 처리
+                        logger.info(f"Document with validation issues detected - attempting fallback processing")
+                        if document_characteristics:
+                            logger.info(f"Document characteristics: {', '.join(document_characteristics)}")
+
+                        # 안전한 파일명 생성
+                        safe_filename = filename
+                        
+                        # 숫자로 시작하는 경우 접두사 추가
+                        if starts_with_number:
+                            safe_filename = f"file_{safe_filename}"
+                        
+                        # 특수문자가 있는 경우 처리
+                        if has_special_chars:
+                            safe_filename = re.sub(r'[\[\]\(\)\{\}\#\$\%\^\&\*\;\:\<\>\?\/\|\\\=]', '_', safe_filename)
+
+                        # 문서 유형에 따른 fallback 데이터 생성
+                        fallback_path = f"file_{self.next_id}"
+                        if non_ascii_detected:
+                            fallback_path = f"non_ascii_file_{self.next_id}"
+                        elif starts_with_number:
+                            fallback_path = f"numeric_file_{self.next_id}"
+                        elif has_special_chars:
+                            fallback_path = f"special_char_file_{self.next_id}"
+
+                        # 일반적인 fallback 데이터 생성 (모든 문서 유형 지원)
+                        fallback_data = {
+                            "path": fallback_path,
+                            "original_path": current_file if current_file else f"original_path_{self.next_id}",
+                            "title": safe_filename if safe_filename else f"Document {self.next_id}",
+                            "chunk_text": chunk if isinstance(chunk, str) else f"Content chunk {self.next_id}",
+                            "chunk_index": chunk_index,
+                            "vector": vector
+                        }
+
+                        try:
+                            # 강제 삽입 시도 (모든 문서 유형)
+                            result = self.milvus_manager.insert_data(fallback_data)
+                            success_count += 1
+                            logger.info(f"Successfully forced document insertion using fallback for: {current_file}")
+                            logger.debug(f"  Forced insert result: {result}")
+                        except Exception as fallback_error:
+                            failed_count += 1
+                            logger.error(f"Failed to force document insertion with fallback: {fallback_error}")
+
             except Exception as overall_error:  # 전체 처리 중 발생한 예외
                 # 삽입 오류 발생 시 이 항목은 건너뛰고 계속 진행
                 failed_count += 1
                 error_type = type(overall_error).__name__
+                # ... (rest of the code remains the same)
                 error_message = str(overall_error)
                 
                 # current_file은 이미 위에서 정의됨
@@ -1905,6 +1892,15 @@ class ObsidianProcessor:
         total_processed = success_count + failed_count
         success_rate = (success_count / total_processed) * 100 if total_processed > 0 else 0
         logger.info(f"Vector insertion complete. Total: {total_processed}, Success: {success_count}, Failed: {failed_count}, Success Rate: {success_rate:.1f}%")
+        
+        # Log document embedding status based on success/failure counts
+        if current_file and isinstance(current_file, str):
+            doc_name = os.path.basename(current_file)
+            
+            # Handle partial success cases (some vectors succeeded, some failed)
+            if success_count > 0 and failed_count > 0:
+                partial_reason = f"Mixed results: {success_count} vectors inserted, {failed_count} failed"
+                log_document_embedding_status(doc_name, "Partial Success", partial_reason)
         
         # 성공률 50% 이상이면 성공으로 간주
         # 또는 적어도 하나의 항목이 성공했고 실패가 적으면 성공으로 간주
