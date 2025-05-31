@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 # Load environment variables (optional - auto-loads if .env file exists)
 load_dotenv()
 
+# Get OBSIDIAN_VAULT from environment variable
+OBSIDIAN_VAULT = os.getenv('OBSIDIAN_VAULT') # Do not change this!
+
 # Base path settings - Project root directory
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -17,7 +20,7 @@ PROJECT_ABSOLUTE_PATH = str(BASE_DIR)
 
 # 🗂️ Obsidian Vault Path (REQUIRED!)
 # Change the path below to your Obsidian vault path
-OBSIDIAN_VAULT_PATH = "G:\\jayjeo"  # ← Change this to your path!
+OBSIDIAN_VAULT_PATH = OBSIDIAN_VAULT  # Do not change this!
 
 # 🔧 Podman Path (Usually auto-detected. Only modify if there are issues)
 PODMAN_PATH = ""  # Leave empty for auto-detection, or enter full path if needed
