@@ -2,7 +2,14 @@ import threading
 import time
 import os
 import sys
+import logging
 from robust_incremental_embedding import process_incremental_embedding
+
+# Import centralized logger
+from logger import get_logger
+
+# Initialize module logger
+logger = get_logger(__name__)
 
 # Import numpy without compatibility check as sentence-transformers now supports NumPy 2.x
 try:
@@ -39,20 +46,26 @@ except ImportError as e:
 def initialize():
     """시스템 초기화"""
     from colorama import Fore, Style
+    logger.info("Obsidian-Milvus-MCP system initializing...")
     print("Obsidian-Milvus-MCP system initializing...")
     
     # Milvus 연결 및 컬렉션 준비
+    logger.info("Initializing Milvus Manager")
     milvus_manager = MilvusManager()
     
     # Obsidian 프로세서 초기화
+    logger.info("Initializing Obsidian Processor")
     processor = ObsidianProcessor(milvus_manager)
     
     # 초기 인덱싱 여부 확인
     results = milvus_manager.query("id >= 0", limit=1)
     if not results:
+        logger.info("No data found. Please start indexing through the MCP server.")
         print("데이터가 없습니다. MCP 서버를 통해 인덱싱을 시작하세요.")
     else:
-        print(f"기존 데이터가 있습니다. 총 {milvus_manager.count_entities()}개 문서가 인덱싱되어 있습니다.")
+        entity_count = milvus_manager.count_entities()
+        logger.info(f"Found existing data. Total {entity_count} documents indexed.")
+        print(f"기존 데이터가 있습니다. 총 {entity_count}개 문서가 인덱싱되어 있습니다.")
     
     return processor
 
@@ -210,6 +223,7 @@ def perform_full_embedding(processor):
     from colorama import Fore, Style
     import subprocess
     
+    logger.info("Starting full embedding process")
     print(f"\n{Fore.RED}{Style.BRIGHT}Starting full embedding process...{Style.RESET_ALL}")
     print("This may take a long time depending on the size of your vault.")
     print("Progress will be displayed in the terminal.\n")
@@ -222,6 +236,7 @@ def perform_full_embedding(processor):
         recreate_choice = input("Delete and recreate collection? (y/n): ")
         
         if recreate_choice.lower() == 'y':
+            logger.info("User selected to perform complete physical reset")
             print(f"\n{Fore.RED}[COMPLETE PHYSICAL RESET] Starting complete Milvus reset...{Style.RESET_ALL}")
             print(f"{Fore.YELLOW}This will:{Style.RESET_ALL}")
             print(f"{Fore.YELLOW}  1. Stop all Milvus containers{Style.RESET_ALL}")
@@ -232,83 +247,103 @@ def perform_full_embedding(processor):
             success = perform_complete_physical_reset()
             
             if not success:
+                logger.error("Complete physical reset failed")
                 print(f"{Fore.RED}❌ Complete physical reset failed{Style.RESET_ALL}")
                 return
             
+            logger.info("Complete physical reset completed successfully")
             print(f"{Fore.GREEN}✅ Complete physical reset completed successfully!{Style.RESET_ALL}")
             
             # 물리적 리셋 후 새로운 MilvusManager 인스턴스 생성
+            logger.info("Reconnecting to fresh Milvus instance")
             print(f"{Fore.CYAN}Reconnecting to fresh Milvus instance...{Style.RESET_ALL}")
             try:
                 # 잠시 대기 후 재연결 - 더 긴 대기 시간
+                logger.info("Waiting for Milvus services to fully initialize")
                 print(f"{Fore.CYAN}Waiting for Milvus services to fully initialize...{Style.RESET_ALL}")
                 time.sleep(45)  # 45초 대기
                 
                 # 기존 MilvusManager의 모니터링 중지
                 if hasattr(processor, 'milvus_manager') and hasattr(processor.milvus_manager, 'stop_monitoring'):
+                    logger.info("Stopping existing MilvusManager monitoring")
                     processor.milvus_manager.stop_monitoring()
                 
                 # 새로운 MilvusManager 인스턴스 생성
+                logger.info("Creating new MilvusManager instance")
                 processor.milvus_manager = MilvusManager()
+                logger.info("Successfully connected to fresh Milvus instance")
                 print(f"{Fore.GREEN}✅ Successfully connected to fresh Milvus instance{Style.RESET_ALL}")
             except Exception as e:
+                logger.error(f"Error reconnecting to Milvus: {e}", exc_info=True)
                 print(f"{Fore.RED}❌ Error reconnecting to Milvus: {e}{Style.RESET_ALL}")
                 
                 # 오류 유형에 따른 구체적인 안내
                 if "nodes not enough" in str(e):
+                    logger.warning("Milvus services are still starting up")
                     print(f"{Fore.YELLOW}🕰️ This error means Milvus services are still starting up.{Style.RESET_ALL}")
                     print(f"{Fore.YELLOW}Solutions:{Style.RESET_ALL}")
                     print(f"{Fore.YELLOW}  1. Wait 2-3 minutes and try again{Style.RESET_ALL}")
                     print(f"{Fore.YELLOW}  2. Run 'start-milvus.bat' and wait for completion{Style.RESET_ALL}")
                     print(f"{Fore.YELLOW}  3. Check if all containers are running: podman ps{Style.RESET_ALL}")
                 elif "already in use" in str(e) or "container name" in str(e).lower():
+                    logger.warning("Container name conflict detected")
                     print(f"{Fore.YELLOW}🔄 This appears to be a container name conflict.{Style.RESET_ALL}")
                     print(f"{Fore.YELLOW}Please run 'complete-reset.bat' to clean up all containers, then try again.{Style.RESET_ALL}")
                 else:
+                    logger.warning(f"Unknown error during Milvus reconnection: {e}")
                     print(f"{Fore.YELLOW}Please wait a moment and try again{Style.RESET_ALL}")
                 return
         else:
             # 사용자가 컬렉션을 재생성하지 않더라도 전체 재처리임을 표시
+            logger.info("User chose to process all files without recreating collection")
             processor.embedding_progress["is_full_reindex"] = True
             print(f"{Fore.GREEN}Set to process all files without recreating collection.{Style.RESET_ALL}")
         
         # 임베딩 시작 전 디버깅 메시지
+        logger.debug(f"Starting embedding process. Vault path: {processor.vault_path}")
         print(f"\n{Fore.CYAN}[DEBUG] Starting embedding process...{Style.RESET_ALL}")
         print(f"{Fore.CYAN}[DEBUG] Obsidian vault path: {processor.vault_path}{Style.RESET_ALL}")
         
         # 경로 존재 확인
         if not os.path.exists(processor.vault_path):
+            logger.error(f"Obsidian vault path does not exist: {processor.vault_path}")
             print(f"\n{Fore.RED}Error: Obsidian vault path does not exist: {processor.vault_path}{Style.RESET_ALL}")
             return
             
         # 경로에 파일 존재 확인
         md_files = [f for f in os.listdir(processor.vault_path) if f.endswith('.md')]
+        logger.info(f"Found {len(md_files)} markdown files in vault root")
         print(f"{Fore.CYAN}[DEBUG] Found {len(md_files)} markdown files in vault root{Style.RESET_ALL}")
         
         # 임베딩 시작
+        logger.info("Starting process_all_files()")
         print(f"{Fore.CYAN}[DEBUG] Calling processor.process_all_files(){Style.RESET_ALL}")
         result = processor.process_all_files()
+        logger.info(f"process_all_files returned: {result}")
         print(f"{Fore.CYAN}[DEBUG] process_all_files returned: {result}{Style.RESET_ALL}")
         
         # 여기서 결과 확인 및 처리 추가
         if result == 0:
+            logger.error("Embedding process failed with return code 0")
             print(f"\n{Fore.RED}{Style.BRIGHT}Embedding process failed! Check the logs above for details.{Style.RESET_ALL}")
             return
         elif result is None:
+            logger.warning("Embedding process returned None, which may indicate an issue")
             print(f"\n{Fore.YELLOW}{Style.BRIGHT}Warning: Embedding process returned None. This may indicate an issue.{Style.RESET_ALL}")
             # None이 반환되어도 계속 진행
-        
+            
         # 임베딩 완료 대기 (성공 시에만 실행)
+        logger.info("Waiting for embedding process to complete")
         print(f"{Fore.CYAN}[DEBUG] Waiting for embedding process to complete...{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}[DEBUG] Current embedding_in_progress = {processor.embedding_in_progress}{Style.RESET_ALL}")
         
         while hasattr(processor, 'embedding_in_progress') and processor.embedding_in_progress:
             # 1초마다 상태 확인
             time.sleep(1)
-            print(f"{Fore.CYAN}[DEBUG] Still waiting... embedding_in_progress = {processor.embedding_in_progress}{Style.RESET_ALL}")
         
+        logger.info("Full embedding completed successfully")
         print(f"\n{Fore.GREEN}{Style.BRIGHT}Full embedding completed successfully!{Style.RESET_ALL}")
     except Exception as e:
+        logger.error(f"Error during embedding process: {e}", exc_info=True)
         print(f"\n{Fore.RED}Error during embedding process: {e}{Style.RESET_ALL}")
         import traceback
         print(f"\n{Fore.RED}Stack trace:\n{traceback.format_exc()}{Style.RESET_ALL}")
@@ -316,53 +351,67 @@ def perform_full_embedding(processor):
         # 임베딩이 중단된 경우에도 상태 정리
         if hasattr(processor, 'embedding_in_progress'):
             processor.embedding_in_progress = False
+            logger.info("Reset embedding_in_progress flag")
 
+    
 def perform_incremental_embedding(processor):
     """Robust incremental embedding with DB consistency checks"""
-    process_incremental_embedding(processor)
+    from colorama import Fore, Style
     
+    logger.info("Starting incremental embedding process")
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}Starting incremental embedding & deleted cleanup process...{Style.RESET_ALL}")
     print("This will process new/modified files and automatically clean up deleted files.")
     print("Progress will be displayed in the terminal.\n")
     
     try:
+        logger.info("Calling processor.process_updated_files()")
         processor.process_updated_files()
         
+        logger.debug("Waiting for embedding_in_progress flag to be cleared")
         while hasattr(processor, 'embedding_in_progress') and processor.embedding_in_progress:
             time.sleep(1)
         
+        logger.info("Incremental embedding completed successfully")
         print(f"\n{Fore.GREEN}{Style.BRIGHT}Incremental embedding completed successfully!{Style.RESET_ALL}")
     except Exception as e:
+        logger.error(f"Error during incremental embedding process: {e}", exc_info=True)
         print(f"\n{Fore.RED}Error during embedding process: {e}{Style.RESET_ALL}")
     finally:
         if hasattr(processor, 'embedding_in_progress'):
             processor.embedding_in_progress = False
+            logger.debug("Reset embedding_in_progress flag")
 
 def perform_cleanup_deleted_files(processor):
     """삭제된 파일의 embedding 정리"""
     from colorama import Fore, Style
     
+    logger.info("Starting cleanup of deleted files")
     print(f"\n{Fore.MAGENTA}{Style.BRIGHT}Starting cleanup of deleted files...{Style.RESET_ALL}")
     print("This will detect files that have been deleted from your vault")
     print("but still exist in the Milvus embedding database.\n")
     
     try:
         # 삭제된 파일 탐지
+        logger.info("Detecting deleted files")
         deleted_files = processor.detect_deleted_files()
         
         if not deleted_files:
+            logger.info("No deleted files found. Database is clean.")
             print(f"\n{Fore.GREEN}{Style.BRIGHT}✅ No deleted files found. Your database is clean!{Style.RESET_ALL}")
             return
         
         # 삭제될 파일 목록 표시
+        logger.info(f"Found {len(deleted_files)} deleted files")
         print(f"\n{Fore.YELLOW}Found {len(deleted_files)} deleted files:{Style.RESET_ALL}")
         
         # 처음 10개 파일만 표시
         display_count = min(10, len(deleted_files))
         for i, file_path in enumerate(deleted_files[:display_count]):
+            logger.debug(f"Deleted file {i+1}: {file_path}")
             print(f"{Fore.YELLOW}  {i+1:2d}. {file_path}{Style.RESET_ALL}")
         
         if len(deleted_files) > display_count:
+            logger.debug(f"... and {len(deleted_files) - display_count} more files")
             print(f"{Fore.YELLOW}  ... and {len(deleted_files) - display_count} more files{Style.RESET_ALL}")
         
         # 사용자 확인
@@ -373,29 +422,37 @@ def perform_cleanup_deleted_files(processor):
         confirm = input(f"\n{Fore.YELLOW}Do you want to proceed with cleanup? (y/N): {Style.RESET_ALL}")
         
         if confirm.lower() in ['y', 'yes']:
+            logger.info("User confirmed cleanup operation")
             print(f"\n{Fore.CYAN}Starting cleanup process...{Style.RESET_ALL}")
             
             # 삭제 실행
+            logger.info("Executing cleanup_deleted_embeddings")
             success_count = processor.cleanup_deleted_embeddings(deleted_files)
             
             if success_count > 0:
+                logger.info(f"Cleanup completed successfully. Removed embeddings for {success_count} deleted files")
                 print(f"\n{Fore.GREEN}{Style.BRIGHT}🎉 Cleanup completed successfully!{Style.RESET_ALL}")
                 print(f"{Fore.GREEN}✅ Removed embeddings for {success_count} deleted files{Style.RESET_ALL}")
                 
                 if success_count < len(deleted_files):
                     failed_count = len(deleted_files) - success_count
+                    logger.warning(f"{failed_count} files could not be removed (may require manual cleanup)")
                     print(f"{Fore.YELLOW}⚠️  {failed_count} files could not be removed (may require manual cleanup){Style.RESET_ALL}")
             else:
+                logger.error("Cleanup failed. No files were removed.")
                 print(f"\n{Fore.RED}{Style.BRIGHT}❌ Cleanup failed. No files were removed.{Style.RESET_ALL}")
                 print(f"{Fore.YELLOW}Please check the error messages above.{Style.RESET_ALL}")
         else:
+            logger.info("Cleanup cancelled by user")
             print(f"\n{Fore.CYAN}Cleanup cancelled by user.{Style.RESET_ALL}")
             
     except Exception as e:
+        logger.error(f"Error during cleanup process: {e}", exc_info=True)
         print(f"\n{Fore.RED}{Style.BRIGHT}Error during cleanup process: {e}{Style.RESET_ALL}")
         import traceback
         print(f"\n{Fore.RED}Stack trace:\n{traceback.format_exc()}{Style.RESET_ALL}")
     finally:
+        logger.info("Cleanup process finished")
         print(f"\n{Fore.CYAN}Cleanup process finished.{Style.RESET_ALL}")
 
 def start_mcp_server():
@@ -403,6 +460,7 @@ def start_mcp_server():
     from colorama import Fore, Style
     import subprocess
     
+    logger.info("Starting MCP Server for Claude Desktop")
     print(f"\n{Fore.CYAN}{Style.BRIGHT}Starting MCP Server for Claude Desktop...{Style.RESET_ALL}")
     print(f"Server name: {config.FASTMCP_SERVER_NAME}")
     print(f"Transport: {config.FASTMCP_TRANSPORT}")
@@ -410,16 +468,20 @@ def start_mcp_server():
     # Start MCP server and exit the main program
     try:
         mcp_script_path = os.path.join(os.path.dirname(__file__), "mcp_server.py")
+        logger.info(f"Starting MCP server: {mcp_script_path}")
         print(f"{Fore.GREEN}Starting MCP server: {mcp_script_path}{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}The main program will now exit to allow MCP server to run independently.{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}This is the intended behavior - MCP server should run continuously.{Style.RESET_ALL}")
         
         # Execute MCP server directly and exit
+        logger.info("Executing MCP server and exiting main program")
         os.execv(sys.executable, [sys.executable, mcp_script_path])
         
     except Exception as e:
+        logger.error(f"Error starting MCP server: {e}", exc_info=True)
         print(f"{Fore.RED}Error starting MCP server: {e}{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Falling back to system call...{Style.RESET_ALL}")
+        logger.info("Falling back to system call for MCP server")
         os.system(f'python "{mcp_script_path}"')
         sys.exit(0)  # Exit after starting MCP server
 
@@ -454,37 +516,48 @@ def main():
     """Main execution function with command-line interface"""
     from colorama import Fore, Style
     
+    logger.info("Starting Obsidian-Milvus-FastMCP application")
     processor = initialize()
     
     # Start file change detection thread
+    logger.info("Starting file change detection thread")
     watcher_thread = threading.Thread(target=start_watcher, args=(processor,))
     watcher_thread.daemon = True
     watcher_thread.start()
     
+    logger.info(f"File watcher started. Monitoring: {config.OBSIDIAN_VAULT_PATH}")
     print(f"{Fore.GREEN}✅ File watcher started{Style.RESET_ALL}")
     print(f"{Fore.CYAN}📁 Monitoring: {config.OBSIDIAN_VAULT_PATH}{Style.RESET_ALL}")
     
     # Command-line interface loop
+    logger.info("Entering command-line interface loop")
     while True:
         choice = show_menu()
         
         if choice == '1':
             # Option 1: Start MCP Server - this will exit the program
+            logger.info("User selected option 1: Start MCP Server")
             start_mcp_server()
             # This line should never be reached due to os.execv in start_mcp_server
             break
         elif choice == '2':
+            logger.info("User selected option 2: Full Embedding")
             perform_full_embedding(processor)
         elif choice == '3':
+            logger.info("User selected option 3: Incremental & Deleted Cleanup")
             perform_incremental_embedding(processor)
         elif choice == '4':
+            logger.info("User selected option 4: Cleanup Deleted Files")
             perform_cleanup_deleted_files(processor)
         elif choice == '5':
+            logger.info("User selected option 5: Exit Program")
             print("Exiting program...")
             sys.exit(0)
         else:
+            logger.warning(f"Invalid choice entered: {choice}")
             print("Invalid choice. Please try again.")
         
+        logger.debug("Waiting 1 second before showing menu again")
         time.sleep(1)
 
 if __name__ == "__main__":

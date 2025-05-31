@@ -6,12 +6,15 @@
 
 import time
 import re
-import logging
 from typing import List, Dict, Any, Optional, Tuple
 from embeddings import EmbeddingModel
 import config
 
-logger = logging.getLogger('SearchEngine')
+# Import centralized logging system
+from logger import get_logger
+
+# Get logger for this module
+logger = get_logger('search_engine')
 
 class SearchEngine:
     def __init__(self, milvus_manager):
@@ -32,6 +35,13 @@ class SearchEngine:
         
     def hybrid_search(self, query: str, limit: int = 10, filter_params: Optional[Dict] = None) -> Tuple[List[Dict], Dict]:
         """하이브리드 검색: 벡터 검색 + 키워드 검색 결합"""
+        logger.info(f"Starting hybrid search for query: '{query}' with limit: {limit}")
+        
+        # 특수문자 확인 - 잠재적 문제 사전 감지
+        has_special_chars = any(c in query for c in "'\"()[]{},;")
+        if has_special_chars:
+            logger.debug(f"Query contains special characters that might require special handling: '{query}'")
+            
         try:
             start_time = time.time()
             
@@ -39,21 +49,36 @@ class SearchEngine:
             self.recent_queries.append(query)
             if len(self.recent_queries) > 50:
                 self.recent_queries = self.recent_queries[-50:]
+                logger.debug("Trimmed recent queries cache to 50 items")
             
             # 1. 벡터 검색 수행
+            logger.debug(f"Performing vector search with doubled limit: {limit * 2}")
+            vector_start = time.time()
             vector_results = self._vector_search(query, limit * 2, filter_params)
+            logger.debug(f"Vector search completed in {time.time() - vector_start:.3f}s with {len(vector_results)} results")
             
             # 2. 키워드 검색 수행
+            logger.debug(f"Performing keyword search with limit: {limit}")
+            keyword_start = time.time()
             # 필터 표현식 구성
             filter_expr = self._build_filter_expr(filter_params) if filter_params else None
+            if filter_expr:
+                logger.debug(f"Using filter expression: {filter_expr}")
+                
             keyword_results = self._keyword_search(query, limit, filter_expr)
-            # 3. 결과 융합
+            logger.debug(f"Keyword search completed in {time.time() - keyword_start:.3f}s with {len(keyword_results)} results")
+            
+            # 3. 결과 육합
+            logger.debug("Fusing search results from vector and keyword searches")
+            fusion_start = time.time()
             fused_results = self._fuse_search_results(vector_results, keyword_results, query)
+            logger.debug(f"Results fusion completed in {time.time() - fusion_start:.3f}s with {len(fused_results)} combined results")
             
             # 4. 상위 결과만 반환
             final_results = fused_results[:limit]
             
             search_time = time.time() - start_time
+            logger.info(f"Hybrid search completed in {search_time:.3f}s with {len(final_results)} final results")
             
             search_info = {
                 "query": query,
@@ -66,37 +91,64 @@ class SearchEngine:
             }
             
             # 결과를 JSON 직렬화 가능하게 변환
+            logger.debug("Ensuring results are JSON serializable")
             return self.ensure_json_serializable(final_results), self.ensure_json_serializable(search_info)
             
         except Exception as e:
-            logger.error(f"하이브리드 검색 중 오류: {e}")
+            logger.error(f"하이브리드 검색 중 오류: {e}", exc_info=True)
+            logger.warning("Falling back to vector search only")
             # 폴백: 벡터 검색만 수행
             try:
+                logger.debug("Attempting vector search fallback")
+                fallback_start = time.time()
                 vector_results = self._vector_search(query, limit, filter_params)
+                fallback_time = time.time() - fallback_start
+                
+                logger.info(f"Vector search fallback completed successfully in {fallback_time:.3f}s with {len(vector_results)} results")
+                
                 search_info = {
                     "query": query,
                     "search_type": "vector_fallback",
                     "error": str(e),
+                    "fallback_time_ms": round(fallback_time * 1000, 2),
                     "total_count": len(vector_results)
                 }
                 return self.ensure_json_serializable(vector_results), self.ensure_json_serializable(search_info)
             except Exception as e2:
-                logger.error(f"폴백 검색도 실패: {e2}")
+                logger.error(f"폴백 검색도 실패: {e2}", exc_info=True)
+                # 모든 검색 방법이 실패한 경우 빈 결과 반환
+                logger.critical(f"All search methods failed for query: '{query}'")
                 return [], self.ensure_json_serializable({"query": query, "error": str(e2), "total_count": 0})
     
     def _vector_search(self, query: str, limit: int, filter_params: Optional[Dict] = None) -> List[Dict]:
         """벡터 유사도 검색"""
+        logger.debug(f"Starting vector search for query: '{query}' with limit: {limit}")
+        
+        # 특수문자 확인
+        has_special_chars = any(c in query for c in "'\"()[]{},;")
+        if has_special_chars:
+            logger.debug(f"Vector search query contains special characters: '{query}'")
+            
         try:
             # 쿼리를 벡터로 변환
+            embedding_start = time.time()
+            logger.debug("Generating embedding for query")
             query_vector = self.embedding_model.get_embedding(query)
+            logger.debug(f"Query embedding generated in {time.time() - embedding_start:.3f}s")
             
             # 필터 표현식 구성
             filter_expr = self._build_filter_expr(filter_params) if filter_params else None
+            if filter_expr:
+                logger.debug(f"Using filter expression for vector search: {filter_expr}")
             
             # milvus_manager의 고급 검색 기능 사용
+            search_start = time.time()
             if hasattr(self.milvus_manager, 'search_with_params'):
                 # 최적화된 검색 파라미터 사용
+                logger.debug("Using advanced search_with_params method")
                 search_params = self._get_optimized_search_params(query)
+                logger.debug(f"Optimized search parameters: {search_params}")
+                
                 raw_results = self.milvus_manager.search_with_params(
                     vector=query_vector,
                     limit=limit,
@@ -105,27 +157,38 @@ class SearchEngine:
                 )
             else:
                 # 기본 검색 사용
+                logger.debug("Using basic search method")
                 raw_results = self.milvus_manager.search(query_vector, limit, filter_expr)
+                
+            search_duration = time.time() - search_start
+            logger.debug(f"Milvus search completed in {search_duration:.3f}s with {len(raw_results)} raw results")
             
             # 결과 포맷팅
+            format_start = time.time()
+            logger.debug("Formatting search results")
             formatted_results = []
+            format_errors = 0
+            
             for hit in raw_results:
                 try:
                     # 안전하게 값 추출
                     try:
                         hit_id = hit.id
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Could not extract ID directly, using fallback: {e}")
                         hit_id = str(getattr(hit, 'id', 'unknown_id'))
                         
                     # entity가 딕셔너리가 아닐 경우 대비
                     entity = getattr(hit, 'entity', {})
                     if not isinstance(entity, dict):
+                        logger.debug(f"Entity is not a dictionary, converting type: {type(entity)}")
                         entity = {}
                         
                     # 점수가 직렬화 가능한지 확인
                     try:
                         score = float(hit.score)
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Could not convert score to float: {e}")
                         score = 0.0
                     
                     result = {
@@ -144,51 +207,116 @@ class SearchEngine:
                     }
                     formatted_results.append(result)
                 except Exception as e:
-                    logger.error(f"벡터 결과 포맷팅 오류: {e}")
+                    logger.error(f"벡터 결과 포맷팅 오류: {e}", exc_info=True)
+                    format_errors += 1
                     continue
             
+            format_duration = time.time() - format_start
+            logger.debug(f"Results formatting completed in {format_duration:.3f}s - {len(formatted_results)} success, {format_errors} errors")
+            
             # 결과를 JSON 직렬화 가능하게 변환
+            logger.debug(f"Returning {len(formatted_results)} vector search results")
             return self.ensure_json_serializable(formatted_results)
             
         except Exception as e:
-            logger.error(f"벡터 검색 중 오류: {e}")
+            logger.error(f"벡터 검색 중 오류: {e}", exc_info=True)
             return []
     
     def _keyword_search(self, query: str, limit: int, filter_expr: Optional[str] = None) -> List[Dict]:
         """키워드 기반 검색 (메모리에서 필터링)"""
+        logger.debug(f"Starting keyword search for query: '{query}' with limit: {limit}")
+        
+        # 특수문자 확인
+        has_special_chars = any(c in query for c in "'\"()[]{},;")
+        if has_special_chars:
+            logger.debug(f"Keyword search query contains special characters: '{query}'")
+        
+        # 쿼리 토큰화
+        tokens = re.findall(r'\w+', query.lower())
+        logger.debug(f"Extracted {len(tokens)} search tokens: {tokens}")
+        
+        if not tokens:
+            logger.warning("No valid search tokens found in query")
+            return []
         try:
             # 전체 문서 조회 (페이지네이션 사용)
+            query_start = time.time()
             all_docs = []
             offset = 0
             batch_size = 1000
+            batch_count = 0
+            
+            logger.debug(f"Starting batched document retrieval with batch size {batch_size}")
+            if filter_expr:
+                logger.debug(f"Using filter expression: {filter_expr}")
             
             while True:
+                batch_start = time.time()
+                logger.debug(f"Retrieving batch at offset {offset}")
+                
+                # 특수문자 확인 - 인용 부호 등이 잘못되면 오류 발생 가능
+                query_expr = filter_expr or "id >= 0"
+                if has_special_chars and "path" in query_expr:
+                    logger.debug(f"Query with potential special characters in path filter: {query_expr}")
+                
                 batch = self.milvus_manager.query(
-                    expr=filter_expr or "id >= 0",
+                    expr=query_expr,
                     output_fields=["id", "path", "title", "chunk_text", "content", "file_type", "tags", "chunk_index", "created_at", "updated_at"],
                     limit=batch_size,
                     offset=offset
                 )
                 
+                batch_count += 1
+                logger.debug(f"Batch {batch_count} retrieved {len(batch)} documents in {time.time() - batch_start:.3f}s")
+                
                 if not batch:
+                    logger.debug("Empty batch received, ending retrieval")
                     break
                     
                 all_docs.extend(batch)
                 offset += batch_size
                 
                 if len(batch) < batch_size:
+                    logger.debug(f"Retrieved partial batch ({len(batch)}/{batch_size}), ending retrieval")
                     break
             
+            query_retrieval_time = time.time() - query_start
+            logger.info(f"Document retrieval completed: {len(all_docs)} documents in {query_retrieval_time:.3f}s")
+            
             # 키워드 점수 계산
+            scoring_start = time.time()
+            logger.debug("Starting keyword scoring process")
+            
+            # 한글 포함 토큰화 패턴
             query_terms = re.findall(r'[\w가-힣]+', query.lower())
+            logger.debug(f"Using {len(query_terms)} query terms for scoring: {query_terms}")
+            
             scored_results = []
+            special_char_paths = 0
+            excalidraw_files = 0
             
             for doc in all_docs:
+                # 특수 문자 경로 검색 - 이전에 문제를 일으켰던 부분
+                path = doc.get('path', '')
+                has_special_path = any(c in path for c in "'\"()[]{},;")
+                is_excalidraw = "excalidraw" in path.lower()
+                
+                if has_special_path:
+                    special_char_paths += 1
+                    if len(special_char_paths) <= 5:  # 로그 과도화 방지
+                        logger.debug(f"Processing document with special characters in path: {path}")
+                        
+                if is_excalidraw:
+                    excalidraw_files += 1
+                    if excalidraw_files <= 5:  # 로그 과도화 방지
+                        logger.debug(f"Processing Excalidraw file: {path}")
+                
+                # 점수 계산
                 score = self._calculate_keyword_score(doc, query_terms)
                 if score > 0:
                     result = {
                         "id": doc.get('id', ''),
-                        "path": doc.get('path', ''),
+                        "path": path,
                         "title": doc.get('title', '제목 없음'),
                         "chunk_text": doc.get('chunk_text', ''),
                         "content": doc.get('content', ''),
@@ -202,37 +330,82 @@ class SearchEngine:
                     }
                     scored_results.append(result)
             
+            scoring_time = time.time() - scoring_start
+            logger.debug(f"Keyword scoring completed in {scoring_time:.3f}s - found {len(scored_results)} relevant documents")
+            
+            if special_char_paths > 0:
+                logger.info(f"Processed {special_char_paths} documents with special characters in paths")
+            if excalidraw_files > 0:
+                logger.info(f"Processed {excalidraw_files} Excalidraw files")
+            
             # 점수 순으로 정렬하고 상위 결과 반환
+            logger.debug("Sorting results by score")
             scored_results.sort(key=lambda x: x['score'], reverse=True)
             limited_results = scored_results[:limit]
             
+            total_time = time.time() - query_start
+            logger.info(f"Keyword search completed in {total_time:.3f}s with {len(limited_results)} final results")
+            
             # 결과를 JSON 직렬화 가능하게 변환
+            logger.debug("Ensuring results are JSON serializable")
             return self.ensure_json_serializable(limited_results)
             
         except Exception as e:
-            logger.error(f"키워드 검색 중 오류: {e}")
+            # 특수 문자로 인한 오류인지 확인
+            if has_special_chars:
+                logger.error(f"키워드 검색 중 오류 (특수 문자 지정 쿼리): {e}", exc_info=True)
+                logger.warning("Special characters in query may have caused the error")
+            else:
+                logger.error(f"키워드 검색 중 오류: {e}", exc_info=True)
             return []
     
     def _calculate_keyword_score(self, doc: Dict, query_terms: List[str]) -> float:
         """키워드 매칭 점수 계산"""
+        # 특수 문자 경로 처리를 위한 확인
+        path = doc.get('path', '').lower()
+        doc_id = doc.get('id', 'unknown_id')
+        has_special_path = any(c in path for c in "'\"()[]{},;")
+        is_excalidraw = "excalidraw" in path.lower()
+        
+        # 고유한 로깅은 DEBUG 레벨에서만 필요
+        if has_special_path or is_excalidraw:
+            logger.debug(f"Calculating score for document with special path: {doc_id}: {path}")
+            
         score = 0.0
         
-        path = doc.get('path', '').lower()
         title = doc.get('title', '').lower()
         content = doc.get('chunk_text', '').lower()
         
+        term_matches = []
+        
         for term in query_terms:
+            term_score = 0.0
+            
             # 경로에서 매칭 (높은 점수)
             if term in path:
-                score += 5.0
+                term_score += 5.0
+                term_matches.append(f"{term}(path:+5.0)")
             
             # 제목에서 매칭 (중간 점수)
             if term in title:
-                score += 3.0
+                term_score += 3.0
+                term_matches.append(f"{term}(title:+3.0)")
                 
             # 내용에서 매칭 (기본 점수)
             content_matches = content.count(term)
-            score += content_matches * 1.0
+            if content_matches > 0:
+                content_score = content_matches * 1.0
+                term_score += content_score
+                term_matches.append(f"{term}(content:{content_matches}:+{content_score:.1f})")
+                
+            score += term_score
+            
+        # 많은 로깅은 피해야 하지만, 특수한 경로는 로깅
+        if has_special_path or is_excalidraw:
+            if score > 0:
+                logger.debug(f"Document {doc_id} with special path scored {score:.2f} - matches: {', '.join(term_matches)}")
+            else:
+                logger.debug(f"Document {doc_id} with special path had no matches")
         
         return score
     

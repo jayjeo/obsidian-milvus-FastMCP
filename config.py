@@ -2,11 +2,21 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+# CRITICAL: Set environment variables to suppress output from various libraries for MCP compatibility
+# This MUST be done before any library imports
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
+os.environ['TRANSFORMERS_VERBOSITY'] = 'error'  # Suppress transformers logs  
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Suppress tokenizer warnings
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'  # Prevent CUDA memory fragmentation messages
+os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'  # Suppress cuBLAS warnings
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Suppress oneDNN messages
+os.environ['CUDA_LAUNCH_BLOCKING'] = '0'  # Prevent CUDA blocking messages
+
 # Load environment variables (optional - auto-loads if .env file exists)
 load_dotenv()
 
 # Get OBSIDIAN_VAULT from environment variable
-OBSIDIAN_VAULT = os.getenv('OBSIDIAN_VAULT') # Do not change this!
+OBSIDIAN_VAULT = os.getenv('OBSIDIAN_VAULT')
 
 # Base path settings - Project root directory
 BASE_DIR = Path(__file__).resolve().parent
@@ -19,8 +29,8 @@ PROJECT_ABSOLUTE_PATH = str(BASE_DIR)
 # 🔧 USER SETTINGS - Only modify this section!
 
 # 🗂️ Obsidian Vault Path (REQUIRED!)
-# Change the path below to your Obsidian vault path
-OBSIDIAN_VAULT_PATH = OBSIDIAN_VAULT  # Do not change this!
+# Now loaded from .env file
+OBSIDIAN_VAULT_PATH = OBSIDIAN_VAULT  # Loaded from .env file
 
 # 🔧 Podman Path (Usually auto-detected. Only modify if there are issues)
 PODMAN_PATH = ""  # Leave empty for auto-detection, or enter full path if needed
@@ -32,7 +42,7 @@ PODMAN_PATH = ""  # Leave empty for auto-detection, or enter full path if needed
 EXTERNAL_STORAGE_PATH = str(BASE_DIR / "MilvusData")  # DO NOT CHANGE THIS!!!!
 
 # Logging settings
-LOG_LEVEL = "ERROR"  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+LOG_LEVEL = "DEBUG"  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
 # Obsidian settings
 CHUNK_SIZE = 1000

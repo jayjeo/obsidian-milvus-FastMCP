@@ -1,11 +1,24 @@
 # Import warning suppressor first to suppress all warnings
 import warning_suppressor
 
+# CRITICAL: Redirect stdout to stderr for MCP compatibility
+import sys
+original_stdout = sys.stdout
+
+class PrintToStderr:
+    def write(self, text):
+        sys.stderr.write(text)
+    def flush(self):
+        sys.stderr.flush()
+
+# Replace print with stderr output
+sys.stdout = PrintToStderr()
+
 # Import NumPy without compatibility check as sentence-transformers now supports NumPy 2.x
 try:
     import numpy as np
 except ImportError:
-    print("WARNING: NumPy not found")
+    sys.stderr.write("WARNING: NumPy not found\n")
 
 from sentence_transformers import SentenceTransformer
 import config
@@ -574,19 +587,15 @@ class DynamicBatchOptimizer:
                     else:
                         max_batch = 150
                 
-                # Apply Milvus safety limit - never exceed 16000 regardless of hardware
-                milvus_safety_limit = config.get_milvus_max_query_limit()  # 16000
+                # Apply Milvus safety limit FIRST - prevent exceeding 16000 from the start
+                milvus_safety_limit = 16000  # Milvus hard limit
                 max_batch = min(max_batch, milvus_safety_limit)
                 
-                # Apply benchmark score modifier
+                # Apply benchmark score modifier WITHIN the safe limit
                 if benchmark_score > 300:
                     max_batch = min(int(max_batch * 1.2), milvus_safety_limit)  # Still respect Milvus limit
                 elif benchmark_score < 100:
                     max_batch = int(max_batch * 0.8)  # This will be under the limit already
-                
-                # Apply Milvus safety limit for CPU systems too
-                milvus_safety_limit = config.get_milvus_max_query_limit()  # 16000
-                max_batch = min(max_batch, milvus_safety_limit)
                 
                 print(f"📈 Max batch for {gpu_name} ({tflops:.1f} TFLOPS, {tier}): {max_batch}")
                 return max_batch
@@ -599,11 +608,11 @@ class DynamicBatchOptimizer:
             cpu_cores = self.profiler.cpu_cores_physical
             ram_gb = self.profiler.total_ram_gb
             
-            # Dynamic CPU-based calculation
+            # Dynamic CPU-based calculation with Milvus limit applied from start
+            milvus_safety_limit = 16000  # Milvus hard limit
             max_batch = min(200, max(8, int(cpu_cores * 8 + ram_gb * 2)))
             
-            # Apply Milvus safety limit for CPU systems
-            milvus_safety_limit = config.get_milvus_max_query_limit()  # 16000
+            # Apply Milvus safety limit FIRST - prevent exceeding from the start
             max_batch = min(max_batch, milvus_safety_limit)
             
             print(f"💻 CPU max batch size: {max_batch} (Cores: {cpu_cores}, RAM: {ram_gb:.1f}GB)")
@@ -650,14 +659,14 @@ class DynamicBatchOptimizer:
                 memory_percent, cpu_percent, processing_time, success_rate, new_batch_size
             )
         
-        # Apply advanced performance-based fine-tuning
+        # Apply advanced performance-based fine-tuning WITHIN safe limits
         new_batch_size = self._apply_advanced_performance_tuning(new_batch_size)
         
-        # Final safety check - ensure we never exceed Milvus limits
-        milvus_safety_limit = config.get_milvus_max_query_limit()  # 16000
+        # Final safety check - ensure we never exceed Milvus limits from the start
+        milvus_safety_limit = 16000  # Milvus hard limit
         new_batch_size = min(new_batch_size, milvus_safety_limit)
         
-        # Safety bounds check with gradual adjustment
+        # Safety bounds check with gradual adjustment - respecting DynamicBatchOptimizer limits
         new_batch_size = max(self.min_batch_size, min(self.max_batch_size, new_batch_size))
         
         # Gradual adjustment to prevent sudden changes
@@ -1008,7 +1017,7 @@ class EmbeddingModel:
             return [0] * getattr(config, 'VECTOR_DIM', 384)
         
         # Text length limit for safety - use config value
-        max_text_length = config.get_max_text_length()
+        max_text_length = getattr(config, 'MAX_TEXT_LENGTH', 500000)
         if len(text) > max_text_length:
             # Don't truncate - this will be handled by chunking
             print(f"Warning: Text length {len(text)} exceeds limit {max_text_length}, will be processed in chunks")
@@ -1040,10 +1049,10 @@ class EmbeddingModel:
         # 🔥 AGGRESSIVE BATCH SIZE for continuous GPU utilization
         # RTX 4070을 위한 초대형 배치 크기 - 테스트 결과 반영!
         if len(texts) < 100:
-            # Small batch optimization while respecting Milvus limits
-            milvus_limit = config.get_milvus_max_query_limit()  # 16000
+            # Small batch optimization while respecting Milvus limits from the start
+            milvus_limit = 16000  # Milvus hard limit - apply first
             effective_batch_size = min(max(800, len(texts) * 15), milvus_limit)
-            # Extend texts for GPU utilization while respecting limits
+            # Extend texts for GPU utilization while respecting limits from start
             extended_texts = texts * (effective_batch_size // len(texts) + 1)
             extended_texts = extended_texts[:effective_batch_size]
             
@@ -1067,16 +1076,24 @@ class EmbeddingModel:
         # Collect current system metrics
         current_metrics = self._collect_system_metrics()
         
-        # 🚀 ULTRA-AGGRESSIVE batch size for RTX 4070
-        base_batch_size = 1000  # 기본 1000개씩 처리
-        optimal_batch_size = min(base_batch_size, len(texts))
+        # 🚀 ULTRA-AGGRESSIVE batch size using DynamicBatchOptimizer's intelligent sizing
+        base_batch_size = 1000  # 기본값
         
-        # 시스템 상태에 따른 배치 크기 조정
-        if hasattr(self, 'batch_optimizer'):
-            suggested_batch = self.batch_optimizer.adjust_batch_size(current_metrics)
-            optimal_batch_size = max(optimal_batch_size, suggested_batch)
-        
-        print(f"📦 Using ULTRA batch size: {optimal_batch_size}")
+        # Use DynamicBatchOptimizer's intelligent batch size if available
+        if hasattr(self, 'batch_optimizer') and self.batch_optimizer:
+            # Get the optimal batch size from DynamicBatchOptimizer
+            optimal_batch_size = self.batch_optimizer.current_batch_size
+            # Ensure it doesn't exceed Milvus limit from the start
+            milvus_limit = 16000  # Hard limit
+            optimal_batch_size = min(optimal_batch_size, milvus_limit)
+            # Use the smaller of texts length or optimal batch size
+            optimal_batch_size = min(optimal_batch_size, len(texts))
+            print(f"📦 Using DynamicBatchOptimizer size: {optimal_batch_size} (max: {milvus_limit})")
+        else:
+            # Fallback to base batch size with Milvus limit
+            milvus_limit = 16000  # Hard limit
+            optimal_batch_size = min(base_batch_size, len(texts), milvus_limit)
+            print(f"📦 Using fallback batch size: {optimal_batch_size}")
         
         # Process texts with continuous GPU utilization
         results = self._process_batches_with_continuous_gpu(texts, optimal_batch_size)
@@ -1097,7 +1114,7 @@ class EmbeddingModel:
         results = [[0] * getattr(config, 'VECTOR_DIM', 384) for _ in range(len(texts))]
         text_mapping = []
         
-        max_text_length = getattr(config, 'MAX_TEXT_LENGTH', 5000)
+        max_text_length = getattr(config, 'MAX_TEXT_LENGTH', 500000)
         
         for i, text in enumerate(texts):
             if isinstance(text, str) and text and not text.isspace():
@@ -1272,7 +1289,7 @@ class EmbeddingModel:
         results = [[0] * getattr(config, 'VECTOR_DIM', 384) for _ in range(len(texts))]
         text_mapping = []
         
-        max_text_length = getattr(config, 'MAX_TEXT_LENGTH', 5000)
+        max_text_length = getattr(config, 'MAX_TEXT_LENGTH', 500000)
         
         for i, text in enumerate(texts):
             if isinstance(text, str) and text and not text.isspace():
@@ -1394,7 +1411,7 @@ class EmbeddingModel:
         compute_text = original_text if original_text is not None else text
         
         # Additional safety check for text length
-        max_length = config.get_max_text_length()
+        max_length = getattr(config, 'MAX_TEXT_LENGTH', 500000)
         if len(compute_text) > max_length:
             # Don't truncate - this will be handled by chunking
             print(f"Warning: Compute text length {len(compute_text)} exceeds limit {max_length}, will be processed in chunks")

@@ -11,11 +11,11 @@ import shutil
 import torch
 import psutil
 
-# 로깅 설정
-log_level_str = getattr(config, 'LOG_LEVEL', 'INFO')
-log_level = getattr(logging, log_level_str, logging.INFO)
-logging.basicConfig(level=log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('MilvusManager')
+# Import centralized logger
+from logger import get_logger
+
+# Initialize module logger
+logger = get_logger(__name__)
 
 
 class SystemMonitor:
@@ -141,10 +141,12 @@ class MilvusManager:
             from embeddings import HardwareProfiler, DynamicBatchOptimizer
             self.hardware_profiler = HardwareProfiler()
             self.batch_optimizer = DynamicBatchOptimizer(self.hardware_profiler)
+            logger.info(f"Milvus using intelligent batch sizing: {self.batch_optimizer.current_batch_size}")
             print(f"Milvus using intelligent batch sizing: {self.batch_optimizer.current_batch_size}")
         except ImportError:
             # Fallback if embeddings not available
             self.batch_optimizer = None
+            logger.warning("Failed to load embeddings module. Using fallback batch sizing")
             print("Using fallback batch sizing")
         self.milvus_containers = {
             'standalone': 'milvus-standalone',
@@ -171,7 +173,6 @@ class MilvusManager:
             # Milvus 서비스가 완전히 준비될 때까지 대기
             self.wait_for_milvus_ready()
             
-            # Connection and collection setup should be indented under the __init__ method
             self.connect()
             self.ensure_collection()
             
@@ -187,16 +188,132 @@ class MilvusManager:
         self.start_monitoring()
         
     def _get_optimal_query_limit(self):
-        """Get optimal query limit from batch optimizer or config fallback"""
+        """Get optimal query limit from DynamicBatchOptimizer or config fallback"""
         if self.batch_optimizer:
-            # Use DynamicBatchOptimizer's intelligent sizing
+            # Use DynamicBatchOptimizer's intelligent sizing - apply Milvus limit from start
             optimal_limit = self.batch_optimizer.current_batch_size
-            # Ensure it doesn't exceed Milvus safety limit
-            milvus_limit = config.get_milvus_max_query_limit()  # 16000
+            # Ensure it doesn't exceed Milvus safety limit from the start
+            # Milvus 제한: offset + limit <= 16384이므로 안전하게 12000으로 설정
+            milvus_limit = 12000  # Hard limit - leave room for offset
             return min(optimal_limit, milvus_limit)
         else:
-            # Fallback to config value
-            return config.get_milvus_max_query_limit()  # 16000
+            # Fallback to safe limit
+            return 16000  # Safe fallback
+        
+    def connect(self):
+        """Milvus 서버에 연결 (스레드 안전)"""
+        with self.connection_lock:
+            try:
+                connections.connect(
+                    alias="default", 
+                    host=self.host, 
+                    port=self.port
+                )
+                logger.info(f"Connected to Milvus server at {self.host}:{self.port}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to connect to Milvus server: {e}")
+                raise
+    
+    def ensure_collection(self):
+        """컬렉션이 없으면 생성"""
+        try:
+            # 컬렉션 존재 여부 확인
+            if utility.has_collection(self.collection_name):
+                logger.info(f"Collection '{self.collection_name}' exists")
+                # 기존 컬렉션 로드
+                self.collection = Collection(self.collection_name)
+                return True
+            else:
+                # 컬렉션 생성
+                logger.info(f"Collection '{self.collection_name}' does not exist, creating it...")
+                return self.create_collection(self.collection_name, self.dimension)
+        except Exception as e:
+            logger.error(f"Error ensuring collection: {e}")
+            raise
+            
+    def create_collection(self, collection_name=None, dimension=None):
+        """컬렉션 생성 (없는 경우)"""
+        try:
+            if collection_name is None:
+                collection_name = self.collection_name
+            if dimension is None:
+                dimension = self.dimension
+                
+            # 필드 스키마 정의
+            fields = [
+                FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+                FieldSchema(name="file_path", dtype=DataType.VARCHAR, max_length=2048),
+                FieldSchema(name="chunk_index", dtype=DataType.INT64),
+                FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=65535),
+                FieldSchema(name="metadata", dtype=DataType.JSON),
+                FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=dimension)
+            ]
+            
+            # 컬렉션 스키마 생성
+            schema = CollectionSchema(fields=fields)
+            
+            # 컬렉션 생성
+            logger.info(f"Creating collection: {collection_name} with dimension {dimension}")
+            self.collection = Collection(name=collection_name, schema=schema)
+            
+            # 인덱스 생성
+            index_params = {
+                "index_type": "IVF_FLAT",
+                "metric_type": "IP",
+                "params": {"nlist": 1024}
+            }
+            
+            # GPU 사용 가능 여부에 따라 인덱스 타입 조정
+            if self._is_gpu_available() and hasattr(config, 'GPU_INDEX_TYPE'):
+                index_params["index_type"] = config.GPU_INDEX_TYPE
+                logger.info(f"Using GPU index type: {config.GPU_INDEX_TYPE}")
+            
+            self.collection.create_index("embedding", index_params)
+            logger.info(f"Index created on 'embedding' field")
+            
+            # 컬렉션 로드
+            self._load_collection()
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error creating collection: {e}")
+            raise
+            
+    def _load_collection(self, use_gpu=True, index_params=None):
+        """컬렉션을 로드하는 내부 메서드"""
+        try:
+            # GPU 사용 설정
+            search_params = {}
+            if use_gpu and self._is_gpu_available() and hasattr(config, 'GPU_DEVICE_ID'):
+                search_params = {
+                    "gpu_id": config.GPU_DEVICE_ID
+                }
+                logger.info(f"Loading collection with GPU (device_id: {config.GPU_DEVICE_ID})")
+            else:
+                logger.info("Loading collection with CPU")
+                
+            # 컬렉션 로드
+            self.collection.load(search_params=search_params)
+            logger.info(f"Collection '{self.collection_name}' loaded successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error loading collection: {e}")
+            raise
+            
+    def _is_gpu_available(self):
+        """시스템에 GPU가 사용 가능한지 확인"""
+        try:
+            if not hasattr(config, 'USE_GPU') or not config.USE_GPU:
+                return False
+                
+            # PyTorch를 통한 GPU 확인
+            if torch.cuda.is_available():
+                return True
+            return False
+        except Exception as e:
+            logger.warning(f"GPU availability check failed: {e}")
+            return False
     
     def wait_for_milvus_ready(self, max_wait_time=120):
         """
@@ -740,8 +857,22 @@ class MilvusManager:
             self.create_collection()
         else:
             self.collection = Collection(self.collection_name)
-            self.collection.load()
+            # Ensure collection is loaded - use proper Milvus method
+            try:
+                # Try a simple operation that requires the collection to be loaded
+                self.collection.num_entities
+                logger.debug(f"Collection '{self.collection_name}' is already loaded")
+            except Exception as e:
+                # Collection is not loaded, so load it
+                logger.info(f"Loading collection '{self.collection_name}'...")
+                self.collection.load()
+                logger.info(f"Collection '{self.collection_name}' loaded successfully")
         
+        # Ensure collection attribute is set
+        if self.collection is None:
+            logger.error("Failed to set collection attribute")
+            raise RuntimeError("Collection could not be initialized properly")
+            
         logger.info(f"Collection '{self.collection_name}' is ready")
         
     def count_entities(self):
@@ -760,7 +891,7 @@ class MilvusManager:
                 results = self.collection.query(
                     expr="id >= 0",
                     output_fields=["id"],
-                    limit=16384  # Milvus 최대 제한
+                    limit=12000  # 안전한 쿼리 제한 (offset + limit <= 16384)
                 )
                 return len(results)
             except:
@@ -783,7 +914,7 @@ class MilvusManager:
                 all_results = self.collection.query(
                     expr="id >= 0",
                     output_fields=["file_type"],
-                    limit=16384
+                    limit=12000  # 안전한 쿼리 제한 (offset + limit <= 16384)
                 )
                 
                 md_count = sum(1 for r in all_results if r.get('file_type', '').startswith('md'))
@@ -941,7 +1072,8 @@ class MilvusManager:
             FieldSchema(name="tags", dtype=DataType.VARCHAR, max_length=1024),
             FieldSchema(name="created_at", dtype=DataType.VARCHAR, max_length=50),
             FieldSchema(name="updated_at", dtype=DataType.VARCHAR, max_length=50),
-            FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dimension)
+            FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dimension),
+            FieldSchema(name="original_path", dtype=DataType.VARCHAR, max_length=1024)  # 원본 경로 필드 추가
         ]
         
         # 스키마 생성
@@ -991,11 +1123,14 @@ class MilvusManager:
             }
         
         # 인덱스 생성
+        logger.info(f"Creating index on 'vector' field with params: {index_params}")
         collection.create_index(field_name="vector", index_params=index_params)
         
         # 컬렉션 로드
+        logger.info(f"Loading collection '{collection_name}'")
         collection.load()
         
+        logger.info(f"Collection '{collection_name}' created and loaded successfully")
         print(f"Collection '{collection_name}' created and loaded successfully.")
         
     def recreate_collection(self, collection_name=None, dimension=None):
@@ -1008,11 +1143,14 @@ class MilvusManager:
         # 컬렉션이 존재하는지 확인
         if utility.has_collection(collection_name):
             # 컬렉션 삭제
+            logger.info(f"Dropping existing collection '{collection_name}'")
             utility.drop_collection(collection_name)
             print(f"Collection '{collection_name}' has been dropped.")
         
         # 새 컬렉션 생성
+        logger.info(f"Creating new collection '{collection_name}' with dimension {dimension}")
         self.create_collection(collection_name, dimension)
+        logger.info(f"Collection '{collection_name}' has been recreated")
         print(f"Collection '{collection_name}' has been recreated.")
         return True
             
@@ -1041,27 +1179,240 @@ class MilvusManager:
             logger.info(f"Fallback: Collection '{self.collection_name}' created with CPU index")
     
     def insert_data(self, data):
-        """데이터를 Milvus에 삽입 (배치 처리 지원)"""
+        """데이터를 Milvus에 삽입 (배치 처리 지원)
+        오류 로깅 및 예외 처리 개선
+        """
+        # 컴파일 시점에 기본 값 설정
+        vector_dimension = getattr(self, 'dimension', 768)  # 기본값 768
+        
         try:
-            # 데이터 형식 검증
-            if not data or not isinstance(data, dict):
-                print("Warning: Invalid data format for insert")
-                return None
+            # 1. 콜렉션 객체 초기화 여부 확인
+            if self.collection is None:
+                if not utility.has_collection(self.collection_name):
+                    error_msg = f"Collection '{self.collection_name}' does not exist"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
                 
-            # auto_id=True로 설정되어 있으므로 'id' 필드 제거
-            if 'id' in data:
-                data_copy = data.copy()
+                # 콜렉션 로드 시도
+                try:
+                    self.collection = Collection(self.collection_name)
+                    logger.info(f"Collection '{self.collection_name}' loaded successfully")
+                except Exception as coll_error:
+                    error_msg = f"Failed to load collection '{self.collection_name}': {coll_error}"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+            
+            # 2. 데이터 형식 검증 (상세한 오류 로깅 추가)
+            if not data:
+                error_msg = "Empty data provided for insertion"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+                
+            if not isinstance(data, dict):
+                error_msg = f"Invalid data format: expected dict, got {type(data)}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            # 3. 데이터의 필수 필드 확인
+            required_fields = ["path", "vector"]
+            missing_fields = [field for field in required_fields if field not in data]
+            if missing_fields:
+                error_msg = f"Missing required fields for insertion: {missing_fields}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            # 4. 벡터 형식 및 차원 확인
+            vector_data = data.get("vector")
+            if not isinstance(vector_data, list):
+                error_msg = f"Vector data must be a list, got {type(vector_data)}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            actual_dimension = len(vector_data)
+            if actual_dimension != vector_dimension:
+                error_msg = f"Vector dimension mismatch: expected {vector_dimension}, got {actual_dimension}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+                
+            # auto_id=True로 설정되어 있으므로 항상 'id' 필드 제거
+            data_copy = data.copy()
+            if 'id' in data_copy:
                 del data_copy['id']
-            else:
-                data_copy = data
+                logger.debug(f"Removed 'id' field from data as auto_id=True is enabled")
+            
+            # 파일 경로 확인 및 추가 진단
+            if 'path' in data_copy:
+                path = data_copy['path']
+                file_name = os.path.basename(path) if path else ''
                 
-            # 대용량 데이터 처리를 위한 성능 최적화
-            result = self.collection.insert(data_copy)
-            # flush는 호출자가 관리 (배치마다 한 번만 호출)
-            return result
+                # 파일명 관련 진단 정보 로깅
+                if file_name:
+                    import re
+                    starts_with_number = bool(re.match(r'^\d', file_name))
+                    has_special_chars = any(c in file_name for c in '[](){}#$%^&*;:<>?/|\\=')
+                    
+                    if starts_with_number:
+                        logger.warning(f"File '{file_name}' starts with a number - may cause schema issues")
+                    
+                    if has_special_chars:
+                        logger.warning(f"File '{file_name}' contains special characters - may cause issues")
+                        
+                    # 로깅에만 사용하기 위한 진단 정보
+                    logger.debug(f"File diagnostics - Starts with number: {starts_with_number}, Has special chars: {has_special_chars}")
+            try:
+                result = self.collection.insert(data_copy)
+                logger.debug(f"Successfully inserted data: {result}")
+                return result
+            except Exception as insert_error:
+                error_msg = str(insert_error)
+                
+                # DataNotMatchException 처리
+                if "DataNotMatchException" in str(type(insert_error)) and "original_path" in error_msg:
+                    # original_path 필드 문제인 경우 특별 처리
+                    logger.warning(f"Schema mismatch with 'original_path' field, attempting to fix...")
+                    
+                    # 다시 한 번 시도
+                    if 'path' in data_copy:
+                        data_copy['original_path'] = data_copy['path']
+                        logger.debug(f"Retry: Added 'original_path' field with value from 'path'")
+                        result = self.collection.insert(data_copy)
+                        logger.info(f"Successfully inserted data after fixing original_path field")
+                        return result
+                
+                # 'id' 필드 관련 문제인 경우 다시 시도
+                if "id" in str(insert_error).lower():
+                    logger.warning("'id' field error detected in insert operation, attempting to fix...")
+                    # 'id' 필드 제거 재시도
+                    if 'id' in data_copy:
+                        logger.info("Removing 'id' field from data and retrying insertion")
+                        del data_copy['id']
+                        try:
+                            result = self.collection.insert(data_copy)
+                            logger.info("Successfully inserted data after removing 'id' field")
+                            return result
+                        except Exception as retry_error:
+                            logger.error(f"Still failed after removing 'id' field: {retry_error}")
+                
+                # 실패 시 상세 로깅
+                logger.error(f"Failed to insert data: {insert_error}")
+                logger.debug(f"Failed data fields: {[k for k in data_copy.keys() if k != 'vector']}")
+                
+                # 'id' 필드 관련 문제 확인 
+                if "id" in str(insert_error).lower():
+                    logger.error("'id' field error detected in insert operation")
+                    # 'id' 키가 있는지 다시 확인
+                    if 'id' in data_copy:
+                        logger.error("CRITICAL: 'id' field is still present in data_copy - this will cause schema errors")
+                    # schema 구조 확인
+                    try:
+                        schema_fields = [field.name for field in schema.fields]
+                        logger.error(f"Collection schema fields: {schema_fields}")
+                    except Exception as schema_err:
+                        logger.error(f"Could not retrieve schema fields: {schema_err}")
+                
+                # 파일 경로 상세 진단
+                if 'path' in data_copy:
+                    path_value = data_copy['path']
+                    logger.debug(f"Path value: {path_value[:100]}")
+                    
+                    # 파일명 추가 진단
+                    file_name = os.path.basename(path_value) if path_value else ''
+                    if file_name:
+                        import re
+                        if bool(re.match(r'^\d', file_name)):
+                            logger.error(f"File '{file_name}' starts with a number - recommend adding 'file_' prefix")
+                        
+                        special_chars = [c for c in '[](){}#$%^&*;:<>?/|\\=' if c in file_name]
+                        if special_chars:
+                            logger.error(f"File contains problematic characters: {special_chars}")
+                
+                raise insert_error
+        except Exception as schema_error:
+            # 스키마 처리 중 오류 발생
+            logger.error(f"Error processing schema compatibility: {schema_error}")
+            
+            # 'id' 필드 다시 한번 확인하고 제거
+            if 'id' in data_copy:
+                logger.info("Removing 'id' field from data before final retry")
+                del data_copy['id']
+            
+            # 원래 데이터로 다시 시도
+            try:
+                result = self.collection.insert(data_copy)
+                return result
+            except Exception as insert_error:
+                # 삽입 오류에 대한 자세한 로깅
+                error_msg = f"Failed to insert data: {insert_error}"
+                logger.error(error_msg, exc_info=True)
+                
+                # 데이터 삽입 상태 로깅 (디버깅용)
+                logger.debug(f"Data path being inserted: {data_copy.get('path', 'N/A')}")
+                logger.debug(f"Vector dimension: {len(data_copy.get('vector', []))}")
+                
+                # 메모리 사용량 확인
+                try:
+                    import psutil
+                    process = psutil.Process()
+                    logger.debug(f"Memory usage during insert: {process.memory_info().rss / (1024 * 1024):.2f} MB")
+                except (ImportError, Exception) as e:
+                    logger.debug(f"Could not log memory usage: {e}")
+                    
+                # 삽입 시도 중 데이터 구조 분석
+                data_keys = list(data_copy.keys())
+                logger.debug(f"Data structure during insert: {data_keys}")
+                
+                # 마지막으로 중요 필드 값 분석
+                for key in ['path', 'title']:
+                    if key in data_copy:
+                        value = data_copy[key]
+                        if value and isinstance(value, str):
+                            # 값의 앞부분 로깅 (너무 길면 자름)
+                            logger.debug(f"Field '{key}' starts with: {value[:50]}{'...' if len(value) > 50 else ''}")
+                            # 숫자로 시작하는지 확인
+                            import re
+                            if re.match(r'^\d', value):
+                                logger.error(f"Field '{key}' starts with a number - may cause schema issues")
+                
+                raise insert_error
+            
         except Exception as e:
-            print(f"Error inserting data: {e}")
-            return None
+                    
+                    # 데이터 삽입 상태 로깅 (디버깅용)
+                    logger.debug(f"Data path being inserted: {data_copy.get('path', 'N/A')}")
+                    logger.debug(f"Vector dimension: {len(data_copy.get('vector', []))}")
+                    
+                    # 메모리 사용량 확인
+                    try:
+                        import psutil
+                        process = psutil.Process()
+                        logger.debug(f"Memory usage during insert: {process.memory_info().rss / (1024 * 1024):.2f} MB")
+                    except (ImportError, Exception) as e:
+                        logger.debug(f"Could not log memory usage: {e}")
+                        
+                    # 삽입 시도 중 데이터 구조 분석
+                    data_keys = list(data_copy.keys())
+                    logger.debug(f"Data structure during insert: {data_keys}")
+                    
+                    # 마지막으로 중요 필드 값 분석
+                    for key in ['path', 'title']:
+                        if key in data_copy:
+                            value = data_copy[key]
+                            if value and isinstance(value, str):
+                                # 값의 앞부분 로깅 (너무 길면 자름)
+                                logger.debug(f"Field '{key}' starts with: {value[:50]}{'...' if len(value) > 50 else ''}")
+                                # 숫자로 시작하는지 확인
+                                import re
+                                if re.match(r'^\d', value):
+                                    logger.error(f"Field '{key}' starts with a number - may cause schema issues")
+                    
+                    raise insert_error
+                
+        except Exception as e:
+            # 총괄적인 오류 처리
+            error_msg = f"Error inserting data: {e}"
+            logger.error(error_msg, exc_info=True)
+            # 예외를 상위로 전파하여 정확한 오류 파악
+            raise
     
     # 삭제 작업을 위한 메모리 효율적인 작업 관리
         
@@ -1082,7 +1433,12 @@ class MilvusManager:
                 return False
             
             # 컬렉션 로드 확인
-            if not self.collection.is_loaded:
+            # Ensure collection is loaded
+            try:
+                self.collection.num_entities  # Test if loaded
+                logger.debug("Collection is loaded")
+            except Exception:
+                logger.info("Loading collection for delete operation...")
                 self.collection.load()
             
             # 전체 데이터 삭제 (모든 엔티티 삭제)
@@ -1109,8 +1465,8 @@ class MilvusManager:
         if not self.pending_deletions:
             return
             
+        logger.info(f"Executing batch deletion for {len(self.pending_deletions)} files")
         print(f"Executing batch deletion for {len(self.pending_deletions)} files...")
-        logger.info(f"Batch deletion for {len(self.pending_deletions)} files started")
         
         # 성공적으로 삭제된 파일들을 추적
         successful_deletions = []
@@ -1131,7 +1487,7 @@ class MilvusManager:
                         
                         results = self.collection.query(
                             output_fields=["id", "path"],
-                            limit=current_limit,
+                            limit=12000,  # 안전한 쿼리 제한 (offset + limit <= 16384)
                             offset=offset,
                             expr="id >= 0"  # Query all documents
                         )
@@ -1175,8 +1531,11 @@ class MilvusManager:
             for path, ids in files_to_delete.items():
                 try:
                     if ids:
-                        # Use intelligent delete batch size from config
-                        batch_size = config.get_milvus_max_delete_batch()  # 500
+                        # Use intelligent delete batch size from DynamicBatchOptimizer
+                        if hasattr(self, 'batch_optimizer') and self.batch_optimizer:
+                            batch_size = min(self.batch_optimizer.current_batch_size // 4, 500)  # Conservative for deletes
+                        else:
+                            batch_size = 500  # Safe fallback for deletes
                         for i in range(0, len(ids), batch_size):
                             batch = ids[i:i+batch_size]
                             try:
@@ -1192,6 +1551,7 @@ class MilvusManager:
                                         pass
                         
                         successful_deletions.append(path)
+                        logger.info(f"Deleted {len(ids)} chunks for file {path}")
                         print(f"Deleted {len(ids)} chunks for file {path}")
                     else:
                         logger.warning(f"No chunks found for file {path}")
@@ -1203,15 +1563,22 @@ class MilvusManager:
             # 요약 출력
             if successful_deletions:
                 logger.info(f"Successfully deleted chunks from {len(successful_deletions)} files")
-                print(f"\n\u2714 Successfully removed: {len(successful_deletions)} files")
+                print(f"\n✔ Successfully removed: {len(successful_deletions)} files")
             
             if failed_deletions:
                 logger.warning(f"Failed to delete {len(failed_deletions)} files")
-                print(f"\n\u26a0 Failed to remove: {len(failed_deletions)} files")
+                print(f"\n⚠ Failed to remove: {len(failed_deletions)} files")
                 print("Files that could not be deleted:")
+                
+                # Log all failed deletions but only display first 10 to the user
+                for f in failed_deletions:
+                    logger.warning(f"Failed to delete file: {f}")
+                    
                 for f in failed_deletions[:10]:  # 처음 10개만 표시
                     print(f"- {f}")
+                    
                 if len(failed_deletions) > 10:
+                    logger.warning(f"...and {len(failed_deletions) - 10} more files could not be deleted")
                     print(f"...and {len(failed_deletions) - 10} more files")
             
             # 성공적으로 삭제된 파일만 대기열에서 제거
@@ -1235,38 +1602,45 @@ class MilvusManager:
             # ✅ 변경 사항을 확실히 반영하기 위해 flush 추가
             try:
                 self.collection.flush()
+                logger.info("Milvus collection flushed after deletions")
                 print("✓ Milvus collection flushed after deletions.")
             except Exception as e:
+                logger.error(f"Flush failed: {e}")
                 print(f"⚠️ Flush failed: {e}")
         
         except Exception as e:
+            logger.error(f"Error in batch deletion: {e}", exc_info=True)
             print(f"Warning: Error in batch deletion: {e}")
-            logger.error(f"Error in batch deletion: {e}")
-            import traceback
-            logger.error(f"Deletion traceback: {traceback.format_exc()}")
             
-        except Exception as e:
-            print(f"Warning: Error in batch deletion: {e}")
+        finally:
+            logger.info(f"Batch deletion complete. Successful: {len(successful_deletions)}, Failed: {len(failed_deletions)}")
+            logger.info(f"Remaining in pending queue: {len(self.pending_deletions)}")
+
     
     def delete_by_path(self, file_path):
         """파일 경로로 데이터 삭제 (레거시 지원)"""
         # 파일 경로가 None이면 바로 리턴
         if file_path is None:
+            logger.warning("Attempted to delete with a None file path")
             print("Warning: Attempted to delete with a None file path")
             return
             
         try:
             # 메모리 효율성 개선을 위해 필터링 최적화
             # path에 대한 직접 필터링 시도
+            logger.debug(f"Attempting to delete file by path: {file_path}")
             expr = f"path == '{file_path}'"
             count = self.collection.query(expr=expr, output_fields=["count(*)"]).get("count")
             
             if count and count > 0:
+                logger.info(f"Deleting {count} chunks for file {file_path} using direct path filter")
                 self.collection.delete(expr)
                 print(f"Deleted {count} chunks for file {file_path}")
                 return
                 
             # 직접 필터링이 실패한 경우 백업 방법 사용
+            logger.info(f"Direct path filter failed for {file_path}, using backup method")
+
             results = self.collection.query(
                 output_fields=["id", "path"],
                 limit=1000,
@@ -1276,17 +1650,32 @@ class MilvusManager:
             ids_to_delete = [doc.get("id") for doc in results if doc.get("path") == file_path and doc.get("id") is not None]
             
             if ids_to_delete:
+                logger.info(f"Deleting {len(ids_to_delete)} chunks for file {file_path} using backup method")
                 self.collection.delete(f"id in {ids_to_delete}")
                 print(f"Deleted {len(ids_to_delete)} chunks for file {file_path}")
             else:
+                logger.warning(f"No documents found for path: {file_path}")
                 print(f"No documents found for path: {file_path}")
                 
         except Exception as e:
+            logger.error(f"Error deleting file {file_path}: {e}", exc_info=True)
             print(f"Warning: Error deleting file {file_path}: {e}")
             # 오류가 발생해도 계속 진행
     
     def search(self, vector, limit=5, filter_expr=None):
         """벡터 유사도 검색 수행 (GPU 검색 추가)"""
+        # Ensure collection exists
+        if self.collection is None:
+            if utility.has_collection(self.collection_name):
+                self.collection = Collection(self.collection_name)
+                try:
+                    self.collection.num_entities  # Test if loaded
+                except Exception:
+                    self.collection.load()
+            else:
+                logger.error(f"Collection '{self.collection_name}' does not exist")
+                return []
+                
         # GPU 사용 여부 확인
         use_gpu = getattr(config, 'USE_GPU', False)
         gpu_index_type = getattr(config, 'GPU_INDEX_TYPE', 'GPU_IVF_FLAT')
@@ -1338,7 +1727,9 @@ class MilvusManager:
         return results[0]  # 첫 번째 쿼리의 결과
     
     def _sanitize_query_expr(self, expr):
-        """쿼리 표현식에서 특수문자와 경로를 안전하게 처리"""
+        """쿼리 표현식에서 특수문자와 경로를 안전하게 처리
+        영어와 한글 파일명에 있는 특수문자를 모두 처리합니다.
+        """
         import re
         
         # 이미 안전한 쿼리인 경우 그대로 반환
@@ -1346,70 +1737,112 @@ class MilvusManager:
             return expr
         
         try:
-            # 안전한 기본 쿼리로 대체하여 오류 방지
-            if "path" in expr and ("=" in expr or "like" in expr):
-                # 오류 발생 가능성이 있는 경우 안전한 쿼리로 대체
-                logger.warning(f"Potentially unsafe query detected: {expr}. Using safe alternative.")
-                return "id >= 0"
-                
-            # 'path = 'value'' 또는 'path like 'value%'' 패턴 감지
-            path_equals_pattern = re.compile(r"(path\s*=\s*['\"])(.*?)(['\"])")
-            path_like_pattern = re.compile(r"(path\s+like\s+['\"])(.*?)(['\"])")
-            title_equals_pattern = re.compile(r"(title\s*=\s*['\"])(.*?)(['\"])")
-            title_like_pattern = re.compile(r"(title\s+like\s+['\"])(.*?)(['\"])")
-        except Exception as e:
-            logger.error(f"Error in sanitize query expression: {e}")
-            return "id >= 0"  # 오류 발생시 안전한 쿼리 반환
-        
-        # 한글이나 특수문자가 포함된 경우 처리
-        if re.search(r'[가-힣\(\)\s]', expr):
-            # 'path = 'value'' 패턴 처리
-            if path_equals_pattern.search(expr):
-                logger.debug(f"한글/특수문자 포함된 path = 쿼리 감지: {expr}")
-                # id >= 0으로 대체하고 후처리에서 필터링
-                return "id >= 0"
-                
-            # 'path like 'value%'' 패턴 처리
-            elif path_like_pattern.search(expr):
-                match = path_like_pattern.search(expr)
-                if match:
-                    prefix = match.group(2).rstrip('%')
-                    # 접두사에 한글이 포함된 경우
-                    if re.search(r'[가-힣]', prefix):
-                        logger.debug(f"한글 포함된 path like 쿼리 감지: {expr}")
-                        # 접두사 검색은 지원하지만 한글이 포함된 경우 주의 필요
-                        if prefix.endswith('%'):
-                            # 와일드카드가 접두사 내에 있으면 id >= 0으로 대체
-                            return "id >= 0"
-                        else:
-                            # 접두사 검색은 유지 (path like 'prefix%')
-                            return expr
+            # 문제가 될 수 있는 특수 문자 정의
+            problem_chars = ",'\"()[]{},;" 
             
-            # title 관련 쿼리도 유사하게 처리
-            elif title_equals_pattern.search(expr) or title_like_pattern.search(expr):
-                logger.debug(f"한글/특수문자 포함된 title 쿼리 감지: {expr}")
-                return "id >= 0"  # id >= 0으로 대체하고 후처리에서 필터링
+            # 1. 파일 경로 제이터 필드 쿼리 처리 (path, file_path)
+            path_patterns = [
+                r"path\s*=\s*['\"](.+?)['\"]",  # path = 'value'
+                r"path\s+==\s*['\"](.+?)['\"]",  # path == 'value'
+                r"path\s+like\s+['\"](.+?)['\"]",  # path like 'value%'
+                r"file_path\s*=\s*['\"](.+?)['\"]",  # file_path = 'value'
+                r"file_path\s+==\s*['\"](.+?)['\"]",  # file_path == 'value'
+            ]
+            
+            for pattern in path_patterns:
+                match = re.search(pattern, expr)
+                if match:
+                    path_value = match.group(1)
+                    
+                    # 한글 포함 확인
+                    has_korean = bool(re.search(r'[가-힣]', path_value))
+                    # 특수 문자 포함 확인
+                    has_special_chars = any(c in path_value for c in problem_chars) or " " in path_value
+                    
+                    # 한글이나 특수 문자가 포함된 경우
+                    if has_korean or has_special_chars:
+                        logger.debug(f"특수 문자 또는 한글이 포함된 경로 쿼리 감지: {expr}")
+                        
+                        try:
+                            # 파일명만 추출하여 부분 일치 검색으로 대체
+                            import os
+                            file_name = os.path.basename(path_value)
+                            
+                            # 파일명에 특수 문자가 많으면 안전한 쿼리로 대체
+                            special_char_count = sum(1 for c in file_name if c in problem_chars)
+                            
+                            # 특수 문자의 수에 따라 처리 방식 결정
+                            if special_char_count > 2 or len(file_name) < 3:
+                                logger.debug(f"다수의 특수 문자 발견 또는 짧은 파일명, 안전한 쿼리로 대체: {file_name}")
+                                return "id >= 0"  # 후처리에서 필터링할 수 있도록 모든 항목 조회
+                            else:
+                                # 특수 문자가 적은 경우 파일명으로 부분 일치 검색
+                                # SQL 인정부호 이스케이프 처리
+                                safe_file_name = file_name.replace("'", "\\'")
+                                new_expr = f"path like '%{safe_file_name}%'"
+                                logger.debug(f"쿼리 변환: {expr} -> {new_expr}")
+                                return new_expr
+                        except Exception as e:
+                            logger.warning(f"파일명 추출 중 오류: {e}, 안전한 쿼리 사용")
+                            return "id >= 0"
+            
+            # 2. 제목 필드 쿼리 처리 (title)
+            title_patterns = [
+                r"title\s*=\s*['\"](.+?)['\"]",  # title = 'value'
+                r"title\s+==\s*['\"](.+?)['\"]",  # title == 'value'
+                r"title\s+like\s+['\"](.+?)['\"]",  # title like 'value%'
+            ]
+            
+            for pattern in title_patterns:
+                match = re.search(pattern, expr)
+                if match:
+                    title_value = match.group(1)
+                    
+                    # 한글 포함 확인
+                    has_korean = bool(re.search(r'[가-힣]', title_value))
+                    # 특수 문자 포함 확인
+                    has_special_chars = any(c in title_value for c in problem_chars)
+                    
+                    # 한글이나 특수 문자가 포함된 경우
+                    if has_korean or has_special_chars:
+                        logger.debug(f"특수 문자 또는 한글이 포함된 제목 쿼리 감지: {expr}")
+                        
+                        # 특수 문자의 수에 따라 처리 방식 결정
+                        special_char_count = sum(1 for c in title_value if c in problem_chars)
+                        if special_char_count > 2 or len(title_value) < 3:
+                            logger.debug(f"다수의 특수 문자 발견 또는 짧은 제목, 안전한 쿼리로 대체: {title_value}")
+                            return "id >= 0"  # 후처리에서 필터링
+                        else:
+                            # 특수 문자가 적은 경우 부분 일치 검색
+                            # SQL 인정부호 이스케이프 처리
+                            safe_title = title_value.replace("'", "\\'")
+                            new_expr = f"title like '%{safe_title}%'"
+                            logger.debug(f"쿼리 변환: {expr} -> {new_expr}")
+                            return new_expr
+                            
+        except Exception as e:
+            logger.error(f"쿼리 표현식 정제 중 오류: {e}")
+            return "id >= 0"  # 오류 발생시 안전한 쿼리 반환
         
         # 변경이 필요 없는 경우 원래 표현식 반환
         return expr
     
     def _post_filter_results(self, results, original_expr):
         """쿼리 결과를 원래 표현식에 맞게 후처리"""
-        import re
-        
-        # 원래 표현식이 없거나 결과가 없으면 그대로 반환
-        if not original_expr or not results or original_expr == "id >= 0":
+        # 원본 표현식이 경로 비교인 경우, 정확히 일치하는 경로만 반환
+        if not results or not original_expr:
             return results
-            
-        # 'path = 'value'' 패턴 감지
-        path_equals_pattern = re.compile(r"path\s*=\s*['\"](.+?)['\"]")
-        path_match = path_equals_pattern.search(original_expr)
         
-        if path_match:
-            path_value = path_match.group(1)
-            # 정확한 경로 일치 필터링
-            filtered_results = [r for r in results if r.get('path') == path_value]
-            logger.debug(f"경로 정확 일치 필터링: {len(filtered_results)}/{len(results)} 결과 남음")
+        # 'path == 'value'' 패턴 감지
+        import re
+        path_eq_pattern = re.compile(r"path\s*==\s*['\"](.+?)['\"]")
+        path_eq_match = path_eq_pattern.search(original_expr)
+        
+        if path_eq_match:
+            eq_value = path_eq_match.group(1)
+            # 정확히 일치하는 경로만 필터링
+            filtered_results = [r for r in results if r.get('path') == eq_value]
+            logger.debug(f"경로 일치 필터링: {len(filtered_results)}/{len(results)} 결과 남음")
             return filtered_results
             
         # 'title = 'value'' 패턴 감지
@@ -1472,6 +1905,18 @@ class MilvusManager:
         """Milvus에서 쿼리 실행 (페이지네이션 지원)
         한글과 특수문자가 포함된 쿼리를 안전하게 처리합니다.
         """
+        # Ensure collection exists
+        if self.collection is None:
+            if utility.has_collection(self.collection_name):
+                self.collection = Collection(self.collection_name)
+                try:
+                    self.collection.num_entities  # Test if loaded
+                except Exception:
+                    self.collection.load()
+            else:
+                logger.error(f"Collection '{self.collection_name}' does not exist")
+                return []
+                
         if output_fields is None:
             # 스키마에 존재하는 필드만 요청
             output_fields = ["id", "path", "title", "content", "chunk_text", "chunk_index", "file_type", "tags", "created_at", "updated_at"]
@@ -1526,11 +1971,26 @@ class MilvusManager:
             
         try:
             # 방법 1: 직접 해당 경로를 쿼리하여 처리 속도 개선
-            # 경로에 특수 문자가 있을 수 있으므로 안전하게 처리
+            # 경로에 특수 문자나 한글이 있을 수 있으므로 안전하게 처리
             try:
-                # 특수 문자 이스케이핑을 위해 따옴표 처리 
-                escaped_path = file_path.replace("'", "\\'").replace("\\", "\\\\")
-                expr = f"path == '{escaped_path}'"
+                # 한글 및 특수 문자 안전 처리 향상
+                # 1. Base64 인코딩 방식으로 경로 비교 (가장 안전한 방법)
+                import base64
+                import re
+                
+                # 경로에 특수 문자나 한글이 포함되어 있는지 확인
+                has_special_chars = bool(re.search(r'[^a-zA-Z0-9_\-\./]', file_path))
+                
+                if has_special_chars:
+                    # 특수 문자나 한글이 포함된 경우: ID 기반 우회 검색
+                    # 파일명만 추출해서 더 간단한 쿼리 구성
+                    file_name = os.path.basename(file_path)
+                    # 다른 방식으로 시도 - 파일명 부분 일치 검색
+                    expr = f"path like '%{file_name}%'"  # 파일명 부분 일치 검색
+                else:
+                    # 특수 문자가 없는 경우: 일반 경로 이스케이핑
+                    escaped_path = file_path.replace("'", "\\'").replace("\\", "\\\\")
+                    expr = f"path == '{escaped_path}'"
                 count_results = self.collection.query(
                     output_fields=["count(*) as count"],
                     limit=1,
