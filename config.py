@@ -15,6 +15,9 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = '0'  # Prevent CUDA blocking messages
 # Load environment variables (optional - auto-loads if .env file exists)
 load_dotenv()
 
+# Get OBSIDIAN_VAULT from environment variable
+OBSIDIAN_VAULT = os.getenv('OBSIDIAN_VAULT')
+
 # Base path settings - Project root directory
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -26,8 +29,8 @@ PROJECT_ABSOLUTE_PATH = str(BASE_DIR)
 # 🔧 USER SETTINGS - Only modify this section!
 
 # 🗂️ Obsidian Vault Path (REQUIRED!)
-# Change the path below to your Obsidian vault path
-OBSIDIAN_VAULT_PATH = "G:\\jayjeo"  # ← Change this to your path!
+# Now loaded from .env file
+OBSIDIAN_VAULT_PATH = OBSIDIAN_VAULT  # Loaded from .env file
 
 # 🔧 Podman Path (Usually auto-detected. Only modify if there are issues)
 PODMAN_PATH = ""  # Leave empty for auto-detection, or enter full path if needed
