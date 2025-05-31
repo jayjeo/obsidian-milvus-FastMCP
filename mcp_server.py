@@ -49,24 +49,34 @@ class StdoutToStderr:
         sys.stderr.write(text)
     def flush(self):
         sys.stderr.flush()
+    def close(self):
+        # No-op for compatibility
+        pass
+    def fileno(self):
+        return sys.stderr.fileno()
+    def isatty(self):
+        return False
 
-# Replace stdout with stderr before any imports that might print
+# Store original stdout before any modifications
 original_stdout = sys.stdout
-sys.stdout = StdoutToStderr()
-
-# Import centralized logging system AFTER redirecting stdout
-from logger import get_logger
 
 # Context manager to temporarily suppress stdout during imports
 class SuppressStdout:
     def __enter__(self):
         self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, 'w')
+        self._devnull = open(os.devnull, 'w')
+        sys.stdout = self._devnull
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close()
         sys.stdout = self._original_stdout
+        self._devnull.close()
+
+# Redirect stdout to stderr before imports to suppress any print statements
+sys.stdout = StdoutToStderr()
+
+# Import centralized logging system
+from logger import get_logger
 
 # Import modules that might print to stdout with suppression
 with SuppressStdout():
@@ -134,43 +144,31 @@ def safe_json(obj):
 # FastMCP 인스턴스 생성
 mcp = FastMCP(config.FASTMCP_SERVER_NAME)
 
-# 모든 MCP 도구 함수가 JSON 직렬화 가능한 데이터를 반환하도록 하는 데코레이터
-def json_serializable(func):
-    """함수의 반환값을 JSON 직렬화 가능한 형태로 변환하는 데코레이터"""
-    async def async_wrapper(*args, **kwargs):
-        try:
-            result = await func(*args, **kwargs)
-            return safe_json(result)
-        except Exception as e:
-            logger.error(f"Error in {func.__name__}: {str(e)}", exc_info=True)
-            return safe_json({"error": str(e)})
-    
-    def sync_wrapper(*args, **kwargs):
-        try:
-            result = func(*args, **kwargs)
-            return safe_json(result)
-        except Exception as e:
-            logger.error(f"Error in {func.__name__}: {str(e)}", exc_info=True)
-            return safe_json({"error": str(e)})
-    
+# JSON 직렬화를 위한 래퍼 함수
+def ensure_json_serializable(func):
+    """함수의 반환값을 JSON 직렬화 가능한 형태로 보장하는 데코레이터"""
     if asyncio.iscoroutinefunction(func):
+        async def async_wrapper(*args, **kwargs):
+            try:
+                result = await func(*args, **kwargs)
+                return safe_json(result)
+            except Exception as e:
+                logger.error(f"Error in {func.__name__}: {str(e)}", exc_info=True)
+                return {"error": str(e)}
+        async_wrapper.__name__ = func.__name__
+        async_wrapper.__doc__ = func.__doc__
         return async_wrapper
     else:
+        def sync_wrapper(*args, **kwargs):
+            try:
+                result = func(*args, **kwargs)
+                return safe_json(result)
+            except Exception as e:
+                logger.error(f"Error in {func.__name__}: {str(e)}", exc_info=True)
+                return {"error": str(e)}
+        sync_wrapper.__name__ = func.__name__
+        sync_wrapper.__doc__ = func.__doc__
         return sync_wrapper
-
-# FastMCP 클래스의 tool 메소드를 오버라이드하여 자동으로 JSON 직렬화 가능하게 만듦
-original_tool = mcp.tool
-def json_safe_tool(*args, **kwargs):
-    """모든 MCP 도구 함수의 반환값을 자동으로 JSON 직렬화 가능하게 만드는 데코레이터"""
-    def decorator(func):
-        # 함수를 json_serializable 데코레이터로 래핑
-        wrapped_func = json_serializable(func)
-        # 원래 mcp.tool 데코레이터 적용
-        return original_tool(*args, **kwargs)(wrapped_func)
-    return decorator
-
-# mcp.tool 메소드 교체
-mcp.tool = json_safe_tool
 
 # 전역 변수들
 milvus_manager = None
@@ -301,7 +299,7 @@ async def auto_search_mode_decision(
     
     if not search_engine:
         logger.error("Search engine not initialized when attempting auto search mode decision")
-        return {"error": "Search engine not initialized.", "query": query}
+        return safe_json({"error": "Search engine not initialized.", "query": query})
     
     try:
         start_time = time.time()
@@ -1952,14 +1950,36 @@ def main():
     safe_print("Enhanced Obsidian-Milvus Fast MCP Server starting...")
     safe_print("All Milvus advanced features + new enhanced features activated!")
     
-    # Ensure stdout is restored for MCP communication
-    sys.stdout = original_stdout
-    
     if not initialize_components():
         safe_print("Component initialization failed. Server cannot start.", "error")
         sys.exit(1)
     
     safe_print("All components initialized!")
+    
+    # Debug: Check registered tools
+    safe_print("\nChecking registered tools...")
+    try:
+        import asyncio
+        async def check_tools():
+            tools = await mcp.list_tools()
+            return tools
+        
+        # Run the async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        registered_tools = loop.run_until_complete(check_tools())
+        loop.close()
+        
+        safe_print(f"Total tools registered: {len(registered_tools)}")
+        if registered_tools:
+            for i, tool in enumerate(registered_tools[:5]):
+                safe_print(f"  {i+1}. {tool.name}")
+            if len(registered_tools) > 5:
+                safe_print(f"  ... and {len(registered_tools) - 5} more tools")
+        else:
+            safe_print("WARNING: No tools registered!", "warning")
+    except Exception as e:
+        safe_print(f"Error checking tools: {e}", "error")
     safe_print("Activated advanced features:")
     safe_print("   - Intelligent search (adaptive/hierarchical/semantic graph)")
     safe_print("   - Advanced metadata filtering")
@@ -1976,9 +1996,29 @@ def main():
     safe_print(f"MCP server '{config.FASTMCP_SERVER_NAME}' starting...")
     safe_print(f"Transport: {config.FASTMCP_TRANSPORT}")
     
+    # Log all registered tools before starting
+    safe_print("\nRegistered tools before server start:")
+    try:
+        import asyncio
+        async def list_tools_sync():
+            return await mcp.list_tools()
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        tools = loop.run_until_complete(list_tools_sync())
+        loop.close()
+        
+        for tool in tools:
+            safe_print(f"  ✓ {tool.name}")
+        safe_print(f"\nTotal: {len(tools)} tools registered")
+    except Exception as e:
+        safe_print(f"Error listing tools: {e}", "error")
+    
     try:
         if config.FASTMCP_TRANSPORT == "stdio":
             safe_print("MCP server starting using STDIO transport...")
+            # Restore original stdout for MCP JSON-RPC communication
+            sys.stdout = original_stdout
             mcp.run(transport="stdio")
             # This line will not be reached during normal operation
         elif config.FASTMCP_TRANSPORT == "sse":
